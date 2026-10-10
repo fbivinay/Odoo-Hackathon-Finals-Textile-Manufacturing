@@ -69,8 +69,8 @@ export function Materials() {
 
       <Tabs defaultValue="stock">
         <TabsList>
-          <TabsTrigger value="stock">Stock{low > 0 && ` · ${low} low`}</TabsTrigger>
-          <TabsTrigger value="deliveries">Received</TabsTrigger>
+          <TabsTrigger value="stock">Current Stock{low > 0 && ` · ${low} low`}</TabsTrigger>
+          <TabsTrigger value="deliveries">Received History</TabsTrigger>
         </TabsList>
         <TabsContent value="stock" className="space-y-3">
           {stock.error && <p className="text-sm text-problem">{stock.error}</p>}

@@ -140,9 +140,9 @@ export function RawMaterials() {
 
       <Tabs defaultValue="stock">
         <TabsList>
-          <TabsTrigger value="stock">Stock{low > 0 && ` · ${low} low`}</TabsTrigger>
-          <TabsTrigger value="received">Received</TabsTrigger>
-          <TabsTrigger value="used">Used</TabsTrigger>
+          <TabsTrigger value="stock">Current Stock{low > 0 && ` · ${low} low`}</TabsTrigger>
+          <TabsTrigger value="received">Received History</TabsTrigger>
+          <TabsTrigger value="used">Used History</TabsTrigger>
         </TabsList>
         <TabsContent value="stock" className="space-y-3">
           <div className="flex flex-wrap gap-1">
