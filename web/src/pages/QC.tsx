@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { formatDateTime, formatQty } from '@/lib/format'
 import { mutate, useApi, usePaged } from '@/lib/useApi'
 import { LoadMore } from '@/components/LoadMore'
+import { RollLink } from '@/components/RollTrace'
 import type { QCRecord, QCResult, QcSummary, Roll } from '@/types'
 
 type LogRow = QCRecord & { roll: Roll }
@@ -21,7 +22,7 @@ const DEFECTS = ['Holes', 'Colour mismatch', 'Uneven weaving', 'Stains', 'Broken
 
 const historyCols: ColumnDef<LogRow>[] = [
   { id: 'when', header: 'Checked', accessorKey: 'checkedAt', cell: ({ getValue }) => formatDateTime(getValue<string>()) },
-  { id: 'roll', header: 'Roll', accessorFn: (q) => q.roll.rollNo },
+  { id: 'roll', header: 'Roll', accessorFn: (q) => q.roll.rollNo, cell: ({ row: { original: q } }) => <RollLink id={q.roll.id} rollNo={q.roll.rollNo} /> },
   { id: 'order', header: 'Order', accessorFn: (q) => q.roll.order.orderNo },
   { id: 'machine', header: 'Machine', accessorFn: (q) => q.roll.machine.code },
   { accessorKey: 'result', header: 'Result', cell: ({ row: { original: q } }) => <StatusPill status={q.result} /> },
@@ -53,7 +54,7 @@ export function QC() {
   }
 
   const waitingCols: ColumnDef<Roll>[] = [
-    { accessorKey: 'rollNo', header: 'Roll' },
+    { accessorKey: 'rollNo', header: 'Roll', cell: ({ row: { original: r } }) => <RollLink id={r.id} rollNo={r.rollNo} /> },
     { id: 'order', header: 'Order', accessorFn: (r) => `${r.order.orderNo} · ${r.order.fabricType} ${r.order.colour}` },
     { id: 'machine', header: 'Machine', accessorFn: (r) => r.machine.code },
     { id: 'qty', header: 'Length', accessorFn: (r) => r.qty, cell: ({ row: { original: r } }) => formatQty(r.qty) },

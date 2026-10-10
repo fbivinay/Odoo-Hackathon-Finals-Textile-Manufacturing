@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { PackageOpen, Printer, Truck } from 'lucide-react'
+import { ClipboardList, PackageOpen, Printer, Truck } from 'lucide-react'
 import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
@@ -107,8 +107,7 @@ export function Dispatch() {
 function LoadCard({ group, onDone }: { group: ShelfGroup; onDone: () => void }) {
   const { order: o, rolls } = group
   const [picked, setPicked] = useState<Set<string>>(() => new Set(rolls.map((r) => r.id)))
-  const [vehicleNo, setVehicleNo] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const qty = rolls.filter((r) => picked.has(r.id)).reduce((a, r) => a + r.qty, 0)
 
   function toggle(id: string) {
@@ -117,16 +116,8 @@ function LoadCard({ group, onDone }: { group: ShelfGroup; onDone: () => void }) 
     setPicked(next)
   }
 
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    setBusy(true)
-    const ok = await mutate('/dispatch', 'POST', { orderId: o.id, rollIds: [...picked], vehicleNo: vehicleNo || undefined }, `${o.orderNo} dispatched, invoice raised`)
-    setBusy(false)
-    if (ok) onDone()
-  }
-
   return (
-    <form onSubmit={submit} className="space-y-3 rounded-lg border bg-white p-4 shadow-sm">
+    <div className="space-y-3 rounded-lg border bg-white p-4 shadow-sm">
       <div>
         <p className="text-sm font-medium">
           {o.orderNo} · {o.buyer.name}
@@ -143,14 +134,120 @@ function LoadCard({ group, onDone }: { group: ShelfGroup; onDone: () => void }) 
           </label>
         ))}
       </div>
-      <div className="flex gap-2">
-        <Input placeholder="Vehicle no." value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} aria-label="Vehicle number" />
-        <Button type="submit" size="sm" className="shrink-0 gap-1.5" disabled={busy || picked.size === 0}>
-          <Truck className="size-4" />
-          Dispatch {formatQty(qty)}
-        </Button>
-      </div>
-    </form>
+      <Button size="sm" className="w-full gap-1.5" disabled={picked.size === 0} onClick={() => setConfirming(true)}>
+        <ClipboardList className="size-4" />
+        Review pick list · {picked.size} rolls, {formatQty(qty)}
+      </Button>
+      {confirming && (
+        <ConfirmDispatch
+          group={group}
+          rollIds={[...picked]}
+          onClose={() => setConfirming(false)}
+          onDone={() => {
+            setConfirming(false)
+            onDone()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// The order as GET /orders/:id returns it: enough to compare this truck with what was ordered.
+interface OrderDetail {
+  qty: number
+  pricePerUnit: number
+  rolls: { id: string; status: string; qty: number; machine?: { code: string } }[]
+}
+
+// Last check before the truck leaves: the pick list, the quantities against the order, the
+// invoice it will raise, and the vehicle. Printable so the loader can tick rolls off on paper.
+function ConfirmDispatch({ group, rollIds, onClose, onDone }: { group: ShelfGroup; rollIds: string[]; onClose: () => void; onDone: () => void }) {
+  const { order: o } = group
+  const detail = useApi<OrderDetail>(`/orders/${o.id}`)
+  const [vehicleNo, setVehicleNo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const picked = group.rolls.filter((r) => rollIds.includes(r.id))
+  const truck = picked.reduce((a, r) => a + r.qty, 0)
+  const machineOf = (id: string) => detail.data?.rolls.find((r) => r.id === id)?.machine?.code ?? '—'
+  const shipped = (detail.data?.rolls ?? []).filter((r) => r.status === 'DISPATCHED').reduce((a, r) => a + r.qty, 0)
+  const ordered = detail.data?.qty ?? o.qty
+  const left = ordered - shipped - truck
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    const ok = await mutate('/dispatch', 'POST', { orderId: o.id, rollIds, vehicleNo: vehicleNo.trim() }, `${o.orderNo} dispatched on ${vehicleNo.trim()}, invoice raised`)
+    setBusy(false)
+    if (ok) onDone()
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="print-area sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Pick list · {o.orderNo}</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          {o.buyer.name} · {[o.fabricType, o.colour].filter(Boolean).join(' · ')}
+        </p>
+
+        <table className="w-full text-sm">
+          <thead className="border-b text-xs text-muted-foreground">
+            <tr>
+              <th className="py-1 text-left font-medium">✓</th>
+              <th className="py-1 text-left font-medium">Roll</th>
+              <th className="py-1 text-left font-medium">Machine</th>
+              <th className="py-1 text-right font-medium">Length</th>
+            </tr>
+          </thead>
+          <tbody>
+            {picked.map((r) => (
+              <tr key={r.id} className="border-b last:border-0">
+                <td className="py-1">
+                  <span className="inline-block size-3.5 rounded-sm border border-ink-3" />
+                </td>
+                <td className="py-1">{r.rollNo}</td>
+                <td className="py-1">{machineOf(r.id)}</td>
+                <td className="py-1 text-right tabular-nums">{formatQty(r.qty)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <dl className="grid grid-cols-4 gap-2 rounded-lg bg-brand-tint p-3 text-center text-xs">
+          {[
+            ['Ordered', formatQty(ordered)],
+            ['Shipped before', formatQty(shipped)],
+            ['This truck', formatQty(truck)],
+            ['Left after', formatQty(Math.max(0, left))],
+          ].map(([k, v]) => (
+            <div key={k}>
+              <dt className="text-muted-foreground">{k}</dt>
+              <dd className="mt-0.5 text-sm font-medium tabular-nums">{v}</dd>
+            </div>
+          ))}
+        </dl>
+        {left < 0 && <p className="text-xs text-watch">This truck carries {formatQty(-left)} more than the order still needs (within roll tolerance).</p>}
+        {detail.data && <p className="text-sm">Invoice to raise: <span className="font-medium">{formatINR(truck * detail.data.pricePerUnit)}</span> ({formatQty(truck)} × {formatINR(detail.data.pricePerUnit)}/m)</p>}
+
+        <form id="confirm-dispatch" onSubmit={submit} className="print:hidden">
+          <Field label="Vehicle number" htmlFor="vehicleNo">
+            <Input id="vehicleNo" required placeholder="GJ-05-AB-1234" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} />
+          </Field>
+        </form>
+        <DialogFooter className="print:hidden">
+          <Button type="button" variant="outline" className="gap-1.5" onClick={() => window.print()}>
+            <Printer className="size-4" />
+            Print pick list
+          </Button>
+          <Button type="submit" form="confirm-dispatch" className="gap-1.5" disabled={busy || !vehicleNo.trim() || detail.loading}>
+            <Truck className="size-4" />
+            {busy ? 'Dispatching…' : 'Confirm and dispatch'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

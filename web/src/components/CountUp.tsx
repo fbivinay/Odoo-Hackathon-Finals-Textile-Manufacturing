@@ -9,11 +9,16 @@ const easeOut = (t: number) => 1 - Math.pow(1 - t, 3)
 export function CountUp({ text }: { text: string }) {
   const [shown, setShown] = useState(text)
   const ref = useRef<HTMLSpanElement>(null)
+  // A live screen refreshes its figures every few seconds; only the first appearance counts up,
+  // later values simply replace the old ones.
+  const counted = useRef(false)
 
   useLayoutEffect(() => {
     const match = text.match(NUMBER)
     const node = ref.current
     setShown(text)
+    if (counted.current) return
+    counted.current = true
     if (!node || !match || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     const raw = match[0]
     const target = Number(raw.replace(/,/g, ''))

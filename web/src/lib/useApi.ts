@@ -2,11 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api, apiPage, ApiError } from './api'
 
-export function useApi<T>(path: string | null) {
+// `refreshMs` re-fetches in the background on that interval (paused while the tab is hidden),
+// keeping the current data on screen instead of flashing skeletons.
+export function useApi<T>(path: string | null, { refreshMs }: { refreshMs?: number } = {}) {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
 
   const reload = useCallback(() => setNonce((n) => n + 1), [])
 
@@ -16,7 +19,11 @@ export function useApi<T>(path: string | null) {
     setLoading(true)
     setError(null)
     api<T>(path)
-      .then((d) => live && setData(d))
+      .then((d) => {
+        if (!live) return
+        setData(d)
+        setUpdatedAt(new Date())
+      })
       .catch((e) => live && setError(e instanceof ApiError ? e.message : 'Something went wrong.'))
       .finally(() => live && setLoading(false))
     return () => {
@@ -24,7 +31,30 @@ export function useApi<T>(path: string | null) {
     }
   }, [path, nonce])
 
-  return { data, loading, error, reload }
+  useEffect(() => {
+    if (path === null || !refreshMs) return
+    let live = true
+    const tick = () => {
+      if (document.hidden) return
+      api<T>(path)
+        .then((d) => {
+          if (!live) return
+          setData(d)
+          setUpdatedAt(new Date())
+        })
+        .catch(() => {}) // a missed background refresh just waits for the next one
+    }
+    const id = window.setInterval(tick, refreshMs)
+    const onVisible = () => !document.hidden && tick()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      live = false
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [path, refreshMs])
+
+  return { data, loading, error, reload, updatedAt }
 }
 
 // Fire a write, toast the outcome, return true on success.

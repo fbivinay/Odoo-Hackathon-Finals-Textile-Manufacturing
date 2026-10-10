@@ -20,13 +20,17 @@ const QC = page(() => import('@/pages/QC'), 'QC')
 const Dispatch = page(() => import('@/pages/Dispatch'), 'Dispatch')
 const Track = page(() => import('@/pages/Track'), 'Track')
 const Planning = page(() => import('@/pages/Planning'), 'Planning')
+const RawMaterials = page(() => import('@/pages/RawMaterials'), 'RawMaterials')
+const RawMaterial = page(() => import('@/pages/RawMaterial'), 'RawMaterial')
+const Waste = page(() => import('@/pages/Waste'), 'Waste')
 
 const PAGES: Record<string, ReactNode> = {
   '/dashboard': <Dashboard />,
-  '/materials': <Materials />,
   '/orders': <Orders />,
   '/production': <Production />,
   '/planning': <Planning />,
+  '/raw-materials': <RawMaterials />,
+  '/waste': <Waste />,
   '/qc': <QC />,
   '/dispatch': <Dispatch />,
 }
@@ -58,6 +62,15 @@ export default function App() {
             <Route path="/track/:token" element={<Track />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<AppShell />}>
+                {/* Pages reached from inside another page rather than the sidebar. */}
+                <Route element={<ProtectedRoute roles={['STORE', 'PRODUCTION']} />}>
+                  <Route path="/raw-materials/:id" element={<RawMaterial />} />
+                </Route>
+                <Route element={<ProtectedRoute roles={['STORE']} />}>
+                  <Route path="/materials" element={<Materials />} />
+                </Route>
+                <Route path="/inventory" element={<Navigate to="/raw-materials" replace />} />
+                <Route path="/new-order" element={<Navigate to="/orders" replace />} />
                 {NAV.map((n) => (
                   <Route key={n.to} element={<ProtectedRoute roles={n.roles} />}>
                     <Route path={n.to} element={PAGES[n.to]} />

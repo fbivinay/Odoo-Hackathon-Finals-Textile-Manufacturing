@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { CalendarRange, ClipboardCheck, Factory, LayoutDashboard, LogOut, Menu, Package, ShoppingCart, Truck } from 'lucide-react'
+import { CalendarRange, ClipboardCheck, Factory, LayoutDashboard, LogOut, Menu, Package, Recycle, ShoppingCart, Truck } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 import { Logo } from '@/components/Logo'
 import { useSession } from '@/auth/session'
@@ -18,11 +18,12 @@ interface NavItem {
 
 export const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Overview', icon: LayoutDashboard, roles: [] },
-  { to: '/materials', label: 'Yarn Received', icon: Package, roles: ['STORE'] },
+  { to: '/raw-materials', label: 'Raw materials', icon: Package, roles: ['STORE', 'PRODUCTION'] },
   { to: '/orders', label: 'Customer Orders', icon: ShoppingCart, roles: ['STORE', 'PRODUCTION', 'DISPATCH'] },
   { to: '/production', label: 'Production', icon: Factory, roles: ['PRODUCTION'] },
   { to: '/planning', label: 'Order Forecast', icon: CalendarRange, roles: ['PRODUCTION', 'STORE'] },
   { to: '/qc', label: 'Quality check', icon: ClipboardCheck, roles: ['QC'] },
+  { to: '/waste', label: 'Waste', icon: Recycle, roles: ['PRODUCTION', 'QC'] },
   { to: '/dispatch', label: 'Dispatch', icon: Truck, roles: ['DISPATCH'] },
 ]
 

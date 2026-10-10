@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { DataTable } from '@/components/DataTable'
+import { LiveBadge } from '@/components/LiveBadge'
 import { Pill, label } from '@/components/StatusPill'
 import { selectClass } from '@/components/Field'
 import { CountUp } from '@/components/CountUp'
@@ -73,12 +74,13 @@ const orderCols: ColumnDef<OrderCost>[] = [
 
 export function Dashboard() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))
-  const { data: p, loading, error } = useApi<Pnl>(`/reports/pnl?month=${month}`)
-  const output = useApi<MachineOutput>(`/reports/machine-output?month=${month}`)
+  // The month's figures, today's output and the alerts refresh every 30 seconds.
+  const { data: p, loading, error, updatedAt } = useApi<Pnl>(`/reports/pnl?month=${month}`, { refreshMs: 30000 })
+  const output = useApi<MachineOutput>(`/reports/machine-output?month=${month}`, { refreshMs: 30000 })
   // Costing for the orders placed in the chosen month.
   const monthEnd = new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0)).toISOString().slice(0, 10)
   const costs = useApi<OrderCost[]>(`/reports/order-costs?from=${month}-01&to=${monthEnd}&limit=500`)
-  const summary = useApi<{ receivables: number; orders: { delayed: number } }>('/dashboard/summary')
+  const summary = useApi<{ receivables: number; orders: { delayed: number } }>('/dashboard/summary', { refreshMs: 30000 })
 
   // The chosen year, month by month: twelve small P&L calls (milliseconds each).
   const year = month.slice(0, 4)
@@ -101,6 +103,9 @@ export function Dashboard() {
         <div>
           <p className="eyebrow">Month at a glance</p>
           <h2 className="section-head mt-1">{MONTHS[+month.slice(5, 7) - 1]} {month.slice(0, 4)}</h2>
+          <div className="mt-1">
+            <LiveBadge at={updatedAt} />
+          </div>
         </div>
         <div className="flex gap-2">
           <select
@@ -159,7 +164,7 @@ export function Dashboard() {
             label="Owed by buyers"
             tone="watch"
             value={formatMoney(summary.data?.receivables ?? 0)}
-            note={`${summary.data?.orders.delayed ?? 0} orders running late today`}
+            note={`${summary.data?.orders.delayed ?? 0} order${summary.data?.orders.delayed === 1 ? '' : 's'} running late today`}
             loading={summary.loading}
           />
         </div>
@@ -170,7 +175,7 @@ export function Dashboard() {
           <h2 className="section-head">{month.slice(0, 4)} month by month</h2>
           <div className="flex gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <span className="size-2 rounded-full bg-ink-3" />
+              <span className="size-2 rounded-full bg-brand-soft" />
               Invoiced (click a bar to open that month)
             </span>
             <span className="flex items-center gap-1">

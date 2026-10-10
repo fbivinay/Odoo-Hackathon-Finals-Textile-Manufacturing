@@ -5,12 +5,13 @@ import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
+import { DeliveryEstimate, type Delivery } from '@/components/DeliveryEstimate'
 import { Field, selectClass } from '@/components/Field'
 import { Pill, StatusPill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { formatDate, formatINR, formatQty, toISODate } from '@/lib/format'
+import { formatDate, formatINR, formatQty } from '@/lib/format'
 import { yarnNeed } from '@/lib/textile'
 import { api, ApiError } from '@/lib/api'
 import { mutate, useApi, usePaged } from '@/lib/useApi'
@@ -166,10 +167,29 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
   const [busy, setBusy] = useState(false)
   // Until the user types their own figure, "Yarn needed" follows fabric type × quantity.
   const [yarnEdited, setYarnEdited] = useState(false)
+  // Likewise the price follows the usual price for fabric × yarn until the user types one.
+  const [priceEdited, setPriceEdited] = useState(false)
+  const past = useApi<Order[]>(open ? `/orders?from=${dayFromToday(-365)}&limit=500` : null)
+  const typicalPrice = (fabric: string, materialId: string) => {
+    const f = fabric.trim().toLowerCase()
+    const same = (past.data ?? []).filter((o) => o.fabricType.toLowerCase() === f && o.pricePerUnit > 0)
+    const exact = same.filter((o) => o.materialId === materialId)
+    const prices = (exact.length >= 3 ? exact : same).map((o) => o.pricePerUnit).sort((a, b) => a - b)
+    if (prices.length) return prices[Math.floor(prices.length / 2)]
+    // ponytail: no history for this fabric, so yarn cost × kg per metre with a 60% margin.
+    const m = materials.data?.find((x) => x.id === materialId)
+    const perMetre = YARN_PER_METRE[f]
+    return m && perMetre ? Math.round(m.avgCost * perMetre * 1.6 * 100) / 100 : null
+  }
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => {
     if (k === 'yarnRequired') setYarnEdited(true)
+    if (k === 'pricePerUnit') setPriceEdited(true)
     setForm((f) => {
       const next = { ...f, [k]: e.target.value }
+      if ((k === 'fabricType' || k === 'materialId') && !priceEdited && next.fabricType && next.materialId) {
+        const price = typicalPrice(next.fabricType, next.materialId)
+        if (price) next.pricePerUnit = String(price)
+      }
       const perMetre = YARN_PER_METRE[next.fabricType.trim().toLowerCase()]
       if ((k === 'fabricType' || k === 'qty') && !yarnEdited && perMetre && Number(next.qty) > 0) {
         next.yarnRequired = String(Math.round(Number(next.qty) * perMetre))
@@ -177,12 +197,14 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
       return next
     })
   }
+  // The deadline is worked out by the delivery panel, not typed: see components/DeliveryEstimate.
+  const [delivery, setDelivery] = useState<Delivery>({ estimate: null, committed: '', reason: '', valid: false })
   const newBuyer = form.buyerId === NEW
   const mat = materials.data?.find((m) => m.id === form.materialId)
-  const short = mat && form.yarnRequired ? yarnNeed(Number(form.yarnRequired), 0, mat.qtyInStock).shortBy : null
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    if (!delivery.valid) return
     setBusy(true)
     try {
       // A new buyer is saved first and stays selected, so a retry never creates it twice.
@@ -198,13 +220,18 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
           buyerId,
           materialId: form.materialId,
           fabricType: form.fabricType,
-          deadline: form.deadline,
+          deadline: delivery.committed,
           qty: Number(form.qty),
           yarnRequired: Number(form.yarnRequired),
           pricePerUnit: Number(form.pricePerUnit),
         },
       })
-      toast.success(`${order.orderNo} created`)
+      toast.success(`${order.orderNo} created, due ${delivery.committed}`, {
+        description:
+          delivery.committed !== delivery.estimate
+            ? `System estimate ${delivery.estimate}. The estimate and the reason are not stored yet (no API field).`
+            : 'Due date is the system estimate.',
+      })
       onSaved()
       onOpenChange(false)
       setForm(EMPTY)
@@ -219,7 +246,7 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>New customer order</DialogTitle>
         </DialogHeader>
@@ -235,9 +262,6 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
               <option value={NEW}>+ Add new buyer</option>
             </select>
           </Field>
-          <Field label="Deadline" htmlFor="deadline">
-            <Input id="deadline" type="date" required min={toISODate(new Date())} value={form.deadline} onChange={set('deadline')} />
-          </Field>
           {newBuyer && (
             <div className="sm:col-span-2">
               <Field label="Buyer name" htmlFor="buyerName">
@@ -247,18 +271,20 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
           )}
           <div className="sm:col-span-2">
             <Field label="Fabric type" htmlFor="fabricType">
-              <Input id="fabricType" required list="fabric-types" placeholder="Poplin" value={form.fabricType} onChange={set('fabricType')} />
-              <datalist id="fabric-types">
+              <select id="fabricType" required className={selectClass} value={form.fabricType} onChange={set('fabricType')}>
+                <option value="">Select fabric…</option>
                 {FABRIC_TYPES.map((f) => (
-                  <option key={f} value={f} />
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </Field>
           </div>
           <Field label="Quantity (m)" htmlFor="qty">
             <Input id="qty" type="number" min="1" step="1" inputMode="numeric" required value={form.qty} onChange={set('qty')} />
           </Field>
-          <Field label="Price (₹/m)" htmlFor="pricePerUnit">
+          <Field label="Price (₹/m)" htmlFor="pricePerUnit" hint={form.pricePerUnit && !priceEdited ? 'Usual price for this fabric and yarn, edit if needed' : undefined}>
             <Input id="pricePerUnit" type="number" min="0.01" step="0.01" inputMode="decimal" required value={form.pricePerUnit} onChange={set('pricePerUnit')} />
           </Field>
           <Field label="Yarn" htmlFor="materialId">
@@ -274,24 +300,22 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
           <Field
             label="Yarn needed (kg)"
             htmlFor="yarnRequired"
-            hint={
-              short === null ? (
-                mat && `${formatQty(mat.qtyInStock, 'kg')} in store`
-              ) : short > 0 ? (
-                <span className="text-problem">Short by {formatQty(short, 'kg')}</span>
-              ) : (
-                <span className="text-good">Enough in store</span>
-              )
-            }
+            hint={mat && `${formatQty(mat.qtyInStock, 'kg')} in store`}
           >
             <Input id="yarnRequired" type="number" min="0.01" step="0.01" inputMode="decimal" required value={form.yarnRequired} onChange={set('yarnRequired')} />
           </Field>
+          <div className="sm:col-span-2">
+            <DeliveryEstimate qty={Number(form.qty) || 0} yarnKg={Number(form.yarnRequired) || 0} materialId={form.materialId} onChange={setDelivery} />
+          </div>
         </form>
         <DialogFooter className="items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            Value: {Number(form.qty) * Number(form.pricePerUnit) > 0 ? formatINR(Number(form.qty) * Number(form.pricePerUnit)) : '—'}
-          </p>
-          <Button type="submit" form="order" disabled={busy}>
+          <div className="rounded-lg bg-brand-tint px-4 py-2">
+            <p className="text-xs text-ink-2">Order value</p>
+            <p className="text-2xl font-semibold tracking-tight text-brand tabular-nums">
+              {Number(form.qty) * Number(form.pricePerUnit) > 0 ? formatINR(Number(form.qty) * Number(form.pricePerUnit)) : '—'}
+            </p>
+          </div>
+          <Button type="submit" form="order" disabled={busy || !delivery.valid}>
             {busy ? 'Saving…' : 'Create order'}
           </Button>
         </DialogFooter>

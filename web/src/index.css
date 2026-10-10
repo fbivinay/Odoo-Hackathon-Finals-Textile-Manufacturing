@@ -413,10 +413,10 @@ body::before {
 .slab .stat-card--problem .stat-card__value { color: #ff8f80; }
 
 /* ---------------------------------------------------------- figures panel -- */
-/* The overview's opening numbers: a frosted panel with an ink rim, holding raised white cards. */
+/* The overview's opening numbers: a frosted panel with a brand rim, holding raised white cards. */
 .figures-panel {
   border-radius: var(--radius-slab);
-  border: 2px solid color-mix(in srgb, var(--ink) 45%, transparent);
+  border: 2px solid color-mix(in srgb, var(--brand) 55%, transparent);
   background: linear-gradient(180deg, var(--ground), var(--line));
   box-shadow: var(--glass-edge), var(--glass-shadow);
   padding: clamp(1rem, 2.4vw, 1.6rem);

@@ -53,7 +53,7 @@ export function Track() {
                           className={cn(
                             'flex size-6 items-center justify-center rounded-full border-2 text-xs',
                             done && 'border-brand bg-brand text-white',
-                            now && 'animate-pulse border-ink text-ink',
+                            now && 'animate-pulse border-brand text-brand',
                             !done && !now && 'border-line text-ink-3/50',
                           )}
                         >
