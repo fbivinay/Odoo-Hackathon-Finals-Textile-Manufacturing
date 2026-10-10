@@ -115,7 +115,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 |  |  |  | also `unsold: { rolls, totalQty }`: undispatched rolls of cancelled orders (left out of the shelf) |
 | GET | `/dispatch` | | `?orderId=&buyerId=` + paging; each has `rolls`, `totalQty`, `invoice` |
 | GET | `/dispatch/:id` | | |
-| POST | `/dispatch` | DISPATCH | `{ orderId, rollIds[], vehicleNo? }` creates the invoice; 409 `ROLLS_NOT_AVAILABLE` on wrong or already-sent rolls |
+| POST | `/dispatch` | DISPATCH | `{ orderId, rollIds[], vehicleNo? }` creates the invoice; 409 `ROLLS_NOT_AVAILABLE` on wrong or already-sent rolls; 409 `ORDER_NOT_COMPLETE` when the truck would leave the order short (no part deliveries; the order's quantity less rejected fabric, within the dispatch tolerance). `GET /dispatch/stock` gives that figure per order as `order.toShip` |
 | GET | `/invoices` | | `?status=UNPAID/PARTIAL/PAID`; each has `paid`, `balance` |
 | POST | `/invoices/:id/payments` | DISPATCH | `{ amount, method? }` |
 

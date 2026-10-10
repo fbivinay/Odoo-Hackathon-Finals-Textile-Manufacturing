@@ -4,6 +4,14 @@ const { notFound, conflict, badRequest } = require('../lib/errors');
 const { syncStatus, sumQty } = require('./orderService');
 const { pageArgs, toPage, dateRange } = require('../lib/paging');
 const { taxFor } = require('../lib/tax');
+const { setting } = require('./configService');
+
+// What an order still has to deliver in all: its quantity less fabric rejected at quality check,
+// which a separate remake order now owes.
+async function toShip(db, order) {
+  const rejected = await db.roll.aggregate({ where: { orderId: order.id, status: 'REJECTED' }, _sum: { qty: true } });
+  return Math.max(0, Math.round((Number(order.qty) - Number(rejected._sum.qty || 0)) * 100) / 100);
+}
 
 const dispatchInclude = {
   order: { select: { id: true, orderNo: true, fabricType: true, colour: true, qty: true } },
@@ -48,6 +56,7 @@ async function stock() {
     group.rolls.push(roll);
     group.totalQty += Number(roll.qty);
   }
+  for (const group of groups.values()) group.order.toShip = await toShip(prisma, group.order);
   return { orders: [...groups.values()], totalRolls: rolls.length, totalQty: sumQty(rolls), unsold: { rolls: unsold, totalQty: sumQty(unsold) } };
 }
 
@@ -58,6 +67,16 @@ async function create({ orderId, rollIds, vehicleNo }) {
     const order = await tx.order.findUnique({ where: { id: orderId } });
     if (!order) throw notFound('Order not found');
     if (order.status === 'CANCELLED') throw badRequest('Order is cancelled');
+
+    // An order goes out whole, in one truck: no part deliveries. "Whole" allows the buyer's tolerance.
+    const [owed, sent, truck, tolerancePct] = await Promise.all([
+      toShip(tx, order),
+      tx.roll.aggregate({ where: { orderId, status: 'DISPATCHED' }, _sum: { qty: true } }),
+      tx.roll.aggregate({ where: { id: { in: ids }, orderId, status: 'PASSED', dispatchId: null }, _sum: { qty: true } }),
+      setting('dispatchTolerancePct'),
+    ]);
+    const short = Math.round((owed * (1 - tolerancePct / 100) - Number(sent._sum.qty || 0) - Number(truck._sum.qty || 0)) * 100) / 100;
+    if (short > 0) throw conflict(`This order is not complete yet: ${short} m is still to come. Orders are dispatched whole.`, 'ORDER_NOT_COMPLETE');
 
     const dispatch = await tx.dispatch.create({
       data: { dispatchNo: await nextNumber(tx.dispatch, 'DSP'), orderId, buyerId: order.buyerId, vehicleNo },

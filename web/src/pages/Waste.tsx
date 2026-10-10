@@ -30,6 +30,8 @@ const PAGE = 20
 // A rejected roll as the list shows it.
 type Rejected = WasteRoll & { order: WasteRoll['order'] & { colour?: string | null } }
 const defectOf = (r: WasteRoll) => r.qcRecords.find((q) => q.result === 'REJECT')
+// The list API also sends who made each check; the shared waste type doesn't carry it.
+const inspectorOf = (r: WasteRoll) => (defectOf(r) as { inspector?: { name: string } } | undefined)?.inspector?.name
 const rollsOf = (n: number) => `${n.toLocaleString('en-IN')} ${n === 1 ? 'roll' : 'rolls'}`
 
 // Fabric that failed quality check: how much, what it cost, and where it came from, so a defect
@@ -130,8 +132,24 @@ export function Waste() {
       ),
     },
     { id: 'machine', header: 'Machine', meta: { width: '11%' }, enableSorting: false, accessorFn: (r) => r.machine.code },
-    { id: 'defect', header: 'Defect', meta: { width: '17%' }, enableSorting: false, accessorFn: (r) => defectOf(r)?.defectType ?? '—' },
-    { id: 'when', header: 'Rejected', meta: { width: '18%' }, enableSorting: false, accessorFn: (r) => (defectOf(r) ? formatDateTime(defectOf(r)!.checkedAt) : '—') },
+    { id: 'defect', header: 'Defect', meta: { width: '15%' }, enableSorting: false, accessorFn: (r) => defectOf(r)?.defectType ?? '—' },
+    {
+      id: 'when',
+      header: 'Rejected',
+      meta: { width: '20%' },
+      enableSorting: false,
+      cell: ({ row: { original: r } }) => {
+        const check = defectOf(r)
+        if (!check) return <span className="text-muted-foreground">—</span>
+        return (
+          <div className="leading-tight">
+            <p>{formatDateTime(check.checkedAt)}</p>
+            {/* Who made the call, as in Quality check. */}
+            <p className="text-xs text-muted-foreground">{inspectorOf(r) ? `by ${inspectorOf(r)}` : ''}</p>
+          </div>
+        )
+      },
+    },
     ...(isOwner
       ? [{ id: 'cost', header: 'Cost', meta: { width: '16%' }, enableSorting: false, cell: ({ row: { original: r } }: { row: { original: Rejected } }) => <span className="tabular-nums">{costOf(r) > 0 ? formatINR(costOf(r)) : '—'}</span> } as ColumnDef<Rejected>]
       : []),

@@ -45,7 +45,9 @@ async function getRoll(id) {
     },
   });
   if (!roll) throw notFound('Roll not found');
-  return roll;
+  // A rejected roll names the order raised to make its fabric again.
+  const replacementOrder = roll.replacementOrderId ? await prisma.order.findUnique({ where: { id: roll.replacementOrderId }, select: { id: true, orderNo: true } }) : null;
+  return { ...roll, replacementOrder };
 }
 
 // Pass: the roll is finished stock, ready for Dispatch.
