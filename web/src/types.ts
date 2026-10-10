@@ -147,6 +147,7 @@ export interface Machine {
   name: string
   type: Stage
   status: MachineStatus
+  dailyCapacity?: number | string | null // per day: kg for spinning, metres otherwise
 }
 
 export interface ProductionJob {

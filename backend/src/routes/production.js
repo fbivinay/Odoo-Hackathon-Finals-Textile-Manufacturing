@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const handle = require('../middleware/handle');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, requireTab } = require('../middleware/auth');
 const productionService = require('../services/productionService');
 const v = require('../validators/productionValidators');
 
@@ -10,7 +10,10 @@ router.use(requireAuth);
 const floor = requireRole('PRODUCTION');
 
 router.get('/machines', handle(() => productionService.listMachines()));
-router.post('/machines', requireRole(), handle((req) => productionService.createMachine(v.machineSchema.parse(req.body)), 201));
+router.post('/machines', requireTab('/config'), handle((req) => productionService.createMachine(v.machineSchema.parse(req.body)), 201));
+// Machine details are part of Mill Setup: the owner, or someone given that tab.
+router.patch('/machines/:id', requireTab('/config'), handle((req) => productionService.updateMachine(req.params.id, v.machineUpdateSchema.parse(req.body), req.user)));
+router.delete('/machines/:id', requireTab('/config'), handle((req) => productionService.deleteMachine(req.params.id, req.user)));
 router.patch('/machines/:id/status', floor, handle((req) => productionService.setMachineStatus(req.params.id, v.machineStatusSchema.parse(req.body).status)));
 
 router.get('/production/board', handle(() => productionService.board()));

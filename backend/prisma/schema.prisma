@@ -304,6 +304,8 @@ model Machine {
   name      String
   type      Stage
   status    MachineStatus @default(IDLE)
+  // What it can make in a day: kg for spinning, metres for weaving and dyeing. Optional on old machines.
+  dailyCapacity Decimal?  @db.Decimal(12, 2)
   createdAt DateTime      @default(now())
 
   jobs  ProductionJob[]
@@ -505,6 +507,8 @@ model FabricSpec {
   yarnPerMetre  Decimal  @db.Decimal(8, 4)
   wastagePct    Decimal  @default(0) @db.Decimal(5, 2)
   pricePerMetre Decimal  @db.Decimal(12, 2)
+  // Removed in Mill Setup while past orders still use the name: kept so it stays off the list.
+  hidden        Boolean  @default(false)
   updatedAt     DateTime @updatedAt
 
   material RawMaterial? @relation(fields: [materialId], references: [id], onDelete: SetNull)

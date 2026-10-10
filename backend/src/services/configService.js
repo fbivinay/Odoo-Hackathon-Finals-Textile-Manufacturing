@@ -50,7 +50,7 @@ async function fabricHistory() {
 async function fabrics() {
   const [specs, history] = await Promise.all([prisma.fabricSpec.findMany(), fabricHistory()]);
   const saved = new Map(specs.map((s) => [s.fabricType, s]));
-  const names = [...new Set([...history.keys(), ...saved.keys()])].sort();
+  const names = [...new Set([...history.keys(), ...saved.keys()])].filter((n) => !saved.get(n)?.hidden).sort();
   return names.map((fabricType) => {
     const h = history.get(fabricType);
     const s = saved.get(fabricType);
@@ -117,19 +117,24 @@ async function saveFabric(fabricType, data, user) {
   if (data.materialId && !(await prisma.rawMaterial.findUnique({ where: { id: data.materialId } }))) throw notFound('Material not found');
   const current = (await fabrics()).find((f) => f.fabricType === fabricType);
   return prisma.$transaction(async (tx) => {
-    const saved = await tx.fabricSpec.upsert({ where: { fabricType }, create: { fabricType, ...data }, update: data });
+    const saved = await tx.fabricSpec.upsert({ where: { fabricType }, create: { fabricType, ...data }, update: { ...data, hidden: false } });
     await log(tx, `Fabric ${fabricType}`, current, data, user);
     return saved;
   });
 }
 
-// A fabric with orders in the last year can't go: its figures would only come back from history.
+// Takes a fabric off the list. One with past orders is kept as a hidden row, or its figures
+// would come straight back from history; its orders are untouched.
 async function deleteFabric(fabricType, user) {
   const current = (await fabrics()).find((f) => f.fabricType === fabricType);
   if (!current) throw notFound('Fabric not found');
-  if (current.history) throw conflict(`${fabricType} has orders, so it can't be removed`, 'FABRIC_IN_USE');
   return prisma.$transaction(async (tx) => {
-    await tx.fabricSpec.delete({ where: { fabricType } });
+    if (current.history) {
+      const figures = { materialId: current.materialId, yarnPerMetre: current.yarnPerMetre, wastagePct: current.wastagePct, pricePerMetre: current.pricePerMetre };
+      await tx.fabricSpec.upsert({ where: { fabricType }, create: { fabricType, ...figures, hidden: true }, update: { hidden: true } });
+    } else {
+      await tx.fabricSpec.delete({ where: { fabricType } });
+    }
     await tx.configChange.create({ data: { what: `Fabric ${fabricType}`, field: 'fabric', oldValue: 'on', newValue: 'removed', changedBy: user.name } });
     return { fabricType };
   });

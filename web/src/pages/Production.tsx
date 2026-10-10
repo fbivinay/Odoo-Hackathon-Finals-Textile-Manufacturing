@@ -94,6 +94,26 @@ export function Production() {
         m.currentJob ? <Progress m={m} /> : <span className="text-muted-foreground">—</span>,
     },
     {
+      id: 'operator',
+      header: 'Operator',
+      accessorFn: (m) => m.currentJob?.worker?.name ?? '',
+      cell: ({ row: { original: m } }) =>
+        m.currentJob ? (
+          <div className="leading-tight">
+            <p>{m.currentJob.worker?.name ?? 'Not assigned'}</p>
+            <p className="text-xs text-muted-foreground">{label(m.currentJob.shift)} shift</p>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      accessorKey: 'producedToday',
+      header: 'Today',
+      cell: ({ row: { original: m } }) =>
+        m.producedToday > 0 ? <span className="tabular-nums">{formatQty(m.producedToday, unitFor(m.type))}</span> : <span className="text-muted-foreground">—</span>,
+    },
+    {
       id: 'action',
       header: '',
       enableSorting: false,
@@ -109,7 +129,7 @@ export function Production() {
     <div className="space-y-5">
       <PageHead
         eyebrow="On the floor"
-        title="Production"
+        title="Machines (Production floor)"
         actions={
           canAdd && (
             <Button className="gap-1.5" onClick={() => setAdding(true)}>
@@ -141,7 +161,7 @@ export function Production() {
             <h2 className="flex items-baseline gap-2 text-sm font-semibold">
               {label(stage)}
               <span className="text-xs font-normal text-muted-foreground">
-                {all.filter((m) => m.status === 'RUNNING').length} of {all.length} running
+                {all.filter((m) => m.status === 'RUNNING').length} of {all.length} running · {formatQty(all.reduce((sum, m) => sum + m.producedToday, 0), unitFor(stage))} made today
               </span>
             </h2>
             <DataTable columns={columns} data={rows} loading={board.loading} initialSorting={[{ id: 'code', desc: false }]} />
@@ -173,6 +193,7 @@ function AddMachineDialog({ machines, onClose }: { machines: BoardMachine[]; onC
   const [type, setType] = useState<Stage>('WEAVING')
   const [code, setCode] = useState(nextCode('WEAVING'))
   const [name, setName] = useState(`${KIND.WEAVING} ${Number(nextCode('WEAVING').split('-')[1])}`)
+  const [capacity, setCapacity] = useState('')
   const [busy, setBusy] = useState(false)
 
   function pickType(t: Stage) {
@@ -190,7 +211,7 @@ function AddMachineDialog({ machines, onClose }: { machines: BoardMachine[]; onC
     }
     setBusy(true)
     try {
-      await api('/machines', { method: 'POST', body: { code: code.trim().toUpperCase(), name: name.trim(), type } })
+      await api('/machines', { method: 'POST', body: { code: code.trim().toUpperCase(), name: name.trim(), type, dailyCapacity: Number(capacity) } })
       toast.success(`${code.trim().toUpperCase()} added, idle and ready for work`)
       onClose()
     } catch (err) {
@@ -205,26 +226,31 @@ function AddMachineDialog({ machines, onClose }: { machines: BoardMachine[]; onC
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Add machine</DialogTitle>
-          <DialogDescription>It starts idle. Capacity and delivery dates for new orders count it from now on.</DialogDescription>
         </DialogHeader>
         <form id="add-machine" onSubmit={submit} className="grid gap-4">
           <Field label="Stage" htmlFor="machineType">
             <select id="machineType" className={selectClass} value={type} onChange={(e) => pickType(e.target.value as Stage)}>
-              <option value="SPINNING">Spinning (output in kg)</option>
-              <option value="WEAVING">Weaving (output in metres)</option>
-              <option value="DYEING">Dyeing (output in metres)</option>
+              <option value="SPINNING">Spinning</option>
+              <option value="WEAVING">Weaving</option>
+              <option value="DYEING">Dyeing</option>
             </select>
           </Field>
-          <Field label="Code" htmlFor="machineCode" hint="Shown on the floor board and in reports">
+          <Field label="Code" htmlFor="machineCode">
             <Input id="machineCode" required value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
           <Field label="Name" htmlFor="machineName">
             <Input id="machineName" required value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
+          <Field label={`Capacity per day (${unitFor(type)})`} htmlFor="machineCapacity">
+            <Input id="machineCapacity" type="number" required min="1" step="1" inputMode="numeric" className="tabular-nums" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
+          </Field>
         </form>
         <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="submit" form="add-machine" disabled={busy}>
-            {busy ? 'Adding…' : 'Add machine'}
+            Add machine
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -280,10 +306,7 @@ function MachineDialog({ m, machines, onClose, onChange }: { m: BoardMachine; ma
   const [busy, setBusy] = useState(false)
   // Set when a stage has just been finished here, to offer the next machine straight away.
   const [finished, setFinished] = useState<{ order: JobOrder; stage: Stage; left: number } | null>(null)
-  const [confirmShort, setConfirmShort] = useState(false)
   const job = m.currentJob
-  const left = job ? Math.max(0, Math.round((job.qtyPlanned - job.qtyProduced) * 100) / 100) : 0
-  const short = job ? left > job.qtyPlanned * 0.01 : false
 
   async function run(path: string, method: string, body: unknown, msg: string, close = false) {
     setBusy(true)
@@ -299,7 +322,6 @@ function MachineDialog({ m, machines, onClose, onChange }: { m: BoardMachine; ma
 
   async function finish() {
     if (!job) return
-    setConfirmShort(false)
     const next = NEXT_STAGE[m.type]
     const ok = await run(
       `/production/jobs/${job.id}/complete`,
@@ -308,7 +330,7 @@ function MachineDialog({ m, machines, onClose, onChange }: { m: BoardMachine; ma
       next ? `${label(m.type)} finished for ${job.order.orderNo}` : `${job.order.orderNo} dyed and sent to quality check`,
       !next,
     )
-    if (ok && next) setFinished({ order: job.order, stage: m.type, left: short ? left : 0 })
+    if (ok && next) setFinished({ order: job.order, stage: m.type, left: 0 })
   }
 
   return (
@@ -331,27 +353,8 @@ function MachineDialog({ m, machines, onClose, onChange }: { m: BoardMachine; ma
 
         {finished ? (
           <NextStage order={finished.order} from={finished.stage} left={finished.left} machines={machines} busy={busy} run={run} onLater={onClose} />
-        ) : confirmShort && job ? (
-          <div className="grid gap-4">
-            <p className="text-sm">
-              Only <b>{formatQty(job.qtyProduced, unitFor(m.type))}</b> of {formatQty(job.qtyPlanned, unitFor(m.type))} is made.{' '}
-              <b>{formatQty(left, unitFor(m.type))}</b> is still left.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              If you finish now, the rest stays in the {label(m.type).toLowerCase()} list to run later.
-              {m.type === 'DYEING' && ' What is made goes to quality check.'}
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setConfirmShort(false)}>
-                Keep running
-              </Button>
-              <Button disabled={busy} onClick={finish}>
-                Finish short
-              </Button>
-            </div>
-          </div>
         ) : m.currentJob ? (
-          <RunningJob m={m} busy={busy} run={run} onFinish={() => (short ? setConfirmShort(true) : finish())} />
+          <RunningJob m={m} busy={busy} run={run} onFinish={finish} />
         ) : m.status === 'IDLE' ? (
           <AssignOrder m={m} busy={busy} run={run} />
         ) : (
@@ -360,7 +363,7 @@ function MachineDialog({ m, machines, onClose, onChange }: { m: BoardMachine; ma
           </Button>
         )}
 
-        {!finished && !confirmShort && !isDown(m) && (
+        {!finished && !isDown(m) && (
           <div className="flex gap-4 border-t border-border pt-3 text-xs">
             <button
               type="button"
@@ -403,7 +406,7 @@ function RunningJob({ m, busy, run, onFinish }: { m: BoardMachine; busy: boolean
       <form
         onSubmit={async (e: FormEvent) => {
           e.preventDefault()
-          if (await run(`/production/jobs/${job.id}/progress`, 'POST', { qty: Number(output) }, `${formatQty(Number(output), unit)} added`)) setOutput('')
+          if (await run(`/production/jobs/${job.id}/progress`, 'POST', { qty: Number(output) }, `${formatQty(Number(output), unit)} added on ${m.code}`, true)) setOutput('')
         }}
       >
         <Field label={`Output made (${unit})`} htmlFor="output" hint={left > 0 ? `${formatQty(left, unit)} left to make` : 'Planned quantity reached'}>
@@ -419,6 +422,7 @@ function RunningJob({ m, busy, run, onFinish }: { m: BoardMachine; busy: boolean
       <Button disabled={busy} onClick={onFinish}>
         {next ? `Finish → send to ${label(next).toLowerCase()}` : 'Finish → send to QC'}
       </Button>
+      {left > 0 && <p className="-mt-2 text-center text-xs text-muted-foreground">Finishing marks the remaining {formatQty(left, unit)} as made.</p>}
     </div>
   )
 }
@@ -446,12 +450,15 @@ function NextStage({ order, from, left, machines, busy, run, onLater }: { order:
     <form onSubmit={submit} className="grid gap-4">
       <StageSteps current={from} done />
       <p className="text-xs text-muted-foreground">
-        {queue.loading ? 'Checking…' : `${formatQty(ready, unitFor(stage))} ready for ${label(stage).toLowerCase()}.`}
-        {left > 0 && ` ${formatQty(left, unitFor(from))} of ${label(from).toLowerCase()} is still left and stays in that list.`}
+        {queue.loading
+          ? 'Checking…'
+          : left > 0
+            ? `${formatQty(left, unitFor(from))} of ${label(from).toLowerCase()} is still left. The order moves to ${label(stage).toLowerCase()} once all of it is done.`
+            : `${formatQty(ready, unitFor(stage))} ready for ${label(stage).toLowerCase()}.`}
       </p>
       {free.length === 0 || (!queue.loading && ready <= 0) ? (
         <p className="text-sm text-muted-foreground">
-          {free.length === 0 ? `No ${label(stage).toLowerCase()} machine is free. Assign it later from an idle one.` : `Nothing to ${stage === 'WEAVING' ? 'weave' : 'dye'} yet.`}
+          {free.length === 0 ? `No ${label(stage).toLowerCase()} machine is free. Assign it later from an idle one.` : `Finish ${label(from).toLowerCase()} on another machine first.`}
         </p>
       ) : (
         <>

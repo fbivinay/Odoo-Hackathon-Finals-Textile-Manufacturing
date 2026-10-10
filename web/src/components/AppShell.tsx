@@ -25,7 +25,7 @@ export const NAV: NavItem[] = [
   { to: '/raw-materials', label: 'Raw Materials', icon: FlaskConical, roles: ['STORE', 'PRODUCTION'] },
   { to: '/clients', label: 'Clients', icon: Users, roles: [] },
   { to: '/accounts', label: 'Accounts', icon: Landmark, roles: [] },
-  { to: '/production', label: 'Production', icon: Factory, roles: ['PRODUCTION'] },
+  { to: '/production', label: 'Machines', icon: Factory, roles: ['PRODUCTION'] },
   { to: '/qc', label: 'Quality check', icon: ClipboardCheck, roles: ['QC'] },
   { to: '/waste', label: 'Waste', icon: Recycle, roles: ['PRODUCTION', 'QC'] },
   { to: '/dispatch', label: 'Dispatch', icon: Truck, roles: ['DISPATCH'] },

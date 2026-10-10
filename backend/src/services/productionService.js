@@ -61,11 +61,10 @@ async function queue({ stage } = {}) {
       const target = stageTarget(order, stage);
       const { done, running } = output(order.id, stage);
       const remaining = leftOf(target, done);
-      // A stage can only work on what the stage before has handed over: half the yarn spun
-      // means half the fabric can be woven now. `available` is that share, less what is already made.
-      const beforeTarget = before ? stageTarget(order, before) : 0;
-      const share = beforeTarget > 0 ? Math.min(1, output(order.id, before).done / beforeTarget) : 1;
-      const available = Math.min(remaining, Math.max(0, Math.round((target * share - done) * 100) / 100));
+      // An order moves on whole: weaving opens only once all its yarn is spun, dyeing only once
+      // all its fabric is woven. `available` is then everything this stage still has to make.
+      const handedOver = !before || leftOf(stageTarget(order, before), output(order.id, before).done) === 0;
+      const available = handedOver ? remaining : 0;
       return {
         id: order.id, orderNo: order.orderNo, fabricType: order.fabricType, buyer: order.buyer, deadline: order.deadline,
         status: order.status, target, done: Math.round(done * 100) / 100, remaining, available, running,
@@ -76,6 +75,43 @@ async function queue({ stage } = {}) {
 
 const listMachines = () => prisma.machine.findMany({ orderBy: { code: 'asc' } });
 const createMachine = (data) => prisma.machine.create({ data });
+
+// Code, name and daily capacity. Each change is kept in the Mill Setup history.
+async function updateMachine(id, data, user) {
+  const machine = await prisma.machine.findUnique({ where: { id } });
+  if (!machine) throw notFound('Machine not found');
+  if (data.code && data.code !== machine.code && (await prisma.machine.findUnique({ where: { code: data.code } }))) {
+    throw conflict(`${data.code} is already on the floor`, 'CONFLICT');
+  }
+  const changed = Object.keys(data).filter((k) => String(data[k] ?? '') !== String(machine[k] === null ? '' : k === 'dailyCapacity' ? Number(machine[k]) : machine[k]));
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.machine.update({ where: { id }, data });
+    if (changed.length) {
+      await tx.configChange.createMany({
+        data: changed.map((field) => ({
+          what: `Machine ${machine.code}`, field,
+          oldValue: machine[field] == null ? null : String(field === 'dailyCapacity' ? Number(machine[field]) : machine[field]),
+          newValue: data[field] == null ? null : String(data[field]), changedBy: user.name,
+        })),
+      });
+    }
+    return updated;
+  });
+}
+
+// A machine that has ever run a job stays: its jobs, rolls and output point at it.
+async function deleteMachine(id, user) {
+  const machine = await prisma.machine.findUnique({ where: { id }, include: { _count: { select: { jobs: true, rolls: true, logs: true } } } });
+  if (!machine) throw notFound('Machine not found');
+  if (machine._count.jobs + machine._count.rolls + machine._count.logs > 0) {
+    throw conflict(`${machine.code} has production records, so it can't be removed`, 'MACHINE_IN_USE');
+  }
+  return prisma.$transaction(async (tx) => {
+    await tx.machine.delete({ where: { id } });
+    await tx.configChange.create({ data: { what: `Machine ${machine.code}`, field: 'machine', oldValue: 'on', newValue: 'removed', changedBy: user.name } });
+    return { id };
+  });
+}
 
 // What every machine is doing right now, and what it has produced today.
 async function board() {
@@ -187,12 +223,27 @@ async function finishJob(jobId, status) {
     if (!job) throw notFound('Job not found');
     if (job.status !== 'RUNNING') throw badRequest(`Job is already ${job.status}`);
 
+    // Finishing means the whole job is made: whatever was not logged yet is recorded now, so the
+    // order is complete in this stage and moves on whole. Stopping keeps the job as it stands.
+    let produced = Number(job.qtyProduced);
+    if (status === 'COMPLETED') {
+      const order = await tx.order.findUnique({ where: { id: job.orderId } });
+      const made = await tx.productionJob.aggregate({ where: { orderId: job.orderId, stage: job.stage }, _sum: { qtyProduced: true } });
+      const stageLeft = stageTarget(order, job.stage) - Number(made._sum.qtyProduced || 0);
+      const fill = Math.round(Math.max(0, Math.min(Number(job.qtyPlanned) - produced, stageLeft)) * 100) / 100;
+      if (fill > 0) {
+        await tx.productionLog.create({ data: { jobId, machineId: job.machineId, qty: fill } });
+        await tx.productionJob.update({ where: { id: jobId }, data: { qtyProduced: { increment: fill } } });
+        produced += fill;
+      }
+    }
+
     // Finishing dyeing sends the fabric on to quality check: whatever has been made and not
     // yet rolled is cut into rolls here, so nothing dyed is left without a roll.
     let rollsSent = 0;
     if (status === 'COMPLETED' && job.stage === 'DYEING') {
       const rollLength = await setting('rollLength');
-      let unrolled = Number(job.qtyProduced) - job.rolls.reduce((total, r) => total + Number(r.qty), 0);
+      let unrolled = produced - job.rolls.reduce((total, r) => total + Number(r.qty), 0);
       while (unrolled > 1) {
         const qty = Math.round(Math.min(rollLength, unrolled) * 100) / 100;
         await tx.roll.create({
@@ -263,6 +314,8 @@ module.exports = {
   queue,
   listMachines,
   createMachine,
+  updateMachine,
+  deleteMachine,
   board,
   setMachineStatus,
   startJob,

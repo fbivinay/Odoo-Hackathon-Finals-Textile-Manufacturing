@@ -28,7 +28,7 @@ const TAB_LABEL = {
   '/materials': 'Yarn Received',
   '/raw-materials': 'Raw Materials',
   '/orders': 'Orders',
-  '/production': 'Production',
+  '/production': 'Machines',
   '/qc': 'Quality check',
   '/waste': 'Waste',
   '/dispatch': 'Dispatch',

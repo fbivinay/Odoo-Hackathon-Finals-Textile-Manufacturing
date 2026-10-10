@@ -83,14 +83,16 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/machines` | | |
-| POST | `/machines` | OWNER | `{ code, name, type }` type = `SPINNING/WEAVING/DYEING` |
+| POST | `/machines` | OWNER or `/config` | `{ code, name, type, dailyCapacity? }` type = `SPINNING/WEAVING/DYEING` |
+| PATCH | `/machines/:id` | OWNER or `/config` | `{ code?, name?, dailyCapacity? }` (capacity per day: kg for spinning, metres otherwise; `null` clears it) |
+| DELETE | `/machines/:id` | OWNER or `/config` | 409 `MACHINE_IN_USE` if it has any job, roll or output |
 | PATCH | `/machines/:id/status` | PRODUCTION | `{ status }` = `IDLE/BREAKDOWN/MAINTENANCE`; stops the running job |
 | GET | `/production/board` | | `{ machines[], summary }`; each machine has `currentJob` (with `percent`) and `producedToday` |
-| GET | `/production/queue` | | `?stage=SPINNING/WEAVING/DYEING` → orders with work left in that stage: `{ id, orderNo, fabricType, buyer, deadline, status, target, done, remaining, available, running }`; `available` is how much can start now, given what the stage before has made |
+| GET | `/production/queue` | | `?stage=SPINNING/WEAVING/DYEING` → orders with work left in that stage: `{ id, orderNo, fabricType, buyer, deadline, status, target, done, remaining, available, running }`; `available` is how much can start now: the whole `remaining` once the stage before has finished the order, otherwise 0 (so the order is not listed) |
 | GET | `/production/jobs` | | `?orderId=&machineId=&workerId=&status=&stage=` + paging |
 | POST | `/production/jobs` | PRODUCTION | `{ orderId, machineId, workerId?, shift, qtyPlanned }` → 409 `MACHINE_BUSY` unless idle |
 | POST | `/production/jobs/:id/progress` | PRODUCTION | `{ qty }` quantity produced since last report; 400 `OVER_PLAN` if it would exceed the job's planned quantity |
-| POST | `/production/jobs/:id/complete` | PRODUCTION | frees the machine; on a dyeing job, output not yet rolled is cut into rolls (~1,100 m) and sent to QC, returned as `rollsSent` |
+| POST | `/production/jobs/:id/complete` | PRODUCTION | marks the whole job made (quantity not logged yet is recorded now) and frees the machine; on a dyeing job, output not yet rolled is cut into rolls (~1,100 m) and sent to QC, returned as `rollsSent` |
 | POST | `/production/jobs/:id/stop` | PRODUCTION | frees the machine |
 | POST | `/production/rolls` | PRODUCTION | `{ jobId, qty }` → roll in `PENDING_QC`, linked to order + machine; 400 `OVER_OUTPUT` if rolls would exceed what the job has made |
 
@@ -156,7 +158,7 @@ Assumptions: an order short of yarn can't start for 7 days (delivery lead time),
 |---|---|---|---|
 | GET | `/config` | | `{ fabrics, rules, settings, materials }`. A fabric with no saved row is filled from the last 365 days of orders (`saved: false`); `history` always carries those figures |
 | PUT | `/config/fabrics/:fabricType` | OWNER or `/config` | `{ materialId?, yarnPerMetre, wastagePct, pricePerMetre }` upsert. Yarn to issue = metres × yarnPerMetre × (1 + wastage %) |
-| DELETE | `/config/fabrics/:fabricType` | OWNER or `/config` | Removes a fabric; 409 `FABRIC_IN_USE` if it has orders in the last 365 days |
+| DELETE | `/config/fabrics/:fabricType` | OWNER or `/config` | Takes a fabric off the list (kept hidden if past orders use the name; saving it again brings it back) |
 | POST | `/config/rules` | OWNER or `/config` | `{ kind, below, pricePct, wastagePct }` (kind QUANTITY or DEADLINE); 409 if that band exists |
 | PATCH / DELETE | `/config/rules/:id` | OWNER or `/config` | `{ below?, pricePct?, wastagePct? }` |
 | PUT | `/config/settings` | OWNER or `/config` | `{ qcDays?, rollLength?, shiftHours?, dispatchTolerancePct?, shelfWaitDays? }`; a missing key uses its default (1, 1100, 8, 5, 3) |

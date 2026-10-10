@@ -11,10 +11,10 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, ApiError } from '@/lib/api'
-import { formatDateTime, formatINR } from '@/lib/format'
+import { formatDateTime, formatINR, formatQty, unitFor } from '@/lib/format'
 import { useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
-import type { Config as ConfigData, ConfigChange } from '@/types'
+import type { Config as ConfigData, ConfigChange, Machine, Stage } from '@/types'
 
 type Fabric = ConfigData['fabrics'][number]
 type Material = ConfigData['materials'][number]
@@ -53,11 +53,15 @@ export function Config() {
         <Tabs defaultValue="fabrics">
           <TabsList>
             <TabsTrigger value="fabrics">Fabrics</TabsTrigger>
+            <TabsTrigger value="machines">Machines</TabsTrigger>
             <TabsTrigger value="rules">Order rules</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
           <TabsContent value="fabrics">
             <Fabrics fabrics={c.fabrics} yarns={c.materials.filter((m) => m.category === 'YARN')} />
+          </TabsContent>
+          <TabsContent value="machines">
+            <Machines />
           </TabsContent>
           <TabsContent value="rules">
             <Rules rules={c.rules} />
@@ -220,13 +224,11 @@ function FabricDialog({ fabric, taken, yarns, onClose }: { fabric: Fabric | null
       canSave={!exists && !removing}
       onClose={onClose}
       extra={
-        !fabric ? undefined : fabric.history ? (
-          <span className="text-xs text-muted-foreground">Has orders, so it can't be removed.</span>
-        ) : (
+        fabric ? (
           <Button variant="ghost" className="-ml-2 text-problem hover:text-problem" disabled={removing} onClick={remove}>
             Remove
           </Button>
-        )
+        ) : undefined
       }
       onSave={() =>
         save(
@@ -260,6 +262,146 @@ function FabricDialog({ fabric, taken, yarns, onClose }: { fabric: Fabric | null
       </Field>
       <Field label="Price per metre (₹)" htmlFor="fabric-price">
         <Num id="fabric-price" unit="₹" required min="0.01" step="0.01" value={form.pricePerMetre} onChange={set('pricePerMetre')} />
+      </Field>
+    </Popup>
+  )
+}
+
+// --------------------------------------------------------------- machines --
+
+const STAGES: Stage[] = ['SPINNING', 'WEAVING', 'DYEING']
+const PREFIX: Record<Stage, string> = { SPINNING: 'SP', WEAVING: 'WV', DYEING: 'DY' }
+const KIND: Record<Stage, string> = { SPINNING: 'Ring Frame', WEAVING: 'Loom', DYEING: 'Dyeing Machine' }
+
+function Machines() {
+  const machines = useApi<Machine[]>('/machines')
+  const [editing, setEditing] = useState<Machine | 'new' | null>(null)
+  const [search, setSearch] = useState('')
+  // In the order fabric moves through the mill, then by code.
+  const all = [...(machines.data ?? [])].sort((x, y) => STAGES.indexOf(x.type) - STAGES.indexOf(y.type) || x.code.localeCompare(y.code))
+  const q = search.trim().toLowerCase()
+  const rows = all.filter((m) => !q || [m.code, m.name, label(m.type)].some((v) => v.toLowerCase().includes(q)))
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input type="search" aria-label="Search machines" placeholder="Search machine or stage" className="bg-white pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <Button size="sm" className="gap-1" onClick={() => setEditing('new')}>
+          <Plus className="size-3.5" />
+          New machine
+        </Button>
+      </div>
+      {machines.error && <p className="text-sm text-problem">{machines.error}</p>}
+      {machines.loading && !machines.data ? (
+        <Skeleton className="h-64 w-full" />
+      ) : (
+        <div className="data-table-wrap overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th className={head}>Machine</th>
+                <th className={head}>Name</th>
+                <th className={head}>Stage</th>
+                <th className={head}>Capacity / day</th>
+                <th className={head} />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={5}>
+                    {q ? (
+                      <EmptyState icon={Search} line={`No machine matches "${search.trim()}".`} actionLabel="Clear search" onAction={() => setSearch('')} />
+                    ) : (
+                      <EmptyState icon={Plus} line="No machines yet." actionLabel="New machine" onAction={() => setEditing('new')} />
+                    )}
+                  </td>
+                </tr>
+              )}
+              {rows.map((m) => (
+                <tr key={m.id} className="border-t border-border">
+                  <td className={cn(cell, 'font-medium')}>{m.code}</td>
+                  <td className={cn(cell, 'text-ink-2')}>{m.name}</td>
+                  <td className={cn(cell, 'text-ink-2')}>{label(m.type)}</td>
+                  <td className={numCell}>{m.dailyCapacity != null ? formatQty(Number(m.dailyCapacity), unitFor(m.type)) : <span className="text-muted-foreground">Not set</span>}</td>
+                  <td className={cn(cell, 'text-right')}>
+                    <EditButton what={m.code} onClick={() => setEditing(m)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {editing && <MachineDialog machine={editing === 'new' ? null : editing} all={all} onClose={() => setEditing(null)} />}
+    </section>
+  )
+}
+
+function MachineDialog({ machine, all, onClose }: { machine: Machine | null; all: Machine[]; onClose: () => void }) {
+  // The next free code for a stage, e.g. WV-10.
+  const nextCode = (stage: Stage) => {
+    const nums = all.filter((m) => m.code.startsWith(`${PREFIX[stage]}-`)).map((m) => Number(m.code.split('-')[1]) || 0)
+    return `${PREFIX[stage]}-${String(Math.max(0, ...nums) + 1).padStart(2, '0')}`
+  }
+  const suggested = (stage: Stage) => ({ code: nextCode(stage), name: `${KIND[stage]} ${Number(nextCode(stage).split('-')[1])}` })
+  const before = {
+    type: machine?.type ?? ('WEAVING' as Stage),
+    code: machine?.code ?? suggested('WEAVING').code,
+    name: machine?.name ?? suggested('WEAVING').name,
+    dailyCapacity: machine?.dailyCapacity != null ? String(Number(machine.dailyCapacity)) : '',
+  }
+  const [form, setForm] = useState(before)
+  const [removing, setRemoving] = useState(false)
+  const set = (k: 'code' | 'name' | 'dailyCapacity') => (v: string) => setForm((f) => ({ ...f, [k]: v }))
+  const code = form.code.trim().toUpperCase()
+  const taken = all.some((m) => m.id !== machine?.id && m.code.toUpperCase() === code)
+  const body = { code, name: form.name.trim(), dailyCapacity: form.dailyCapacity === '' ? null : Number(form.dailyCapacity) }
+
+  async function remove() {
+    setRemoving(true)
+    if (await save(`/machines/${machine!.id}`, 'DELETE', undefined, `${machine!.code} removed`)) onClose()
+    else setRemoving(false)
+  }
+
+  return (
+    <Popup
+      title={machine ? machine.code : 'New machine'}
+      hint={machine ? label(machine.type) : undefined}
+      saveLabel={machine ? 'Save' : 'Add machine'}
+      canSave={!taken && !removing && (!machine || JSON.stringify(form) !== JSON.stringify(before))}
+      onClose={onClose}
+      onSave={() => (machine ? save(`/machines/${machine.id}`, 'PATCH', body, `${code} saved`) : save('/machines', 'POST', { ...body, type: form.type }, `${code} added`))}
+      extra={
+        machine ? (
+          <Button variant="ghost" className="-ml-2 text-problem hover:text-problem" disabled={removing} onClick={remove}>
+            Remove
+          </Button>
+        ) : undefined
+      }
+    >
+      {!machine && (
+        <Field label="Stage" htmlFor="machine-stage">
+          <select id="machine-stage" className={selectClass} value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as Stage, ...suggested(e.target.value as Stage) }))}>
+            {STAGES.map((s) => (
+              <option key={s} value={s}>
+                {label(s)}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      <Field label="Code" htmlFor="machine-code" hint={taken ? <span className="text-problem">That code is already used.</span> : undefined}>
+        <Input id="machine-code" required maxLength={20} value={form.code} onChange={(e) => set('code')(e.target.value)} />
+      </Field>
+      <Field label="Name" htmlFor="machine-name">
+        <Input id="machine-name" required maxLength={60} value={form.name} onChange={(e) => set('name')(e.target.value)} />
+      </Field>
+      <Field label={`Capacity per day (${unitFor(form.type)})`} htmlFor="machine-capacity">
+        <Num id="machine-capacity" unit={unitFor(form.type)} required={!machine} min="1" step="1" value={form.dailyCapacity} onChange={set('dailyCapacity')} />
       </Field>
     </Popup>
   )
@@ -384,6 +526,10 @@ const FIELD: Record<string, string> = {
   supplierId: 'usual supplier',
   leadDays: 'delivery days',
   rule: 'rule',
+  machine: 'machine',
+  dailyCapacity: 'capacity per day',
+  code: 'code',
+  name: 'name',
   fabric: 'fabric',
   qcDays: 'quality check time',
   rollLength: 'roll length',
