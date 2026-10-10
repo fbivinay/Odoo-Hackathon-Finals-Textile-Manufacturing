@@ -118,6 +118,8 @@ model User {
   mustChangePassword Boolean  @default(false)
   // Sidebar tabs granted to this one person on top of their role, e.g. ["/waste"].
   extraTabs          String[] @default([])
+  // Optional: the shift this person usually works.
+  shift              Shift?
   createdAt          DateTime @default(now())
   // When the owner last added or edited this login; orders the Employees list.
   updatedAt          DateTime @default(now())

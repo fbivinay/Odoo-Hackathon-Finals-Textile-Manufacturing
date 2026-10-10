@@ -23,6 +23,7 @@ export interface User {
 
 // A login as the owner sees it on the Employees screen.
 export interface Employee extends User {
+  shift?: Shift | null
   isActive: boolean
   mustChangePassword: boolean
   createdAt: string

@@ -14,6 +14,7 @@ const owner = requireTab('/config');
 router.get('/', handle(() => configService.get()));
 router.get('/changes', owner, handle((req) => configService.changes(req.query)));
 router.put('/fabrics/:fabricType', owner, handle((req) => configService.saveFabric(req.params.fabricType, v.fabricSchema.parse(req.body), req.user)));
+router.delete('/fabrics/:fabricType', owner, handle((req) => configService.deleteFabric(req.params.fabricType, req.user)));
 router.post('/rules', owner, handle((req) => configService.addRule(v.ruleSchema.parse(req.body), req.user), 201));
 router.patch('/rules/:id', owner, handle((req) => configService.updateRule(req.params.id, v.ruleUpdateSchema.parse(req.body), req.user)));
 router.delete('/rules/:id', owner, handle((req) => configService.deleteRule(req.params.id, req.user)));

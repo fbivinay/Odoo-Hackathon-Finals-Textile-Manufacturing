@@ -123,6 +123,18 @@ async function saveFabric(fabricType, data, user) {
   });
 }
 
+// A fabric with orders in the last year can't go: its figures would only come back from history.
+async function deleteFabric(fabricType, user) {
+  const current = (await fabrics()).find((f) => f.fabricType === fabricType);
+  if (!current) throw notFound('Fabric not found');
+  if (current.history) throw conflict(`${fabricType} has orders, so it can't be removed`, 'FABRIC_IN_USE');
+  return prisma.$transaction(async (tx) => {
+    await tx.fabricSpec.delete({ where: { fabricType } });
+    await tx.configChange.create({ data: { what: `Fabric ${fabricType}`, field: 'fabric', oldValue: 'on', newValue: 'removed', changedBy: user.name } });
+    return { fabricType };
+  });
+}
+
 async function addRule(data, user) {
   if (await prisma.orderRule.findUnique({ where: { kind_below: { kind: data.kind, below: data.below } } })) {
     throw conflict('A rule for that size already exists', 'CONFLICT');
@@ -199,4 +211,4 @@ async function changes({ limit = 100 } = {}) {
   return prisma.configChange.findMany({ orderBy: { changedAt: 'desc' }, take: Math.min(Number(limit) || 100, 500) });
 }
 
-module.exports = { SETTINGS, settings, setting, get, fabrics, quoteFor, saveFabric, addRule, updateRule, deleteRule, saveSettings, saveMaterial, changes };
+module.exports = { SETTINGS, settings, setting, get, fabrics, quoteFor, saveFabric, deleteFabric, addRule, updateRule, deleteRule, saveSettings, saveMaterial, changes };

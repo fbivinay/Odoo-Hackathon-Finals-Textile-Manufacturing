@@ -19,14 +19,11 @@ import type { Config as ConfigData, ConfigChange } from '@/types'
 type Fabric = ConfigData['fabrics'][number]
 type Material = ConfigData['materials'][number]
 type Rule = ConfigData['rules'][number]
-type Setting = ConfigData['settings'][number]
 
 const cell = 'px-3 py-2.5'
 const head = 'px-3 py-2 text-left text-xs font-medium text-muted-foreground'
 const numCell = cn(cell, 'tabular-nums')
 const name = (m: { yarnType: string; colour: string }) => (m.colour ? `${m.yarnType} · ${m.colour}` : m.yarnType)
-// "5%", "1 day", "1,100 m".
-const withUnit = (n: number, unit: string) => (unit === '%' ? `${n}%` : `${n.toLocaleString('en-IN')} ${n === 1 ? unit.replace(/s$/, '') : unit}`)
 const pct = (n: number) => `${n > 0 ? '+' : ''}${n}%`
 
 async function save(path: string, method: string, body: unknown, done: string) {
@@ -48,7 +45,7 @@ export function Config() {
 
   return (
     <div className="space-y-5">
-      <PageHead eyebrow="Prices, rules and limits" title="Mill Setup" />
+      <PageHead eyebrow="Prices and rules" title="Mill Setup" />
       {config.error && <p className="text-sm text-problem">{config.error}</p>}
       {!c ? (
         <Skeleton className="h-96 w-full" />
@@ -57,7 +54,6 @@ export function Config() {
           <TabsList>
             <TabsTrigger value="fabrics">Fabrics</TabsTrigger>
             <TabsTrigger value="rules">Order rules</TabsTrigger>
-            <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
           <TabsContent value="fabrics">
@@ -65,9 +61,6 @@ export function Config() {
           </TabsContent>
           <TabsContent value="rules">
             <Rules rules={c.rules} />
-          </TabsContent>
-          <TabsContent value="general">
-            <General settings={c.settings} />
           </TabsContent>
           <TabsContent value="history">
             <Log rows={changes.data ?? []} loading={changes.loading} />
@@ -160,10 +153,10 @@ function Fabrics({ fabrics, yarns }: { fabrics: Fabric[]; yarns: Material[] }) {
           <thead>
             <tr>
               <th className={head}>Fabric</th>
-              <th className={head}>Usual yarn</th>
-              <th className={head}>Yarn per metre</th>
+              <th className={head}>Yarn</th>
+              <th className={head}>Yarn / m</th>
               <th className={head}>Wastage</th>
-              <th className={head}>Price per metre</th>
+              <th className={head}>Price / m</th>
               <th className={head} />
             </tr>
           </thead>
@@ -212,13 +205,29 @@ function FabricDialog({ fabric, taken, yarns, onClose }: { fabric: Fabric | null
   const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }))
   const fabricType = form.fabricType.trim()
   const exists = !fabric && taken.includes(fabricType.toLowerCase())
+  const [removing, setRemoving] = useState(false)
+
+  async function remove() {
+    setRemoving(true)
+    if (await save(`/config/fabrics/${encodeURIComponent(fabricType)}`, 'DELETE', undefined, `${fabricType} removed`)) onClose()
+    else setRemoving(false)
+  }
 
   return (
     <Popup
       title={fabric ? fabric.fabricType : 'New fabric'}
       saveLabel={fabric ? 'Save' : 'Add fabric'}
-      canSave={!exists}
+      canSave={!exists && !removing}
       onClose={onClose}
+      extra={
+        !fabric ? undefined : fabric.history ? (
+          <span className="text-xs text-muted-foreground">Has orders, so it can't be removed.</span>
+        ) : (
+          <Button variant="ghost" className="-ml-2 text-problem hover:text-problem" disabled={removing} onClick={remove}>
+            Remove
+          </Button>
+        )
+      }
       onSave={() =>
         save(
           `/config/fabrics/${encodeURIComponent(fabricType)}`,
@@ -259,8 +268,8 @@ function FabricDialog({ fabric, taken, yarns, onClose }: { fabric: Fabric | null
 // ------------------------------------------------------------------ rules --
 
 const KINDS = [
-  { kind: 'QUANTITY' as const, title: 'Small orders', unit: 'm', lead: 'Order under', hint: 'Small orders waste more at set-up.' },
-  { kind: 'DEADLINE' as const, title: 'Rush orders', unit: 'days', lead: 'Deadline under', hint: 'Rushed orders jump the queue.' },
+  { kind: 'QUANTITY' as const, title: 'Small orders', unit: 'm', lead: 'Order under' },
+  { kind: 'DEADLINE' as const, title: 'Rush orders', unit: 'days', lead: 'Deadline under' },
 ]
 type Kind = (typeof KINDS)[number]
 
@@ -269,17 +278,13 @@ function Rules({ rules }: { rules: Rule[] }) {
 
   return (
     <section className="space-y-3">
-      <p className="text-sm text-ink-2">Extra price and yarn added to a new order when it is small or urgent.</p>
       <div className="grid gap-4 lg:grid-cols-2">
         {KINDS.map((k) => {
           const mine = rules.filter((r) => r.kind === k.kind)
           return (
             <div key={k.kind} className="data-table-wrap">
               <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-                <div>
-                  <h2 className="section-head">{k.title}</h2>
-                  <p className="text-xs text-muted-foreground">{k.hint}</p>
-                </div>
+                <h2 className="section-head">{k.title}</h2>
                 <Button size="xs" variant="outline" className="gap-1" onClick={() => setEditing({ kind: k, rule: null })}>
                   <Plus className="size-3" />
                   Add rule
@@ -366,81 +371,6 @@ function RuleDialog({ kind, rule, onClose }: { kind: Kind; rule: Rule | null; on
   )
 }
 
-// ---------------------------------------------------------------- general --
-
-// Plain name, where it is used, and the unit, for each mill-wide number.
-const GENERAL: Record<Setting['key'], { name: string; use: string; unit: string }> = {
-  rollLength: { name: 'Roll length', use: 'Dyed fabric is cut into rolls of this length.', unit: 'm' },
-  shiftHours: { name: 'Hours in a shift', use: 'Sets the labour cost of each shift worked.', unit: 'hours' },
-  qcDays: { name: 'Quality check time', use: 'Days added to a delivery estimate after dyeing.', unit: 'days' },
-  dispatchTolerancePct: { name: 'Dispatch tolerance', use: 'A shipment within this much of the order counts as complete.', unit: '%' },
-  shelfWaitDays: { name: 'Finished fabric wait limit', use: 'Fabric waiting longer than this is flagged in Dispatch.', unit: 'days' },
-}
-
-function General({ settings }: { settings: Setting[] }) {
-  const [editing, setEditing] = useState<Setting | null>(null)
-  const rows = (Object.keys(GENERAL) as Setting['key'][]).map((k) => settings.find((s) => s.key === k)).filter((s): s is Setting => !!s)
-
-  return (
-    <section className="max-w-3xl space-y-3">
-      <div className="data-table-wrap overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr>
-              <th className={head}>Setting</th>
-              <th className={head}>Value</th>
-              <th className={head} />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s) => (
-              <tr key={s.key} className="border-t border-border">
-                <td className={cell}>
-                  <p className="font-medium">{GENERAL[s.key].name}</p>
-                  <p className="text-xs text-muted-foreground">{GENERAL[s.key].use}</p>
-                </td>
-                <td className={cn(numCell, 'whitespace-nowrap')}>
-                  {withUnit(s.value, GENERAL[s.key].unit)}
-                </td>
-                <td className={cn(cell, 'text-right')}>
-                  <EditButton what={GENERAL[s.key].name} onClick={() => setEditing(s)} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {editing && <SettingDialog s={editing} onClose={() => setEditing(null)} />}
-    </section>
-  )
-}
-
-function SettingDialog({ s, onClose }: { s: Setting; onClose: () => void }) {
-  const g = GENERAL[s.key]
-  const [value, setValue] = useState(String(s.value))
-
-  return (
-    <Popup title={g.name} hint={g.use} canSave={value !== '' && Number(value) !== s.value} onClose={onClose} onSave={() => save('/config/settings', 'PUT', { [s.key]: Number(value) }, `${g.name} saved`)}>
-      <Field
-        label={`Value (${g.unit})`}
-        htmlFor="setting-value"
-        hint={
-          <>
-            {s.min} to {s.max} {g.unit}.{' '}
-            {Number(value) !== s.default && (
-              <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => setValue(String(s.default))}>
-                Use the default ({s.default})
-              </button>
-            )}
-          </>
-        }
-      >
-        <Num id="setting-value" unit={g.unit} required autoFocus min={s.min} max={s.max} step="any" value={value} onChange={setValue} />
-      </Field>
-    </Popup>
-  )
-}
-
 // ---------------------------------------------------------------- history --
 
 const FIELD: Record<string, string> = {
@@ -454,11 +384,12 @@ const FIELD: Record<string, string> = {
   supplierId: 'usual supplier',
   leadDays: 'delivery days',
   rule: 'rule',
-  qcDays: GENERAL.qcDays.name.toLowerCase(),
-  rollLength: GENERAL.rollLength.name.toLowerCase(),
-  shiftHours: GENERAL.shiftHours.name.toLowerCase(),
-  dispatchTolerancePct: GENERAL.dispatchTolerancePct.name.toLowerCase(),
-  shelfWaitDays: GENERAL.shelfWaitDays.name.toLowerCase(),
+  fabric: 'fabric',
+  qcDays: 'quality check time',
+  rollLength: 'roll length',
+  shiftHours: 'hours in a shift',
+  dispatchTolerancePct: 'dispatch tolerance',
+  shelfWaitDays: 'finished fabric wait limit',
 }
 
 function Log({ rows, loading }: { rows: ConfigChange[]; loading: boolean }) {
@@ -474,7 +405,7 @@ function Log({ rows, loading }: { rows: ConfigChange[]; loading: boolean }) {
       <table className="w-full text-sm">
         <thead>
           <tr>
-            {['When', 'What', 'Changed', 'From', 'To', 'By'].map((h) => (
+            {['When', 'Item', 'Field', 'From', 'To', 'By'].map((h) => (
               <th key={h} className={head}>
                 {h}
               </th>

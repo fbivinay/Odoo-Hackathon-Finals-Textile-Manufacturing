@@ -29,8 +29,8 @@ They answer `{ ok, data: [...], meta: { count, nextCursor } }`. Pass `nextCursor
 | POST | `/auth/signin` | public | `{ email, password }` → `{ token, user }` |
 | GET | `/me` | | current user |
 | GET | `/users` | OWNER | read is owner-only too |
-| POST | `/users` | OWNER | `{ name, email, password, role }` — password is temporary (6+ letters or digits); sets `mustChangePassword` |
-| PATCH | `/users/:id` | OWNER | any of `{ name, role, isActive, password, extraTabs }`; a new password forces a change at next sign-in |
+| POST | `/users` | OWNER | `{ name, email, password, role, shift? }` — password is temporary (6+ letters or digits); sets `mustChangePassword` |
+| PATCH | `/users/:id` | OWNER | any of `{ name, role, isActive, password, extraTabs, shift }` (`shift`: `MORNING` 6 AM to 2 PM, `EVENING` 2 to 10 PM, `NIGHT` 10 PM to 6 AM, or `null`); a new password forces a change at next sign-in |
 | POST | `/auth/change-password` | | `{ newPassword, currentPassword? }` — current one not needed while `mustChangePassword` |
 
 `extraTabs` (also accepted by `POST /users`) is a list of sidebar paths granted to that one person on top of their role: `/materials`, `/raw-materials`, `/orders`, `/production`, `/planning`, `/qc`, `/waste`, `/dispatch`, `/clients`. A tab brings the write access it needs (e.g. `/qc` lets them inspect rolls).
@@ -156,6 +156,7 @@ Assumptions: an order short of yarn can't start for 7 days (delivery lead time),
 |---|---|---|---|
 | GET | `/config` | | `{ fabrics, rules, settings, materials }`. A fabric with no saved row is filled from the last 365 days of orders (`saved: false`); `history` always carries those figures |
 | PUT | `/config/fabrics/:fabricType` | OWNER or `/config` | `{ materialId?, yarnPerMetre, wastagePct, pricePerMetre }` upsert. Yarn to issue = metres × yarnPerMetre × (1 + wastage %) |
+| DELETE | `/config/fabrics/:fabricType` | OWNER or `/config` | Removes a fabric; 409 `FABRIC_IN_USE` if it has orders in the last 365 days |
 | POST | `/config/rules` | OWNER or `/config` | `{ kind, below, pricePct, wastagePct }` (kind QUANTITY or DEADLINE); 409 if that band exists |
 | PATCH / DELETE | `/config/rules/:id` | OWNER or `/config` | `{ below?, pricePct?, wastagePct? }` |
 | PUT | `/config/settings` | OWNER or `/config` | `{ qcDays?, rollLength?, shiftHours?, dispatchTolerancePct?, shelfWaitDays? }`; a missing key uses its default (1, 1100, 8, 5, 3) |

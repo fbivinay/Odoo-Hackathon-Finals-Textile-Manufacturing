@@ -10,7 +10,7 @@ const workforceService = require('./workforceService');
 const masterService = require('./masterService');
 const userService = require('./userService');
 const configService = require('./configService');
-const { TAB_LABEL, ROLE_LABEL } = require('../lib/tabs');
+const { TAB_LABEL, ROLE_LABEL, SHIFT_LABEL } = require('../lib/tabs');
 
 // What the chat assistant can look up. Every tool only reads; nothing here changes data.
 // `access` lists the sidebar tabs that open a tool (any one is enough); 'OWNER' means owner only.
@@ -419,13 +419,13 @@ const TOOLS = [
   },
   {
     name: 'employees',
-    description: 'Owner only. The people who can sign in to the system: role, additional access, whether the login is active, and when each was added (use it for oldest and newest employees).',
+    description: 'Owner only. The people who can sign in to the system: role, shift (if one is set), additional access, whether the login is active, and when each was added (use it for oldest and newest employees).',
     access: 'OWNER',
     input: {},
     async run() {
       // Oldest first, so "who joined first / last" reads straight off the list.
       const users = (await userService.list()).sort((a, b) => a.createdAt - b.createdAt);
-      return users.map((u) => ({ name: u.name, email: u.email, role: ROLE_LABEL[u.role], additionalAccess: u.extraTabs.map((t) => TAB_LABEL[t] || t), active: u.isActive, passwordNotSetYet: u.mustChangePassword, addedAt: when(u.createdAt) }));
+      return users.map((u) => ({ name: u.name, email: u.email, role: ROLE_LABEL[u.role], shift: u.shift ? SHIFT_LABEL[u.shift] : 'not set', additionalAccess: u.extraTabs.map((t) => TAB_LABEL[t] || t), active: u.isActive, passwordNotSetYet: u.mustChangePassword, addedAt: when(u.createdAt) }));
     },
   },
 ];

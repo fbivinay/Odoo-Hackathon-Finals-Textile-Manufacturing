@@ -17,9 +17,30 @@ import { api, ApiError } from '@/lib/api'
 import { PASSWORD_HINT, PASSWORD_PATTERN } from '@/lib/password'
 import { cn } from '@/lib/utils'
 import { useApi } from '@/lib/useApi'
-import type { Employee, Role } from '@/types'
+import type { Employee, Role, Shift } from '@/types'
 
 const ROLES = Object.keys(ROLE_LABEL) as Role[]
+const SHIFTS: Record<Shift, { name: string; hours: string }> = {
+  MORNING: { name: 'Morning', hours: '6 AM – 2 PM' },
+  EVENING: { name: 'Evening', hours: '2 PM – 10 PM' },
+  NIGHT: { name: 'Night', hours: '10 PM – 6 AM' },
+}
+
+// Optional: leave on "No shift" for people who don't work one.
+function ShiftField({ value, onChange }: { value: Shift | ''; onChange: (s: Shift | '') => void }) {
+  return (
+    <Field label="Shift (optional)" htmlFor="shift">
+      <select id="shift" className={selectClass} value={value} onChange={(e) => onChange(e.target.value as Shift | '')}>
+        <option value="">No shift</option>
+        {(Object.keys(SHIFTS) as Shift[]).map((s) => (
+          <option key={s} value={s}>
+            {SHIFTS[s].name} · {SHIFTS[s].hours}
+          </option>
+        ))}
+      </select>
+    </Field>
+  )
+}
 
 const tabLabel = (to: string) => GRANTABLE.find((n) => n.to === to)?.label ?? to
 // Tabs the role doesn't already open. The owner has them all.
@@ -65,14 +86,18 @@ export function Employees() {
   const [editing, setEditing] = useState<Employee | null>(null)
   const [search, setSearch] = useState('')
   const [role, setRole] = useState<Role | 'ALL'>('ALL')
+  const [shift, setShift] = useState<Shift | 'ALL' | 'NONE'>('ALL')
 
   // Matches name, email, role or an additional access, e.g. "store" or "waste".
   const q = search.trim().toLowerCase()
   const rows = (employees.data ?? []).filter(
     (e) =>
       (role === 'ALL' || e.role === role) &&
-      (!q || [e.name, e.email, ROLE_LABEL[e.role], ...keepExtras(e.role, e.extraTabs ?? []).map(tabLabel)].some((v) => v.toLowerCase().includes(q))),
+      (shift === 'ALL' || (shift === 'NONE' ? !e.shift : e.shift === shift)) &&
+      (!q || [e.name, e.email, ROLE_LABEL[e.role], e.shift ? SHIFTS[e.shift].name : '', ...keepExtras(e.role, e.extraTabs ?? []).map(tabLabel)].some((v) => v.toLowerCase().includes(q))),
   )
+
+  const filtered = !!q || role !== 'ALL' || shift !== 'ALL'
 
   // No column sorting: the list keeps its own order (latest on top, deactivated last).
   const cols: ColumnDef<Employee>[] = [
@@ -88,6 +113,20 @@ export function Employees() {
       ),
     },
     { id: 'role', header: 'Role', enableSorting: false, accessorFn: (e) => ROLE_LABEL[e.role] },
+    {
+      id: 'shift',
+      header: 'Shift',
+      enableSorting: false,
+      cell: ({ row: { original: e } }) =>
+        e.shift ? (
+          <div className="leading-tight">
+            <p>{SHIFTS[e.shift].name}</p>
+            <p className="text-xs whitespace-nowrap text-muted-foreground">{SHIFTS[e.shift].hours}</p>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
     {
       id: 'extra',
       header: 'Additional access',
@@ -155,6 +194,15 @@ export function Employees() {
             </option>
           ))}
         </select>
+        <select id="shift-filter" aria-label="Filter by shift" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={shift} onChange={(e) => setShift(e.target.value as Shift | 'ALL' | 'NONE')}>
+          <option value="ALL">All shifts</option>
+          {(Object.keys(SHIFTS) as Shift[]).map((s) => (
+            <option key={s} value={s}>
+              {SHIFTS[s].name}
+            </option>
+          ))}
+          <option value="NONE">No shift</option>
+        </select>
       </div>
 
       {employees.error && <p className="text-sm text-problem">{employees.error}</p>}
@@ -163,14 +211,15 @@ export function Employees() {
         data={rows}
         loading={employees.loading}
         empty={
-          q || role !== 'ALL' ? (
+          filtered ? (
             <EmptyState
               icon={Search}
-              line={q ? `No employee matches "${search.trim()}".` : `No ${ROLE_LABEL[role as Role]} yet.`}
+              line={q ? `No employee matches "${search.trim()}".` : 'No employee matches these filters.'}
               actionLabel="Clear filters"
               onAction={() => {
                 setSearch('')
                 setRole('ALL')
+                setShift('ALL')
               }}
             />
           ) : (
@@ -190,6 +239,7 @@ const failed = (err: unknown) => toast.error(err instanceof ApiError ? err.messa
 function NewEmployeeDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'STORE' as Role })
   const [extraTabs, setExtraTabs] = useState<string[]>([])
+  const [shift, setShift] = useState<Shift | ''>('')
   const [busy, setBusy] = useState(false)
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
@@ -197,7 +247,7 @@ function NewEmployeeDialog({ onClose, onSaved }: { onClose: () => void; onSaved:
     e.preventDefault()
     setBusy(true)
     try {
-      await api('/users', { method: 'POST', body: { ...form, name: form.name.trim(), email: form.email.trim(), extraTabs: keepExtras(form.role, extraTabs) } })
+      await api('/users', { method: 'POST', body: { ...form, name: form.name.trim(), email: form.email.trim(), extraTabs: keepExtras(form.role, extraTabs), shift: shift || null } })
       toast.success(`${form.name.trim()} added. They set their own password at first sign-in.`)
       onSaved()
       onClose()
@@ -234,6 +284,7 @@ function NewEmployeeDialog({ onClose, onSaved }: { onClose: () => void; onSaved:
               ))}
             </select>
           </Field>
+          <ShiftField value={shift} onChange={setShift} />
           <ExtraTabs role={form.role} value={keepExtras(form.role, extraTabs)} onChange={setExtraTabs} />
         </form>
         <DialogFooter>
@@ -253,6 +304,8 @@ function NewEmployeeDialog({ onClose, onSaved }: { onClose: () => void; onSaved:
 function EditEmployeeDialog({ e, self, onClose, onSaved }: { e: Employee; self: boolean; onClose: () => void; onSaved: () => void }) {
   const [role, setRole] = useState<Role>(e.role)
   const [password, setPassword] = useState('')
+  const [shift, setShift] = useState<Shift | ''>(e.shift ?? '')
+  const shiftChanged = shift !== (e.shift ?? '')
   const [busy, setBusy] = useState(false)
   const before = keepExtras(e.role, e.extraTabs ?? [])
   const [picked, setPicked] = useState(before)
@@ -275,7 +328,7 @@ function EditEmployeeDialog({ e, self, onClose, onSaved }: { e: Employee; self: 
 
   function submit(ev: FormEvent) {
     ev.preventDefault()
-    void save({ ...(role !== e.role ? { role } : {}), ...(tabsChanged ? { extraTabs } : {}), ...(password ? { password } : {}) }, password ? 'Saved. They set a new password at next sign-in.' : 'Saved')
+    void save({ ...(role !== e.role ? { role } : {}), ...(tabsChanged ? { extraTabs } : {}), ...(shiftChanged ? { shift: shift || null } : {}), ...(password ? { password } : {}) }, password ? 'Saved. They set a new password at next sign-in.' : 'Saved')
   }
 
   return (
@@ -295,6 +348,7 @@ function EditEmployeeDialog({ e, self, onClose, onSaved }: { e: Employee; self: 
               ))}
             </select>
           </Field>
+          <ShiftField value={shift} onChange={setShift} />
           <ExtraTabs role={role} value={extraTabs} onChange={setPicked} />
           {!self && (
             <Field label="Reset password" htmlFor="password">
@@ -314,7 +368,7 @@ function EditEmployeeDialog({ e, self, onClose, onSaved }: { e: Employee; self: 
             <Button variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" form="edit-employee" disabled={busy || (role === e.role && !password && !tabsChanged)}>
+            <Button type="submit" form="edit-employee" disabled={busy || (role === e.role && !password && !tabsChanged && !shiftChanged)}>
               Save
             </Button>
           </div>

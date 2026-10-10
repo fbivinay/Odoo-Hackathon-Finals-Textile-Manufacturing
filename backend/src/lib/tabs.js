@@ -39,6 +39,9 @@ const TAB_LABEL = {
 // Role names as people read them, mirroring ROLE_LABEL in web/src/components/AppShell.tsx.
 const ROLE_LABEL = { OWNER: 'Owner', STORE: 'Store Manager', PRODUCTION: 'Production Supervisor', QC: 'Quality Inspector', DISPATCH: 'Dispatch Manager' };
 
+// The three shifts an employee can be put on.
+const SHIFT_LABEL = { MORNING: 'Morning (6 AM to 2 PM)', EVENING: 'Evening (2 PM to 10 PM)', NIGHT: 'Night (10 PM to 6 AM)' };
+
 // Every tab a user can open: by role, plus the ones granted to them. The owner opens all.
 const tabsOf = (user) =>
   Object.keys(TAB_ROLES).filter((t) => user.role === 'OWNER' || TAB_ROLES[t].includes(user.role) || user.extraTabs.includes(t));
@@ -46,4 +49,4 @@ const tabsOf = (user) =>
 // Every role a user acts with: their own, plus what their extra tabs need.
 const rolesOf = (user) => [...new Set([user.role, ...user.extraTabs.map((t) => EXTRA_TABS[t]).filter(Boolean)])];
 
-module.exports = { EXTRA_TABS, TAB_ROLES, TAB_LABEL, ROLE_LABEL, tabsOf, rolesOf };
+module.exports = { EXTRA_TABS, TAB_ROLES, TAB_LABEL, ROLE_LABEL, SHIFT_LABEL, tabsOf, rolesOf };
