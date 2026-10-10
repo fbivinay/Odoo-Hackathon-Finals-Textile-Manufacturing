@@ -51,6 +51,10 @@ They answer `{ ok, data: [...], meta: { count, nextCursor } }`. Pass `nextCursor
 | POST | `/materials/inwards` | STORE | `{ materialId, supplierId, orderId?, qty, rate }` adds stock, re-averages cost |
 | GET | `/materials/issues` | | `?materialId=&orderId=`, plus `?category=` or `?kind=other` |
 | POST | `/materials/issues` | STORE | `{ materialId, orderId?, qty }` → 409 `INSUFFICIENT_STOCK` if short; `orderId` is required for yarn and optional for other materials |
+| GET | `/materials/purchase-orders` | | `?status=` (PENDING, RECEIVED or CANCELLED), plus `?category=` or `?kind=other` |
+| POST | `/materials/purchase-orders` | STORE | `{ lines: [{ materialId, supplierId, qty, rate }] }` creates one PENDING order per line (`PO-00001`…); stock is not touched |
+| POST | `/materials/purchase-orders/:id/receive` | STORE | `{ qty?, rate? }` (defaults to what was ordered) marks it RECEIVED and records an inward: adds stock, issues yarn to waiting orders → `issuedTo[]`; 409 `NOT_PENDING` |
+| POST | `/materials/purchase-orders/:id/cancel` | STORE | PENDING → CANCELLED; 409 `NOT_PENDING` |
 
 ## Orders
 
@@ -60,7 +64,7 @@ Yarn is issued automatically: when an order is created (if the store has it) and
 |---|---|---|---|
 | GET | `/orders` | | `?status=&buyerId=&q=&delayed=true` + paging; each row has `isDelayed` |
 | POST | `/orders` | STORE, DISPATCH | `{ buyerId, materialId?, fabricType, colour?, qty, yarnRequired?, pricePerUnit?, deadline }` → includes `availability` |
-| GET | `/orders/:id` | | buyer, material, issues, jobs, rolls, dispatches, `availability` |
+| GET | `/orders/:id` | | buyer, material, issues (with `material`), jobs, rolls (with `qcRecords`), dispatches (with `invoice.payments`), `availability` |
 | PATCH | `/orders/:id/status` | OWNER | `{ status }` manual override, e.g. `CANCELLED` |
 | GET | `/track/:token` | public | buyer page; token is `order.trackingToken` |
 
@@ -121,7 +125,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/dashboard/summary` | | orders, low stock, machines, QC, finished stock, receivables |
-| GET | `/reports/order-costs` | OWNER | `?status=&buyerId=` + paging; per order: material, labour, total, cost per unit and per roll, margin |
+| GET | `/reports/order-costs` | OWNER | `?id=&status=&buyerId=` + paging; per order: material, labour, total, cost per unit and per roll, margin |
 | GET | `/planning/schedule` | | `?days=90` (1–365) forward plan, see below |
 | GET | `/reports/machine-output` | OWNER | `?month=` → per machine total + `daily[]` series |
 | GET | `/reports/pnl` | OWNER | `?month=` → bills, wages, invoiced, payments, `profit`, `cashFlow` |

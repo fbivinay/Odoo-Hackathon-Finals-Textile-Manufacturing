@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { DataTable } from '@/components/DataTable'
+import { Figure } from '@/components/Figure'
 import { LiveBadge } from '@/components/LiveBadge'
 import { Pill, label } from '@/components/StatusPill'
 import { selectClass } from '@/components/Field'
-import { CountUp } from '@/components/CountUp'
-import { Skeleton } from '@/components/ui/skeleton'
+import { useDataVersion } from '@/lib/changes'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { formatINR, formatMoney, formatQty, unitFor } from '@/lib/format'
@@ -17,22 +17,6 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const THIS_MONTH = new Date().toISOString().slice(0, 7)
 // The mill's records start in 2023 (Nov–Dec 2022 is warm-up stock and work in progress).
 const YEARS = Array.from({ length: +THIS_MONTH.slice(0, 4) - 2022 }, (_, i) => String(+THIS_MONTH.slice(0, 4) - i))
-
-function Figure({ label, value, note, tone, loading }: { label: string; value: string; note?: string; tone?: 'good' | 'watch' | 'problem'; loading?: boolean }) {
-  return (
-    <div className={cn('figure', tone && `figure--${tone}`)}>
-      <p className="figure__label">{label}</p>
-      {loading ? (
-        <Skeleton className="mx-auto mt-2 h-9 w-32" />
-      ) : (
-        <p className="figure__value">
-          <CountUp text={value} />
-        </p>
-      )}
-      {note && !loading && <p className="figure__note">{note}</p>}
-    </div>
-  )
-}
 
 // Three shades of the brand purple; other colours are reserved for status.
 const STAGE_COLOR: Record<Stage, string> = { SPINNING: '#c9b3c2', WEAVING: '#9a7790', DYEING: '#714b67' }
@@ -84,6 +68,7 @@ export function Dashboard() {
 
   // The chosen year, month by month: twelve small P&L calls (milliseconds each).
   const year = month.slice(0, 4)
+  const version = useDataVersion()
   const [trend, setTrend] = useState<{ month: string; label: string; invoiced: number; profit: number }[]>([])
   useEffect(() => {
     let live = true
@@ -94,7 +79,7 @@ export function Dashboard() {
     return () => {
       live = false
     }
-  }, [year])
+  }, [year, version])
 
   return (
     <div className="space-y-6">
@@ -140,32 +125,37 @@ export function Dashboard() {
       </div>
       {error && <p className="text-sm text-problem">{error}</p>}
 
-      {/* The figures panel: six numbers the owner reads first, each on its own raised card. */}
+      {/* The figures panel: money in, money out and what is left, for the chosen month. */}
       <section className="figures-panel">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Figure label="Invoiced" value={formatMoney(p?.invoiced ?? 0)} note={`Received ${formatMoney(p?.paymentsReceived ?? 0)} from buyers`} loading={loading} />
+          <Figure label="Invoiced" value={formatMoney(p?.invoiced ?? 0)} note="Bills raised to buyers this month" loading={loading} />
+          <Figure label="Collected" tone="good" value={formatMoney(p?.paymentsReceived ?? 0)} note="Payments received from buyers this month" loading={loading} />
+          <Figure
+            label="Outstanding"
+            tone="watch"
+            value={formatMoney(summary.data?.receivables ?? 0)}
+            note="Still owed by buyers today"
+            loading={summary.loading}
+          />
+          <Figure
+            label="Total expenses"
+            value={formatMoney((p?.materialBills ?? 0) + (p?.wagesEarned ?? 0))}
+            note={`Yarn ${formatMoney(p?.materialBills ?? 0)} + wages ${formatMoney(p?.wagesEarned ?? 0)}`}
+            loading={loading}
+          />
           <Figure
             label="Profit"
             tone={(p?.profit ?? 0) < 0 ? 'problem' : 'good'}
             value={formatMoney(p?.profit ?? 0)}
-            note={p?.invoiced ? `${Math.round((p.profit / p.invoiced) * 100)}% of invoiced, after yarn and wages` : 'Invoiced − yarn − wages'}
+            note={p?.invoiced ? `${Math.round((p.profit / p.invoiced) * 100)}% of invoiced, after expenses` : 'Invoiced − total expenses'}
             loading={loading}
           />
-          <Figure label="Yarn bought" value={formatMoney(p?.materialBills ?? 0)} note="Raw material bills this month" loading={loading} />
-          <Figure label="Wages earned" value={formatMoney(p?.wagesEarned ?? 0)} note={`${formatMoney(p?.wagesPaid ?? 0)} paid out`} loading={loading} />
           <Figure
             label="Cash flow"
-            tone={(p?.cashFlow ?? 0) < 0 ? 'watch' : undefined}
+            tone={(p?.cashFlow ?? 0) < 0 ? 'problem' : undefined}
             value={formatMoney(p?.cashFlow ?? 0)}
-            note="Received − bills − wages paid"
+            note="Collected − yarn bills − wages paid"
             loading={loading}
-          />
-          <Figure
-            label="Owed by buyers"
-            tone="watch"
-            value={formatMoney(summary.data?.receivables ?? 0)}
-            note={`${summary.data?.orders.delayed ?? 0} order${summary.data?.orders.delayed === 1 ? '' : 's'} running late today`}
-            loading={summary.loading}
           />
         </div>
       </section>

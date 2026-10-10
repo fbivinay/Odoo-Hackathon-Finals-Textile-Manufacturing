@@ -107,13 +107,16 @@ async function get(id) {
     include: {
       buyer: true,
       material: true,
-      issues: { orderBy: { issuedAt: 'desc' } },
+      issues: { orderBy: { issuedAt: 'desc' }, include: { material: { select: { id: true, category: true, yarnType: true, colour: true, unit: true } } } },
       jobs: {
         orderBy: { startedAt: 'desc' },
         include: { machine: true, worker: { select: { id: true, name: true, code: true } } },
       },
-      rolls: { orderBy: { createdAt: 'asc' }, include: { machine: { select: { id: true, code: true } } } },
-      dispatches: { orderBy: { dispatchedAt: 'desc' }, include: { invoice: true } },
+      rolls: {
+        orderBy: { createdAt: 'asc' },
+        include: { machine: { select: { id: true, code: true } }, qcRecords: { orderBy: { checkedAt: 'asc' }, select: { result: true, defectType: true, checkedAt: true } } },
+      },
+      dispatches: { orderBy: { dispatchedAt: 'desc' }, include: { invoice: { include: { payments: { orderBy: { paidAt: 'asc' } } } } } },
     },
   });
   if (!order) throw notFound('Order not found');
