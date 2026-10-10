@@ -3,6 +3,7 @@ const { nextNumber } = require('../lib/numbering');
 const { startOfToday } = require('../lib/dates');
 const { notFound, conflict, badRequest } = require('../lib/errors');
 const { syncStatus } = require('./orderService');
+const { pageArgs, toPage, dateRange } = require('../lib/paging');
 
 const jobInclude = {
   order: { select: { id: true, orderNo: true, fabricType: true, colour: true, qty: true, deadline: true } },
@@ -48,7 +49,7 @@ async function board() {
       idle: count('IDLE'),
       breakdown: count('BREAKDOWN'),
       maintenance: count('MAINTENANCE'),
-      producedToday: rows.reduce((total, m) => total + m.producedToday, 0),
+      producedToday: Math.round(rows.reduce((total, m) => total + m.producedToday, 0) * 100) / 100,
     },
   };
 }
@@ -132,13 +133,16 @@ async function finishJob(jobId, status) {
   });
 }
 
-async function listJobs({ orderId, machineId, status } = {}) {
+// from/to filter on startedAt.
+async function listJobs(query = {}) {
+  const { orderId, machineId, workerId, status, stage, from, to } = query;
   const jobs = await prisma.productionJob.findMany({
-    where: { orderId, machineId, status },
-    orderBy: { startedAt: 'desc' },
+    where: { orderId, machineId, workerId, status, stage, startedAt: dateRange(from, to) },
+    orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
     include: jobInclude,
+    ...pageArgs(query),
   });
-  return jobs.map(withPercent);
+  return toPage(jobs.map(withPercent), query);
 }
 
 // A finished roll comes off a job, so it always carries its order and machine.

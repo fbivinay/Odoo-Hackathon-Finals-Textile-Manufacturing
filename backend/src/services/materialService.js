@@ -1,5 +1,6 @@
 const prisma = require('../lib/prisma');
 const { notFound, conflict } = require('../lib/errors');
+const { pageArgs, toPage, dateRange } = require('../lib/paging');
 
 const withLowStock = (m) => ({ ...m, lowStock: Number(m.qtyInStock) <= Number(m.reorderLevel) });
 
@@ -44,10 +45,13 @@ async function inward({ materialId, supplierId, orderId, qty, rate }, userId) {
   });
 }
 
-function listInwards({ materialId, orderId } = {}) {
-  return prisma.materialInward.findMany({
-    where: { materialId, orderId },
-    orderBy: { receivedAt: 'desc' },
+// from/to filter on receivedAt.
+async function listInwards(query = {}) {
+  const { materialId, orderId, supplierId, from, to } = query;
+  const rows = await prisma.materialInward.findMany({
+    where: { materialId, orderId, supplierId, receivedAt: dateRange(from, to) },
+    orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+    ...pageArgs(query),
     include: {
       material: { select: { id: true, yarnType: true, colour: true, unit: true } },
       supplier: { select: { id: true, name: true } },
@@ -55,6 +59,7 @@ function listInwards({ materialId, orderId } = {}) {
       receivedBy: { select: { id: true, name: true } },
     },
   });
+  return toPage(rows, query);
 }
 
 // Yarn leaving the store for an order. The guarded decrement stops stock going negative.
@@ -82,15 +87,19 @@ async function issue({ materialId, orderId, qty }) {
   });
 }
 
-function listIssues({ materialId, orderId } = {}) {
-  return prisma.materialIssue.findMany({
-    where: { materialId, orderId },
-    orderBy: { issuedAt: 'desc' },
+// from/to filter on issuedAt.
+async function listIssues(query = {}) {
+  const { materialId, orderId, from, to } = query;
+  const rows = await prisma.materialIssue.findMany({
+    where: { materialId, orderId, issuedAt: dateRange(from, to) },
+    orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
+    ...pageArgs(query),
     include: {
       material: { select: { id: true, yarnType: true, colour: true, unit: true } },
       order: { select: { id: true, orderNo: true } },
     },
   });
+  return toPage(rows, query);
 }
 
 module.exports = { list, create, update, inward, listInwards, issue, listIssues };

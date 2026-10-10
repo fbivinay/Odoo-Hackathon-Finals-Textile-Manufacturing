@@ -4,6 +4,22 @@ Base URL: `<backend>/api`. Send `Authorization: Bearer <token>` on everything ex
 
 Every response is `{ ok: true, data }` or `{ ok: false, error, message }`. Quantities and money are JSON numbers; dates are ISO strings.
 
+## Paging and date filters
+
+These lists accept `?limit=` (max 500) and `?cursor=`, plus `?from=&to=` (`YYYY-MM-DD` or ISO; a date-only `to` includes that day):
+
+| List | `from`/`to` filter on |
+|---|---|
+| `/orders` | `createdAt` (also `dueFrom`/`dueTo` on `deadline`) |
+| `/dispatch` | `dispatchedAt` |
+| `/invoices` | `issuedAt` |
+| `/qc/rolls` | `createdAt` |
+| `/production/jobs` | `startedAt` |
+| `/materials/inwards`, `/materials/issues` | `receivedAt`, `issuedAt` |
+| `/reports/order-costs` | order `createdAt` |
+
+They answer `{ ok, data: [...], meta: { count, nextCursor } }`. Pass `nextCursor` back as `cursor` for the next page; `null` means the end. Without `limit` the whole list comes back, which is megabytes on the full dataset, so always send one.
+
 "Write" below lists the roles allowed to call it. `OWNER` can call everything. Every signed-in role can read, unless marked.
 
 ## Auth and users
@@ -40,7 +56,7 @@ Every response is `{ ok: true, data }` or `{ ok: false, error, message }`. Quant
 
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
-| GET | `/orders` | | `?status=&buyerId=&q=&delayed=true`; each row has `isDelayed` |
+| GET | `/orders` | | `?status=&buyerId=&q=&delayed=true` + paging; each row has `isDelayed` |
 | POST | `/orders` | STORE, DISPATCH | `{ buyerId, materialId?, fabricType, colour, qty, yarnRequired?, pricePerUnit?, deadline }` → includes `availability` |
 | GET | `/orders/:id` | | buyer, material, issues, jobs, rolls, dispatches, `availability` |
 | PATCH | `/orders/:id/status` | OWNER | `{ status }` manual override, e.g. `CANCELLED` |
@@ -58,7 +74,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | POST | `/machines` | OWNER | `{ code, name, type }` type = `SPINNING/WEAVING/DYEING` |
 | PATCH | `/machines/:id/status` | PRODUCTION | `{ status }` = `IDLE/BREAKDOWN/MAINTENANCE`; stops the running job |
 | GET | `/production/board` | | `{ machines[], summary }`; each machine has `currentJob` (with `percent`) and `producedToday` |
-| GET | `/production/jobs` | | `?orderId=&machineId=&status=` |
+| GET | `/production/jobs` | | `?orderId=&machineId=&workerId=&status=&stage=` + paging |
 | POST | `/production/jobs` | PRODUCTION | `{ orderId, machineId, workerId?, shift, qtyPlanned }` → 409 `MACHINE_BUSY` unless idle |
 | POST | `/production/jobs/:id/progress` | PRODUCTION | `{ qty }` quantity produced since last report |
 | POST | `/production/jobs/:id/complete` | PRODUCTION | frees the machine |
@@ -72,14 +88,14 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | GET | `/qc/rolls` | | `?status=PENDING_QC/PASSED/REWORK/REJECTED/DISPATCHED&orderId=&machineId=` |
 | GET | `/qc/rolls/:id` | | full trace: order, machine, job, worker, inspections |
 | POST | `/qc/rolls/:id/inspect` | QC | `{ result: PASS/REWORK/REJECT, defectType?, notes? }`; `defectType` needed unless PASS |
-| GET | `/qc/summary` | | `{ counts, passRate, defectsByType[], defectsByMachine[] }` |
+| GET | `/qc/summary` | | `?from=&to=` → `{ counts, passRate, defectsByType[], defectsByMachine[] }` |
 
 ## Dispatch, invoices, payments
 
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/dispatch/stock` | | finished rolls on the shelf, grouped by order |
-| GET | `/dispatch` | | `?orderId=`; each has `rolls`, `totalQty`, `invoice` |
+| GET | `/dispatch` | | `?orderId=&buyerId=` + paging; each has `rolls`, `totalQty`, `invoice` |
 | GET | `/dispatch/:id` | | |
 | POST | `/dispatch` | DISPATCH | `{ orderId, rollIds[], vehicleNo? }` creates the invoice; 409 `ROLLS_NOT_AVAILABLE` on wrong or already-sent rolls |
 | GET | `/invoices` | | `?status=UNPAID/PARTIAL/PAID`; each has `paid`, `balance` |
@@ -102,9 +118,24 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/dashboard/summary` | | orders, low stock, machines, QC, finished stock, receivables |
-| GET | `/reports/order-costs` | OWNER | per order: material, labour, total, cost per unit and per roll, margin |
+| GET | `/reports/order-costs` | OWNER | `?status=&buyerId=` + paging; per order: material, labour, total, cost per unit and per roll, margin |
+| GET | `/planning/schedule` | | `?days=90` (1–365) forward plan, see below |
 | GET | `/reports/machine-output` | OWNER | `?month=` → per machine total + `daily[]` series |
 | GET | `/reports/pnl` | OWNER | `?month=` → bills, wages, invoiced, payments, `profit`, `cashFlow` |
+
+## Planning schedule
+
+`GET /planning/schedule?days=90` plans every open order forward, earliest deadline first, into the free capacity of each stage. Nothing is stored; it is recomputed on each call.
+
+| Field | Meaning |
+|---|---|
+| `capacity.<STAGE>` | `{ machines, usable, perDay }`; `perDay` = usable machines × their 60-day average output per shift × 3 shifts |
+| `summary` | `{ openOrders, onTime, late, unscheduled, yarnsShort }` |
+| `orders[]` | order fields + `stages[]` (`{ stage, remaining, start, end }`), `yarnToIssue`, `expectedReady`, `lateByDays`, `onTime`, `withinHorizon` |
+| `weeklyLoad[]` | per week (Monday `weekStart`): each stage's `{ load, capacity, utilisation }` |
+| `yarnNeeds[]` | per yarn: `needed` by open orders, `inStock`, `shortBy`, `orders` |
+
+Assumptions: Sundays are closed, broken or under-maintenance machines count as unavailable, one day is added for QC, spinning is planned in kg of yarn and weaving/dyeing in order quantity.
 
 ## Errors
 

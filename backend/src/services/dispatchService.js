@@ -2,6 +2,7 @@ const prisma = require('../lib/prisma');
 const { nextNumber } = require('../lib/numbering');
 const { notFound, conflict, badRequest } = require('../lib/errors');
 const { syncStatus, sumQty } = require('./orderService');
+const { pageArgs, toPage, dateRange } = require('../lib/paging');
 
 const dispatchInclude = {
   order: { select: { id: true, orderNo: true, fabricType: true, colour: true, qty: true } },
@@ -84,13 +85,16 @@ const shape = (dispatch) => ({
   invoice: dispatch.invoice && withBalance(dispatch.invoice),
 });
 
-async function list({ orderId } = {}) {
+// from/to filter on dispatchedAt.
+async function list(query = {}) {
+  const { orderId, buyerId, from, to } = query;
   const rows = await prisma.dispatch.findMany({
-    where: { orderId },
-    orderBy: { dispatchedAt: 'desc' },
+    where: { orderId, buyerId, dispatchedAt: dateRange(from, to) },
+    orderBy: [{ dispatchedAt: 'desc' }, { id: 'desc' }],
     include: dispatchInclude,
+    ...pageArgs(query),
   });
-  return rows.map(shape);
+  return toPage(rows.map(shape), query);
 }
 
 async function get(id) {
@@ -110,13 +114,16 @@ const invoiceInclude = {
   },
 };
 
-async function listInvoices({ status } = {}) {
+// from/to filter on issuedAt.
+async function listInvoices(query = {}) {
+  const { status, from, to } = query;
   const rows = await prisma.invoice.findMany({
-    where: { status },
-    orderBy: { issuedAt: 'desc' },
+    where: { status, issuedAt: dateRange(from, to) },
+    orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
     include: invoiceInclude,
+    ...pageArgs(query),
   });
-  return rows.map(withBalance);
+  return toPage(rows.map(withBalance), query);
 }
 
 async function addPayment(invoiceId, { amount, method }) {

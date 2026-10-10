@@ -1,72 +1,114 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../lib/prisma');
 const { monthRange } = require('../lib/dates');
+const { pageArgs, toPage, dateRange } = require('../lib/paging');
 const materialService = require('./materialService');
 const orderService = require('./orderService');
 const productionService = require('./productionService');
 const qcService = require('./qcService');
-const dispatchService = require('./dispatchService');
 const workforceService = require('./workforceService');
 
 const HOURS_PER_SHIFT = 8;
 const round = (n) => Math.round(n * 100) / 100;
 const sum = (rows, key) => rows.reduce((total, r) => total + Number(r[key]), 0);
 
-// One-screen picture of the mill right now.
+// One-screen picture of the mill right now. Counted in the database, so it stays quick on years of data.
 async function summary() {
-  const [orders, lowStock, floor, qc, shelf, invoices] = await Promise.all([
-    orderService.list(),
+  const unpaid = { status: { not: 'PAID' } };
+  const [byStatusRows, delayed, delayedList, lowStock, floor, qc, shelf, billed, received] = await Promise.all([
+    prisma.order.groupBy({ by: ['status'], _count: true }),
+    prisma.order.count({ where: orderService.delayedWhere() }),
+    prisma.order.findMany({
+      where: orderService.delayedWhere(),
+      orderBy: { deadline: 'asc' },
+      take: 10,
+      include: { buyer: { select: { id: true, name: true } } },
+    }),
     materialService.list({ lowStock: 'true' }),
     productionService.board(),
-    qcService.summary(),
-    dispatchService.stock(),
-    dispatchService.listInvoices(),
+    qcService.counts(),
+    prisma.roll.aggregate({ where: { status: 'PASSED', dispatchId: null }, _count: true, _sum: { qty: true } }),
+    prisma.invoice.aggregate({ where: unpaid, _sum: { amount: true } }),
+    prisma.payment.aggregate({ where: { invoice: unpaid }, _sum: { amount: true } }),
   ]);
 
   const byStatus = {};
-  for (const o of orders) byStatus[o.status] = (byStatus[o.status] || 0) + 1;
-  const open = orders.filter((o) => !['DISPATCHED', 'CANCELLED'].includes(o.status));
+  let total = 0;
+  for (const row of byStatusRows) {
+    byStatus[row.status] = row._count;
+    total += row._count;
+  }
+  const closed = orderService.CLOSED.reduce((n, status) => n + (byStatus[status] || 0), 0);
 
   return {
     orders: {
-      total: orders.length,
-      open: open.length,
-      delayed: open.filter((o) => o.isDelayed).length,
+      total,
+      open: total - closed,
+      delayed,
       byStatus,
-      delayedList: open.filter((o) => o.isDelayed).slice(0, 10),
+      delayedList: delayedList.map(orderService.decorate),
     },
     materials: { lowStockCount: lowStock.length, lowStock },
     machines: floor.summary,
     qc: { ...qc.counts, passRate: qc.passRate },
-    finishedStock: { rolls: shelf.totalRolls, qty: shelf.totalQty },
-    receivables: round(sum(invoices, 'balance')),
+    finishedStock: { rolls: shelf._count, qty: Number(shelf._sum.qty || 0) },
+    receivables: round(Number(billed._sum.amount || 0) - Number(received._sum.amount || 0)),
   };
 }
 
 // What it actually cost to make each order: yarn issued + labour time on its jobs.
-async function orderCosts() {
+// Filters: status, buyerId, from/to (order created), limit/cursor. Totals are summed in the database.
+async function orderCosts(query = {}) {
+  const { status, buyerId, from, to } = query;
+  const filtered = Boolean(status || buyerId || from || to || query.limit);
   const orders = await prisma.order.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: {
-      buyer: { select: { id: true, name: true } },
-      issues: true,
-      jobs: { include: { worker: true } },
-      rolls: true,
-      dispatches: { include: { invoice: true } },
-    },
+    where: { status, buyerId, createdAt: dateRange(from, to) },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    include: { buyer: { select: { id: true, name: true } } },
+    ...pageArgs(query),
   });
+  const page = toPage(orders, query);
+  const ids = page.data.map((o) => o.id);
+  if (ids.length === 0) return page;
 
-  return orders.map((order) => {
-    const materialCost = sum(order.issues, 'cost');
-    const labourCost = order.jobs.reduce((total, job) => {
-      if (!job.worker) return total;
-      const hours = ((job.completedAt || new Date()) - job.startedAt) / 3600000;
-      return total + (Number(job.worker.dailyWage) * hours) / HOURS_PER_SHIFT;
-    }, 0);
-    const good = order.rolls.filter((r) => ['PASSED', 'DISPATCHED'].includes(r.status));
-    const goodQty = sum(good, 'qty');
+  // On an unfiltered run every order is wanted, so skip the id list entirely.
+  const only = (column) => (filtered ? Prisma.sql`WHERE ${column} IN (${Prisma.join(ids)})` : Prisma.empty);
+  const [issues, labour, rolls, invoices] = await Promise.all([
+    prisma.materialIssue.groupBy({ by: ['orderId'], where: filtered ? { orderId: { in: ids } } : {}, _sum: { cost: true } }),
+    prisma.$queryRaw`
+      SELECT j."orderId" AS id,
+             SUM(w."dailyWage" * EXTRACT(EPOCH FROM (COALESCE(j."completedAt", NOW()) - j."startedAt")) / 3600 / ${HOURS_PER_SHIFT})::float AS value
+      FROM "ProductionJob" j JOIN "Worker" w ON w.id = j."workerId"
+      ${only(Prisma.sql`j."orderId"`)}
+      GROUP BY j."orderId"`,
+    prisma.roll.groupBy({ by: ['orderId', 'status'], where: filtered ? { orderId: { in: ids } } : {}, _sum: { qty: true }, _count: true }),
+    prisma.$queryRaw`
+      SELECT d."orderId" AS id, SUM(i.amount)::float AS value
+      FROM "Invoice" i JOIN "Dispatch" d ON d.id = i."dispatchId"
+      ${only(Prisma.sql`d."orderId"`)}
+      GROUP BY d."orderId"`,
+  ]);
+
+  const materialOf = new Map(issues.map((r) => [r.orderId, Number(r._sum.cost || 0)]));
+  const labourOf = new Map(labour.map((r) => [r.id, r.value || 0]));
+  const invoicedOf = new Map(invoices.map((r) => [r.id, r.value || 0]));
+  const rollsOf = new Map();
+  for (const r of rolls) {
+    const entry = rollsOf.get(r.orderId) || { goodQty: 0, good: 0, rejectedQty: 0 };
+    if (['PASSED', 'DISPATCHED'].includes(r.status)) {
+      entry.goodQty += Number(r._sum.qty || 0);
+      entry.good += r._count;
+    }
+    if (r.status === 'REJECTED') entry.rejectedQty += Number(r._sum.qty || 0);
+    rollsOf.set(r.orderId, entry);
+  }
+
+  page.data = page.data.map((order) => {
+    const materialCost = materialOf.get(order.id) || 0;
+    const labourCost = labourOf.get(order.id) || 0;
+    const { goodQty, good, rejectedQty } = rollsOf.get(order.id) || { goodQty: 0, good: 0, rejectedQty: 0 };
     const totalCost = materialCost + labourCost;
     const orderValue = Number(order.qty) * Number(order.pricePerUnit);
-    const invoiced = order.dispatches.reduce((total, d) => total + Number(d.invoice?.amount || 0), 0);
 
     return {
       id: order.id,
@@ -76,19 +118,20 @@ async function orderCosts() {
       colour: order.colour,
       status: order.status,
       qty: order.qty,
-      goodQty,
-      rolls: good.length,
-      rejectedQty: sum(order.rolls.filter((r) => r.status === 'REJECTED'), 'qty'),
+      goodQty: round(goodQty),
+      rolls: good,
+      rejectedQty: round(rejectedQty),
       materialCost: round(materialCost),
       labourCost: round(labourCost),
       totalCost: round(totalCost),
       costPerUnit: goodQty ? round(totalCost / goodQty) : null,
-      costPerRoll: good.length ? round(totalCost / good.length) : null,
+      costPerRoll: good ? round(totalCost / good) : null,
       orderValue: round(orderValue),
-      invoiced: round(invoiced),
+      invoiced: round(invoicedOf.get(order.id) || 0),
       margin: round(orderValue - totalCost),
     };
   });
+  return page;
 }
 
 // How much every machine produced in the month, with a per-day series for charts.

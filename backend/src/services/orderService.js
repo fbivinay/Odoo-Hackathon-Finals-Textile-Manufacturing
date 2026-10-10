@@ -1,6 +1,7 @@
 const prisma = require('../lib/prisma');
 const { nextNumber } = require('../lib/numbering');
 const { notFound, badRequest } = require('../lib/errors');
+const { pageArgs, toPage, dateRange } = require('../lib/paging');
 
 const CLOSED = ['DISPATCHED', 'CANCELLED'];
 
@@ -52,24 +53,32 @@ async function syncStatus(tx, orderId) {
   return tx.order.update({ where: { id: orderId }, data: { status } });
 }
 
-async function list({ status, buyerId, q, delayed } = {}) {
+const delayedWhere = () => ({ deadline: { lt: new Date() }, status: { notIn: CLOSED } });
+
+// from/to filter on createdAt, dueFrom/dueTo on deadline.
+async function list(query = {}) {
+  const { status, buyerId, q, delayed, from, to, dueFrom, dueTo } = query;
   const orders = await prisma.order.findMany({
     where: {
-      status,
-      buyerId,
-      ...(q && {
-        OR: [
-          { orderNo: { contains: q, mode: 'insensitive' } },
-          { fabricType: { contains: q, mode: 'insensitive' } },
-          { buyer: { name: { contains: q, mode: 'insensitive' } } },
-        ],
-      }),
+      AND: [
+        { status, buyerId, createdAt: dateRange(from, to), deadline: dateRange(dueFrom, dueTo, ['dueFrom', 'dueTo']) },
+        delayed === 'true' ? delayedWhere() : {},
+        q
+          ? {
+              OR: [
+                { orderNo: { contains: q, mode: 'insensitive' } },
+                { fabricType: { contains: q, mode: 'insensitive' } },
+                { buyer: { name: { contains: q, mode: 'insensitive' } } },
+              ],
+            }
+          : {},
+      ],
     },
-    orderBy: { deadline: 'asc' },
+    orderBy: [{ deadline: 'asc' }, { id: 'asc' }],
     include: { buyer: { select: { id: true, name: true } } },
+    ...pageArgs(query),
   });
-  const rows = orders.map(decorate);
-  return delayed === 'true' ? rows.filter((o) => o.isDelayed) : rows;
+  return toPage(orders.map(decorate), query);
 }
 
 async function create(data) {
@@ -155,4 +164,4 @@ async function track(token) {
   };
 }
 
-module.exports = { list, create, get, updateStatus, availability, syncStatus, track, sumQty };
+module.exports = { list, create, get, updateStatus, availability, syncStatus, track, sumQty, decorate, delayedWhere, CLOSED };
