@@ -49,7 +49,7 @@ export interface Ref {
 }
 
 // GET /materials
-export type MaterialCategory = 'YARN' | 'DYE' | 'CHEMICAL' | 'PACKAGING' | 'OTHER'
+export type MaterialCategory = 'YARN' | 'WEAVING' | 'DYEING' | 'FINISHING' | 'QC' | 'PACKAGING' | 'MAINTENANCE'
 
 export interface RawMaterial {
   id: string
@@ -64,6 +64,11 @@ export interface RawMaterial {
   lowStock: boolean
   supplierId?: string | null // usual supplier (Config)
   leadDays?: number // supplier delivery days (Config)
+  sku?: string | null
+  subcategory?: string | null
+  department?: string | null
+  taxCode?: string | null // GST rule (backend/src/lib/tax.js)
+  isSpare?: boolean
 }
 
 // GET /materials/inwards
@@ -73,6 +78,15 @@ export interface MaterialInward {
   rate: number
   billAmount: number
   receivedAt: string
+  // The delivery's supplier bill: GST and the total payable.
+  billNo?: string | null
+  dueDate?: string | null
+  taxRatePct?: number
+  taxTreatment?: string | null
+  cgst?: number
+  sgst?: number
+  igst?: number
+  totalAmount?: number | null
   material: Pick<RawMaterial, 'id' | 'yarnType' | 'colour' | 'unit'>
   supplier: Ref
   order: { id: string; orderNo: string } | null
@@ -245,6 +259,9 @@ export interface Pnl {
   materialBills: number
   wagesEarned: number
   wagesPaid: number
+  logistics?: number
+  utilities?: number
+  supplierPayments?: number
   invoiced: number
   paymentsReceived: number
   profit: number

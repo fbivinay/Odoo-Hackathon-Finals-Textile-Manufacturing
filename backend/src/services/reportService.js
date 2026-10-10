@@ -28,7 +28,7 @@ async function summary() {
     productionService.board(),
     qcService.counts(),
     prisma.roll.aggregate({ where: { status: 'PASSED', dispatchId: null }, _count: true, _sum: { qty: true } }),
-    prisma.invoice.aggregate({ where: unpaid, _sum: { amount: true } }),
+    prisma.$queryRaw`SELECT COALESCE(SUM(COALESCE("totalAmount", amount)), 0)::float AS amount FROM "Invoice" WHERE status <> 'PAID'`,
     prisma.payment.aggregate({ where: { invoice: unpaid }, _sum: { amount: true } }),
   ]);
 
@@ -52,7 +52,7 @@ async function summary() {
     machines: floor.summary,
     qc: { ...qc.counts, passRate: qc.passRate },
     finishedStock: { rolls: shelf._count, qty: Number(shelf._sum.qty || 0) },
-    receivables: round(Number(billed._sum.amount || 0) - Number(received._sum.amount || 0)),
+    receivables: round(Number(billed[0].amount || 0) - Number(received._sum.amount || 0)),
   };
 }
 
@@ -161,33 +161,45 @@ async function machineOutput({ month } = {}) {
   };
 }
 
-// Did the mill make money this month? Yarn bills and wages against buyer payments.
+// Did the mill make money this month? Material bills, wages, logistics and utilities against sales.
+// All pre-tax: GST collected or paid is not income or cost (Accounts > GST shows it separately).
 async function pnl({ month } = {}) {
   const range = monthRange(month);
   const within = { gte: range.start, lt: range.end };
-  const [inwards, invoices, payments, wageSheet] = await Promise.all([
+  const [inwards, invoices, payments, wageSheet, expenses, supplierPaid, expensePaid] = await Promise.all([
     prisma.materialInward.findMany({ where: { receivedAt: within } }),
     prisma.invoice.findMany({ where: { issuedAt: within } }),
     prisma.payment.findMany({ where: { paidAt: within } }),
     workforceService.wages({ month: range.month }),
+    prisma.expense.findMany({ where: { incurredAt: within } }),
+    prisma.supplierPayment.findMany({ where: { paidAt: within } }),
+    prisma.expense.findMany({ where: { paidAt: within } }),
   ]);
 
   const materialBills = sum(inwards, 'billAmount');
   const invoiced = sum(invoices, 'amount');
   const paymentsReceived = sum(payments, 'amount');
   const { earned: wagesEarned, paid: wagesPaid } = wageSheet.totals;
+  // Tax the mill cannot claim back is a cost; claimable GST is not.
+  const costOf = (e) => Number(e.amount) + (e.itcEligible ? 0 : Number(e.cgst) + Number(e.sgst) + Number(e.igst));
+  const logistics = expenses.filter((e) => e.category === 'LOGISTICS').reduce((t, e) => t + costOf(e), 0);
+  const utilities = expenses.filter((e) => e.category === 'UTILITIES').reduce((t, e) => t + costOf(e), 0);
+  const paidOut = sum(supplierPaid, 'amount') + expensePaid.reduce((t, e) => t + Number(e.totalAmount ?? e.amount), 0);
 
   return {
     month: range.month,
     materialBills: round(materialBills),
     wagesEarned: round(wagesEarned),
     wagesPaid: round(wagesPaid),
+    logistics: round(logistics),
+    utilities: round(utilities),
     invoiced: round(invoiced),
     paymentsReceived: round(paymentsReceived),
+    supplierPayments: round(sum(supplierPaid, 'amount')),
     // Billed sales against the month's costs.
-    profit: round(invoiced - materialBills - wagesEarned),
-    // Money actually in minus money actually out.
-    cashFlow: round(paymentsReceived - materialBills - wagesPaid),
+    profit: round(invoiced - materialBills - wagesEarned - logistics - utilities),
+    // Money actually in minus money actually out (supplier bills paid, expenses paid, wages paid).
+    cashFlow: round(paymentsReceived - paidOut - wagesPaid),
   };
 }
 

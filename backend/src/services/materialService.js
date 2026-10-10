@@ -1,6 +1,7 @@
 const prisma = require('../lib/prisma');
 const { notFound, conflict, badRequest } = require('../lib/errors');
 const { pageArgs, toPage, dateRange } = require('../lib/paging');
+const { taxFor } = require('../lib/tax');
 
 const withLowStock = (m) => ({ ...m, lowStock: Number(m.qtyInStock) <= Number(m.reorderLevel) });
 
@@ -79,18 +80,33 @@ async function inward(data, userId) {
   return prisma.$transaction((tx) => addInward(tx, data, userId));
 }
 
-async function addInward(tx, { materialId, supplierId, orderId, qty, rate }, userId) {
+// The tax rule for a material: its own, else yarn's no-GST rule; other items without a rule are
+// left unclassified (no tax charged) and show up flagged in the GST register.
+const taxCodeOf = (m) => m.taxCode || (m.category === 'YARN' ? 'YARN_RAW' : null);
+
+async function addInward(tx, { materialId, supplierId, orderId, qty, rate, batchNo, billNo }, userId) {
   const material = await tx.rawMaterial.findUnique({ where: { id: materialId } });
   if (!material) throw notFound('Material not found');
-  if (!(await tx.supplier.findUnique({ where: { id: supplierId } }))) throw notFound('Supplier not found');
+  const supplier = await tx.supplier.findUnique({ where: { id: supplierId } });
+  if (!supplier) throw notFound('Supplier not found');
   if (orderId && !(await tx.order.findUnique({ where: { id: orderId } }))) throw notFound('Order not found');
 
   const oldQty = Number(material.qtyInStock);
   const newQty = oldQty + qty;
   const avgCost = (oldQty * Number(material.avgCost) + qty * rate) / newQty;
 
+  // The delivery is its supplier bill: taxable value, GST by place of supply, due date by credit days.
+  const billAmount = Math.round(qty * rate * 100) / 100;
+  const now = new Date();
+  const code = taxCodeOf(material);
+  const tax = code ? taxFor(code, billAmount, now, supplier.state) : { taxTreatment: 'UNCLASSIFIED', totalAmount: billAmount };
+  const count = await tx.materialInward.count();
   const entry = await tx.materialInward.create({
-    data: { materialId, supplierId, orderId, receivedById: userId, qty, rate, billAmount: qty * rate },
+    data: {
+      materialId, supplierId, orderId, receivedById: userId, qty, rate, billAmount, receivedAt: now,
+      billNo: billNo || `PB-${String(count + 1).padStart(5, '0')}`, batchNo, dueDate: new Date(now.getTime() + supplier.creditDays * 86400000),
+      ...tax,
+    },
     include: { supplier: true, order: { select: { id: true, orderNo: true } } },
   });
   await tx.rawMaterial.update({
@@ -181,7 +197,7 @@ async function listInwards(query = {}) {
 }
 
 // Yarn leaving the store for an order. The guarded decrement stops stock going negative.
-async function issue({ materialId, orderId, qty }) {
+async function issue({ materialId, orderId, jobId, department, qty }) {
   return prisma.$transaction(async (tx) => {
     const material = await tx.rawMaterial.findUnique({ where: { id: materialId } });
     if (!material) throw notFound('Material not found');
@@ -198,7 +214,7 @@ async function issue({ materialId, orderId, qty }) {
     }
 
     const entry = await tx.materialIssue.create({
-      data: { materialId, orderId, qty, cost: qty * Number(material.avgCost) },
+      data: { materialId, orderId, jobId, department, qty, cost: Math.round(qty * Number(material.avgCost) * 100) / 100 },
       include: { order: { select: { id: true, orderNo: true } } },
     });
     const updated = await tx.rawMaterial.findUnique({ where: { id: materialId } });

@@ -23,9 +23,21 @@ import { toOrder } from '@/lib/reorder'
 import { useApi, usePaged } from '@/lib/useApi'
 import type { MaterialCategory, MaterialInward, PurchaseOrder, RawMaterial, Ref } from '@/types'
 
-// Everything the mill uses besides yarn. Yarn has its own tab (pages/Materials.tsx).
+// Everything the mill uses besides yarn, in store sections. Yarn has its own tab (pages/Materials.tsx).
 type Category = Exclude<MaterialCategory, 'YARN'>
-const CATEGORY: Record<Category, string> = { DYE: 'Dyes', CHEMICAL: 'Chemicals', PACKAGING: 'Packaging', OTHER: 'Other' }
+const CATEGORY: Record<Category, string> = {
+  WEAVING: 'Weaving materials',
+  DYEING: 'Dyeing chemicals',
+  FINISHING: 'Finishing chemicals',
+  QC: 'QC materials',
+  PACKAGING: 'Dispatch and packaging',
+  MAINTENANCE: 'Maintenance and spares',
+}
+const DEPARTMENT: Record<Category, string> = { WEAVING: 'WEAVING', DYEING: 'DYEING', FINISHING: 'FINISHING', QC: 'QC', PACKAGING: 'DISPATCH', MAINTENANCE: 'MAINTENANCE' }
+// GST rules that apply to goods bought into the store (services and sales rules are left out).
+const STORE_TAX_CODES = ['STARCH', 'PVA', 'LUBRICANT', 'DETERGENT', 'DYE', 'ENZYME', 'PEROXIDE', 'ALKALI', 'SALT', 'SULPHATE', 'ACID', 'TEXTILE_AUX', 'REAGENT', 'LABEL', 'TUBE', 'CARTON', 'PLASTIC', 'BELT', 'BEARING', 'MACHINE_SPARE']
+type TaxCode = { code: string; label: string; hsn: string; rateToday: number; confidence: string }
+const gstOf = (i: MaterialInward) => Number(i.cgst ?? 0) + Number(i.sgst ?? 0) + Number(i.igst ?? 0)
 const CATEGORIES = Object.keys(CATEGORY) as Category[]
 const UNITS = [
   { value: 'kg', label: 'kg' },
@@ -40,7 +52,20 @@ const receivedCols: ColumnDef<MaterialInward>[] = [
   { id: 'material', header: 'Material', accessorFn: (i) => `${i.material.yarnType} · ${i.material.colour}` },
   { id: 'supplier', header: 'Supplier', accessorFn: (i) => i.supplier.name },
   { id: 'qty', header: 'Qty', accessorFn: (i) => i.qty, cell: ({ row: { original: i } }) => formatQty(i.qty, i.material.unit) },
-  { id: 'bill', header: 'Bill', accessorFn: (i) => i.billAmount, cell: ({ row: { original: i } }) => formatINR(i.billAmount) },
+  {
+    id: 'bill',
+    header: 'Bill',
+    accessorFn: (i) => Number(i.totalAmount ?? i.billAmount),
+    cell: ({ row: { original: i } }) => (
+      <div className="leading-tight tabular-nums">
+        <p>{formatINR(Number(i.totalAmount ?? i.billAmount))}</p>
+        <p className="text-xs text-muted-foreground">
+          {i.billNo && `${i.billNo} · `}
+          {gstOf(i) > 0 ? `incl. ${formatINR(gstOf(i))} GST (${Number(i.taxRatePct)}%)` : i.taxTreatment === 'UNCLASSIFIED' ? 'GST not classified' : 'No GST'}
+        </p>
+      </div>
+    ),
+  },
 ]
 
 export function RawMaterials() {
@@ -86,7 +111,7 @@ export function RawMaterials() {
       cell: ({ row: { original: m } }) => (
         <div className="leading-tight">
           <p className="font-medium">{m.yarnType}</p>
-          <p className="text-xs text-muted-foreground">{m.colour}</p>
+          <p className="text-xs text-muted-foreground">{[m.colour, m.sku, m.subcategory].filter(Boolean).join(' · ')}</p>
         </div>
       ),
     },
@@ -143,7 +168,7 @@ export function RawMaterials() {
   return (
     <div className="space-y-5">
       <PageHead
-        eyebrow="Dyes, chemicals, packaging"
+        eyebrow="Weaving, dyeing, finishing, QC, packaging, spares"
         title="Raw Materials"
         actions={
           canEdit && (
@@ -186,7 +211,7 @@ export function RawMaterials() {
             empty={
               <EmptyState
                 icon={PackagePlus}
-                line={category === 'ALL' ? 'No raw materials yet.' : `No ${CATEGORY[category].toLowerCase()}${category === 'OTHER' ? ' materials' : ''} yet.`}
+                line={category === 'ALL' ? 'No raw materials yet.' : `No ${CATEGORY[category].toLowerCase()} yet.`}
                 actionLabel={canEdit ? 'Receive material' : undefined}
                 onAction={canEdit ? () => setReceiving(true) : undefined}
               />
@@ -220,11 +245,13 @@ export function RawMaterials() {
 const NEW = '__new__'
 const emptyForm = {
   materialId: '', supplierId: '', qty: '', rate: '',
-  name: '', spec: '', category: 'DYE' as Category, unit: 'kg', supplierName: '', supplierPhone: '',
+  name: '', spec: '', category: 'DYEING' as Category, unit: 'kg', supplierName: '', supplierPhone: '',
+  sku: '', subcategory: '', taxCode: '', batchNo: '',
 }
 
 function ReceiveDialog({ materials, startWith, onClose, onSaved }: { materials: RawMaterial[]; startWith: Category | null; onClose: () => void; onSaved: () => void }) {
   const suppliers = useApi<Ref[]>('/suppliers')
+  const taxCodes = useApi<TaxCode[]>('/materials/tax-codes')
   // Opened from an empty type (say Other): start on "add new" with that type chosen.
   const nothingYet = startWith !== null && !materials.some((m) => m.category === startWith)
   const [form, setForm] = useState({ ...emptyForm, category: startWith ?? emptyForm.category, materialId: nothingYet ? NEW : '' })
@@ -245,7 +272,11 @@ function ReceiveDialog({ materials, startWith, onClose, onSaved }: { materials: 
       if (newMaterial) {
         const made = await api<RawMaterial>('/materials', {
           method: 'POST',
-          body: { category: form.category, yarnType: form.name, colour: form.spec, unit: form.unit },
+          body: {
+            category: form.category, yarnType: form.name, colour: form.spec, unit: form.unit, department: DEPARTMENT[form.category],
+            sku: form.sku || undefined, subcategory: form.subcategory || undefined, taxCode: form.taxCode || undefined,
+            isSpare: form.category === 'MAINTENANCE' && /spare|belt|bearing/i.test(form.subcategory),
+          },
         })
         materialId = made.id
         setForm((f) => ({ ...f, materialId }))
@@ -257,7 +288,7 @@ function ReceiveDialog({ materials, startWith, onClose, onSaved }: { materials: 
         setForm((f) => ({ ...f, supplierId }))
         suppliers.reload()
       }
-      await api('/materials/inwards', { method: 'POST', body: { materialId, supplierId, qty: Number(form.qty), rate: Number(form.rate) } })
+      await api('/materials/inwards', { method: 'POST', body: { materialId, supplierId, qty: Number(form.qty), rate: Number(form.rate), batchNo: form.batchNo || undefined } })
       toast.success('Material received, stock updated')
       onSaved()
       onClose()
@@ -309,6 +340,24 @@ function ReceiveDialog({ materials, startWith, onClose, onSaved }: { materials: 
                       {CATEGORY[c]}
                     </option>
                   ))}
+                </select>
+              </Field>
+              <Field label="Sub-category (optional)" htmlFor="subcategory">
+                <Input id="subcategory" placeholder="Reactive dyes" value={form.subcategory} onChange={set('subcategory')} />
+              </Field>
+              <Field label="SKU (optional)" htmlFor="sku">
+                <Input id="sku" placeholder="DY-RD-005" value={form.sku} onChange={set('sku')} />
+              </Field>
+              <Field label="GST rule" htmlFor="taxCode" hint="Decides the GST on its bills. Unverified rates are assumptions.">
+                <select id="taxCode" required className={selectClass} value={form.taxCode} onChange={set('taxCode')}>
+                  <option value="">Select…</option>
+                  {taxCodes.data
+                    ?.filter((t) => STORE_TAX_CODES.includes(t.code))
+                    .map((t) => (
+                      <option key={t.code} value={t.code}>
+                        {t.label} (HSN {t.hsn}) · {t.rateToday}%{t.confidence === 'UNVERIFIED' ? ' · unverified' : ''}
+                      </option>
+                    ))}
                 </select>
               </Field>
               <Field label="Measured in" htmlFor="unit">

@@ -15,6 +15,6 @@ router.post('/dispatch', desk, handle((req) => dispatchService.create(dispatchSc
 router.get('/dispatch/:id', handle((req) => dispatchService.get(req.params.id)));
 
 router.get('/invoices', handle((req) => dispatchService.listInvoices(req.query)));
-router.post('/invoices/:id/payments', desk, handle((req) => dispatchService.addPayment(req.params.id, paymentSchema.parse(req.body)), 201));
+router.post('/invoices/:id/payments', desk, handle((req) => dispatchService.addPayment(req.params.id, paymentSchema.parse(req.body), req.user), 201));
 
 module.exports = router;

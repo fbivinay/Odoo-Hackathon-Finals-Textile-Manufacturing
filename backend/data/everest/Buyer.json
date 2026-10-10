@@ -1,12 +1,12 @@
 [
-{"id":"buy_000001","name":"Arvind Garments","phone":"9879020000","email":"purchase@arvindgarments.in","createdAt":"2022-09-30T18:30:00.000Z"},
-{"id":"buy_000002","name":"Raymond Apparel","phone":"9879020577","email":"purchase@raymondapparel.in","createdAt":"2022-09-30T18:30:00.000Z"},
-{"id":"buy_000003","name":"Welspun Home","phone":"9879021154","email":"purchase@welspunhome.in","createdAt":"2022-09-30T18:30:00.000Z"},
-{"id":"buy_000004","name":"Aditya Birla Fashion","phone":"9879021731","email":"purchase@adityabirlafashion.in","createdAt":"2022-09-30T18:30:00.000Z"},
-{"id":"buy_000005","name":"Page Industries","phone":"9879022308","email":"purchase@pageindustries.in","createdAt":"2022-09-30T18:30:00.000Z"},
-{"id":"buy_000006","name":"Shahi Exports","phone":"9879022885","email":"purchase@shahiexports.in","createdAt":"2022-09-30T18:30:00.000Z"},
-{"id":"buy_000007","name":"Gokaldas Exports","phone":"9879023462","email":"purchase@gokaldasexports.in","createdAt":"2022-09-30T18:30:00.000Z"},
-{"id":"buy_000008","name":"Fabindia Sourcing","phone":"9879024039","email":"purchase@fabindiasourcing.in","createdAt":"2022-09-30T18:30:00.000Z"},
-{"id":"buy_000009","name":"Westside Sourcing","phone":"9879024616","email":"purchase@westsidesourcing.in","createdAt":"2022-09-30T18:30:00.000Z"},
-{"id":"buy_000010","name":"Siyaram Silk Mills","phone":"9879025193","email":"purchase@siyaramsilkmills.in","createdAt":"2022-09-30T18:30:00.000Z"}
+{"id":"buy_000001","name":"Arvind Garments","phone":"9879020000","email":"purchase@arvindgarments.in","state":"Gujarat","creditDays":15,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"buy_000002","name":"Raymond Apparel","phone":"9879020577","email":"purchase@raymondapparel.in","state":"Maharashtra","creditDays":30,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"buy_000003","name":"Welspun Home","phone":"9879021154","email":"purchase@welspunhome.in","state":"Gujarat","creditDays":30,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"buy_000004","name":"Aditya Birla Fashion","phone":"9879021731","email":"purchase@adityabirlafashion.in","state":"Karnataka","creditDays":60,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"buy_000005","name":"Page Industries","phone":"9879022308","email":"purchase@pageindustries.in","state":"Karnataka","creditDays":60,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"buy_000006","name":"Shahi Exports","phone":"9879022885","email":"purchase@shahiexports.in","state":"Haryana","creditDays":30,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"buy_000007","name":"Gokaldas Exports","phone":"9879023462","email":"purchase@gokaldasexports.in","state":"Karnataka","creditDays":30,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"buy_000008","name":"Fabindia Sourcing","phone":"9879024039","email":"purchase@fabindiasourcing.in","state":"Delhi","creditDays":60,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"buy_000009","name":"Westside Sourcing","phone":"9879024616","email":"purchase@westsidesourcing.in","state":"Maharashtra","creditDays":45,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"buy_000010","name":"Siyaram Silk Mills","phone":"9879025193","email":"purchase@siyaramsilkmills.in","state":"Maharashtra","creditDays":45,"createdAt":"2022-09-30T18:30:00.000Z"}
 ]

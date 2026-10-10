@@ -9,6 +9,9 @@
 // Pure: no database. Same as-of date in, identical dataset out.
 
 const crypto = require('crypto');
+const { taxFor } = require('../../src/lib/tax');
+const { payslip } = require('../../src/lib/payroll');
+const { addAccounts } = require('./accounts');
 
 const H = 3600 * 1000;
 const D = 24 * H;
@@ -131,28 +134,17 @@ const SUPPLIERS = [
   'Vardhman Yarns', 'Nahar Spinning Mills', 'Sutlej Textiles', 'Trident Yarns', 'Ambika Cotton Mills',
   'Nitin Spinners', 'Filatex Polyester', 'Grasim Viscose', 'Jaya Shree Linen', 'Surat Yarn Agency',
 ];
-// Suppliers of everything that is not yarn.
-const OTHER_SUPPLIERS = ['Colourtex Dyes', 'Atul Chemicals', 'Surat Packaging Co'];
-// [category, name, grade/shade/size, unit, rate, reorder level, supplier index, deliveries [date, qty]].
-// Bills are small next to yarn, and none land in the current month.
-const OTHER_MATERIALS = [
-  ['DYE', 'Reactive Red ME4BL', 'Red', 'kg', 620, 60, 0, [['2022-12-05', 150], ['2024-03-11', 120], ['2025-08-18', 140], ['2026-08-10', 90]]],
-  ['DYE', 'Reactive Navy Blue', 'Navy', 'kg', 680, 60, 0, [['2022-12-05', 160], ['2024-06-17', 110], ['2025-11-10', 130], ['2026-09-07', 80]]],
-  ['DYE', 'Indigo Granules', 'Indigo', 'kg', 540, 120, 0, [['2022-12-06', 300], ['2024-02-12', 260], ['2025-05-19', 280]]],
-  ['DYE', 'Sulphur Black BR', 'Black', 'kg', 210, 100, 0, [['2022-12-06', 250], ['2024-09-09', 220], ['2026-02-16', 240]]],
-  ['CHEMICAL', 'Caustic Soda Flakes', '98% purity', 'kg', 48, 400, 1, [['2022-12-08', 1200], ['2024-01-22', 900], ['2025-04-14', 1000], ['2026-07-13', 800]]],
-  ['CHEMICAL', 'Hydrogen Peroxide', '50% solution', 'L', 42, 300, 1, [['2022-12-08', 800], ['2024-05-20', 600], ['2025-10-13', 700]]],
-  ['CHEMICAL', 'Soda Ash', 'Light', 'kg', 36, 500, 1, [['2022-12-09', 1500], ['2024-08-12', 1100], ['2026-03-09', 1200]]],
-  ['CHEMICAL', 'Softener', 'Cationic', 'L', 95, 800, 1, [['2022-12-09', 400], ['2025-01-20', 320]]],
-  ['PACKAGING', 'Paper Tubes', '60 inch core', 'pcs', 38, 500, 2, [['2022-12-12', 2000], ['2024-04-15', 1500], ['2025-09-15', 1800], ['2026-06-15', 1200]]],
-  ['PACKAGING', 'Poly Wrap', '200 gauge', 'rolls', 780, 250, 2, [['2022-12-12', 90], ['2024-10-14', 70], ['2026-01-19', 60]]],
-];
+// GST place of supply and credit days for the yarn suppliers (the mill is in Gujarat).
+const SUPPLIER_STATES = ['Punjab', 'Punjab', 'Rajasthan', 'Punjab', 'Tamil Nadu', 'Rajasthan', 'Gujarat', 'Madhya Pradesh', 'West Bengal', 'Gujarat'];
+// Everything that is not yarn (dyes, chemicals, packaging, spares) comes from accounts.js.
 
 // Ten buyers to start with; more are added from the New order form.
 const BUYERS = [
   'Arvind Garments', 'Raymond Apparel', 'Welspun Home', 'Aditya Birla Fashion', 'Page Industries',
   'Shahi Exports', 'Gokaldas Exports', 'Fabindia Sourcing', 'Westside Sourcing', 'Siyaram Silk Mills',
 ];
+// Delivery state of each buyer (synthetic), for CGST+SGST vs IGST on the invoice.
+const BUYER_STATES = ['Gujarat', 'Maharashtra', 'Gujarat', 'Karnataka', 'Karnataka', 'Haryana', 'Karnataka', 'Delhi', 'Maharashtra', 'Maharashtra'];
 const FIRST = ['Ramesh', 'Suresh', 'Anita', 'Imran', 'Lakshmi', 'Mohan', 'Kavita', 'Rajesh', 'Sunita', 'Arjun', 'Pooja', 'Vijay', 'Meena', 'Sanjay', 'Farida', 'Prakash', 'Geeta', 'Dinesh', 'Rekha', 'Harish', 'Nirmala', 'Ashok', 'Shabana', 'Kiran', 'Bharat', 'Usha', 'Mahesh', 'Savita', 'Naresh', 'Jyoti'];
 const LAST = ['Patel', 'Yadav', 'Kumari', 'Shaikh', 'Devi', 'Singh', 'Chauhan', 'Prajapati', 'Rathod', 'Solanki', 'Parmar', 'Desai', 'Pandey', 'Mishra', 'Khan', 'Vasava', 'Gohil', 'Bhatt'];
 const DEFECTS = [['Holes', 3], ['Colour mismatch', 4], ['Uneven weaving', 3], ['Stains', 2], ['Broken ends', 2], ['Shade variation', 3]];
@@ -204,10 +196,10 @@ function generate({ asOfDate }) {
   const inspectors = users.filter((u) => u.role === 'QC');
   const storeKeepers = users.filter((u) => u.role === 'STORE');
 
-  const suppliers = SUPPLIERS.map((name, i) => ({ id: id('sup'), name, phone: `98250${pad(10000 + i * 731, 5)}`, createdAt: iso(START) }));
+  const suppliers = SUPPLIERS.map((name, i) => ({ id: id('sup'), name, phone: `98250${pad(10000 + i * 731, 5)}`, state: SUPPLIER_STATES[i], creditDays: i % 2 ? 45 : 30, createdAt: iso(START) }));
   const buyers = BUYERS.map((name, i) => ({
     id: id('buy'), name, phone: `98790${pad(20000 + i * 577, 5)}`,
-    email: `purchase@${name.toLowerCase().replace(/[^a-z]+/g, '')}.in`, createdAt: iso(START),
+    email: `purchase@${name.toLowerCase().replace(/[^a-z]+/g, '')}.in`, state: BUYER_STATES[i], createdAt: iso(START),
     weight: 1 / (1 + i * 0.35), terms: r.pick([15, 30, 30, 45, 45, 60]), late: r.chance(0.15), discount: r.between(0, 0.06),
   }));
   const materials = MATERIALS.map(([yarnType, colour, base]) => ({
@@ -442,6 +434,7 @@ function generate({ asOfDate }) {
     }
     const spin = runStage(order, 'SPINNING', order.yarnRequired, order.plannedStart);
     order.issueAt = spin[0].startedAt - 30 * 60 * 1000;
+    order.spinJob = spin[0];
     // 2% over the order covers the usual QC rejects; a top-up lot covers a bad batch. Buyers accept
     // delivery within about 5% of the ordered length, so the mill does not weave far beyond it.
     const weave = runStage(order, 'WEAVING', roundTo(order.qty * 1.02, 10), spin.at(-1).completedAt + H);
@@ -559,7 +552,7 @@ function generate({ asOfDate }) {
       receive(m, roundTo(o.yarnRequired - s.qty + 50, 50), o.issueAt - Math.round(r.between(3, 10) * H), o, 1.06);
     }
     s.qty = round2(s.qty - o.yarnRequired);
-    issues.push({ id: id('iss'), materialId: m.id, orderId: o.id, qty: o.yarnRequired, cost: round2(o.yarnRequired * s.cost), issuedAt: o.issueAt });
+    issues.push({ id: id('iss'), materialId: m.id, orderId: o.id, jobId: o.spinJob.startedAt <= T ? o.spinJob.id : null, department: 'SPINNING', qty: o.yarnRequired, cost: round2(o.yarnRequired * s.cost), issuedAt: o.issueAt });
   }
   flush(T);
   inwards.sort((a, b) => a.receivedAt - b.receivedAt);
@@ -615,10 +608,12 @@ function generate({ asOfDate }) {
     };
     dispatches.push(d);
     trip.rolls.forEach((x) => (x.dispatch = d));
-    const amount = round2(trip.rolls.reduce((t, x) => t + x.qty, 0) * trip.order.pricePerUnit);
-    const inv = { id: id('inv'), invoiceNo: `INV-${pad(i + 1)}`, dispatchId: d.id, amount, issuedAt: trip.at };
-    invoices.push(inv);
+    const taxable = round2(trip.rolls.reduce((t, x) => t + x.qty, 0) * trip.order.pricePerUnit);
     const b = trip.order.buyer;
+    const gst = taxFor('FABRIC', taxable, iso(trip.at), b.state);
+    const amount = gst.totalAmount; // what the buyer pays
+    const inv = { id: id('inv'), invoiceNo: `INV-${pad(i + 1)}`, dispatchId: d.id, amount: taxable, issuedAt: trip.at, dueDate: iso(trip.at + b.terms * D), ...gst, itcEligible: false }; // ITC is the buyer's, not ours
+    invoices.push(inv);
     // A disputed invoice: chased for months, then settled 45 to 120 days past terms. Nothing stays
     // unpaid for years. Spread by trip number, not the RNG, so the rest of the data is unchanged.
     if (r.chance(0.015)) {
@@ -638,7 +633,7 @@ function generate({ asOfDate }) {
   const keptPayments = payments.filter((p) => p.paidAt <= T);
   for (const inv of invoices) {
     const paid = round2(keptPayments.filter((p) => p.invoiceId === inv.id).reduce((t, p) => t + p.amount, 0));
-    inv.status = paid <= 0 ? 'UNPAID' : Math.abs(paid - inv.amount) < 0.011 ? 'PAID' : 'PARTIAL';
+    inv.status = paid <= 0 ? 'UNPAID' : Math.abs(paid - inv.totalAmount) < 0.011 ? 'PAID' : 'PARTIAL';
   }
 
   for (const x of keptRolls) {
@@ -652,57 +647,43 @@ function generate({ asOfDate }) {
 
   // Wages: a month is paid on the 5th of the next, at exactly what the register earned.
   const wagePayments = [];
-  const earned = new Map();
-  const wageOf = new Map(workers.map((w) => [w.id, w.dailyWage]));
+  const register = new Map();
+  const workerOf = new Map(workers.map((w) => [w.id, w]));
   for (const a of attendance) {
     const k = `${a.workerId}|${a.date.slice(0, 7)}`;
-    earned.set(k, (earned.get(k) || 0) + (a.status === 'PRESENT' ? 1 : a.status === 'HALF_DAY' ? 0.5 : 0) * wageOf.get(a.workerId));
+    const e = register.get(k) || { present: 0, halfDays: 0, nightDays: 0 };
+    if (a.status === 'PRESENT') e.present += 1;
+    if (a.status === 'HALF_DAY') e.halfDays += 1;
+    if (a.status !== 'ABSENT' && a.shift === 'NIGHT') e.nightDays += a.status === 'PRESENT' ? 1 : 0.5;
+    register.set(k, e);
   }
-  for (const [k, amount] of earned) {
+  for (const [k, e] of register) {
     const [workerId, month] = k.split('|');
     const [y, mo] = month.split('-').map(Number);
     const paidAt = Date.UTC(y, mo, 5, 6, 30);
-    if (paidAt <= T && amount > 0) wagePayments.push({ id: id('wage'), workerId, month, amount: round2(amount), paidAt: iso(paidAt) });
-  }
-
-  // ---------- other raw materials ----------
-  // Dyes, chemicals and packaging the mill uses besides yarn. A fixed starter set with a few
-  // deliveries each, built without the random stream so every other row stays as it was.
-  const otherSuppliers = OTHER_SUPPLIERS.map((name, i) => ({ id: `sup_o_${pad(i + 1, 3)}`, name, phone: `98790${pad(20000 + i * 613, 5)}`, createdAt: iso(START) }));
-  const otherMaterials = [];
-  const otherInwards = [];
-  OTHER_MATERIALS.forEach(([category, name, spec, unit, rate, reorderLevel, supplier, deliveries], i) => {
-    const mid = `mat_o_${pad(i + 1, 3)}`;
-    let qty = 0;
-    let cost = 0;
-    deliveries.forEach(([date, amount], k) => {
-      const at = new Date(`${date}T05:30:00.000Z`).getTime();
-      if (at > T) return;
-      const price = round2(rate * (1 + k * 0.04));
-      cost = (qty * cost + amount * price) / (qty + amount);
-      qty += amount;
-      otherInwards.push({
-        id: `inw_o_${pad(i + 1, 3)}_${k + 1}`, materialId: mid, supplierId: otherSuppliers[supplier].id, orderId: null,
-        receivedById: storeKeepers[0].id, qty: amount, rate: price, billAmount: round2(amount * price), receivedAt: iso(at),
+    const p = payslip({ ...e, dailyWage: workerOf.get(workerId).dailyWage });
+    if (paidAt <= T && p.net > 0) {
+      wagePayments.push({
+        id: id('wage'), workerId, month, amount: p.net, paidAt: iso(paidAt),
+        daysWorked: p.daysWorked, basic: p.basic, allowances: p.allowances, overtime: p.overtime, deductions: p.deductions, gross: p.gross,
       });
-    });
-    otherMaterials.push({ id: mid, category, yarnType: name, colour: spec, unit, qtyInStock: round2(qty), reorderLevel, avgCost: round2(cost), createdAt: iso(START) });
-  });
+    }
+  }
 
   // ---------- flat rows ----------
   const data = {
     User: users,
-    Supplier: [...suppliers, ...otherSuppliers],
-    Buyer: buyers.map(({ id: bid, name, phone, email, createdAt }) => ({ id: bid, name, phone, email, createdAt })),
-    RawMaterial: [...materials.map((m) => ({ id: m.id, category: 'YARN', yarnType: m.yarnType, colour: m.colour, unit: m.unit, qtyInStock: round2(stock.get(m).qty), reorderLevel: m.reorderLevel, avgCost: round2(stock.get(m).cost), createdAt: iso(START) })), ...otherMaterials],
-    Worker: workers.map(({ id: wid, code, name, shift, dailyWage, isActive, createdAt }) => ({ id: wid, code, name, shift, dailyWage, isActive, createdAt })),
+    Supplier: suppliers,
+    Buyer: buyers.map(({ id: bid, name, phone, email, state, terms, createdAt }) => ({ id: bid, name, phone, email, state, creditDays: terms, createdAt })),
+    RawMaterial: materials.map((m) => ({ id: m.id, category: 'YARN', yarnType: m.yarnType, colour: m.colour, unit: m.unit, qtyInStock: round2(stock.get(m).qty), reorderLevel: m.reorderLevel, avgCost: round2(stock.get(m).cost), taxCode: 'YARN_RAW', subcategory: 'Raw yarn', department: 'SPINNING', createdAt: iso(START) })),
+    Worker: workers.map(({ id: wid, code, name, shift, dailyWage, isActive, createdAt }) => ({ id: wid, code, name, shift, dailyWage, department: 'Production floor', isActive, createdAt })),
     Machine: machines.map((m) => ({ id: m.id, code: m.code, name: m.name, type: m.type, status: m.now, createdAt: m.createdAt })),
     Order: orders.map((o) => ({
       id: o.id, orderNo: o.orderNo, trackingToken: o.trackingToken, buyerId: o.buyer.id, materialId: o.material.id, fabricType: o.fabricType,
       colour: o.colour, qty: o.qty, yarnRequired: o.yarnRequired, pricePerUnit: o.pricePerUnit, deadline: iso(o.deadline), status: 'PENDING',
       createdAt: iso(o.createdAt), cancelled: Boolean(o.cancelled && o.cancelledAt <= T),
     })),
-    MaterialInward: [...inwards.map((i) => ({ ...i, receivedAt: iso(i.receivedAt) })), ...otherInwards],
+    MaterialInward: inwards.map((i) => ({ ...i, receivedAt: iso(i.receivedAt) })),
     MaterialIssue: issues.map((i) => ({ ...i, issuedAt: iso(i.issuedAt) })),
     ProductionJob: keptJobs.map((j) => ({
       id: j.id, orderId: j.order.id, machineId: j.machine.id, workerId: j.workerId, stage: j.stage, shift: j.shift, status: j.status,
@@ -723,6 +704,20 @@ function generate({ asOfDate }) {
   syncOrderStatuses(data);
   for (const o of data.Order) delete o.cancelled;
   stockUpYarn(data, storeKeepers[0].id);
+
+  // Store, bills, payments and expenses for everything else (accounts.js), on the same timeline.
+  const extra = addAccounts({
+    T, START, orders, jobs: keptJobs, rolls: keptRolls, dispatches, inwards: data.MaterialInward, yarnIssues: issues,
+    storeKeeperId: storeKeepers[0].id, buyers: data.Buyer, yarnSuppliers: suppliers,
+  });
+  data.Supplier.push(...extra.suppliers);
+  data.RawMaterial.push(...extra.materials);
+  data.MaterialInward.push(...extra.inwards);
+  data.MaterialInward.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt) || a.id.localeCompare(b.id));
+  data.MaterialIssue.push(...extra.issues);
+  data.SupplierPayment = extra.supplierPayments;
+  data.Expense = extra.expenses;
+  data.PurchaseOrder = extra.purchaseOrders;
   return { data, asOf: iso(T) };
 }
 

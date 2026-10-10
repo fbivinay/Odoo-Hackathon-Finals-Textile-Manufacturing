@@ -3,6 +3,7 @@ const { nextNumber } = require('../lib/numbering');
 const { notFound, conflict, badRequest } = require('../lib/errors');
 const { syncStatus, sumQty } = require('./orderService');
 const { pageArgs, toPage, dateRange } = require('../lib/paging');
+const { taxFor } = require('../lib/tax');
 
 const dispatchInclude = {
   order: { select: { id: true, orderNo: true, fabricType: true, colour: true, qty: true } },
@@ -11,9 +12,11 @@ const dispatchInclude = {
   invoice: { include: { payments: true } },
 };
 
+// Payable = the GST-inclusive total (the pre-tax amount on invoices from before GST fields).
+const payableOf = (invoice) => Number(invoice.totalAmount ?? invoice.amount);
 const withBalance = (invoice) => {
   const paid = sumAmount(invoice.payments);
-  return { ...invoice, paid, balance: Number(invoice.amount) - paid };
+  return { ...invoice, paid, balance: Math.round((payableOf(invoice) - paid) * 100) / 100 };
 };
 const sumAmount = (rows) => rows.reduce((total, r) => total + Number(r.amount), 0);
 
@@ -65,11 +68,19 @@ async function create({ orderId, rollIds, vehicleNo }) {
     }
 
     const rolls = await tx.roll.findMany({ where: { dispatchId: dispatch.id } });
+    // Taxable value = metres sent x the order price; 5% GST on fabric by the buyer's state.
+    const buyer = await tx.buyer.findUnique({ where: { id: order.buyerId } });
+    const amount = Math.round(sumQty(rolls) * Number(order.pricePerUnit) * 100) / 100;
+    const now = new Date();
     await tx.invoice.create({
       data: {
         invoiceNo: await nextNumber(tx.invoice, 'INV'),
         dispatchId: dispatch.id,
-        amount: sumQty(rolls) * Number(order.pricePerUnit),
+        amount,
+        issuedAt: now,
+        dueDate: new Date(now.getTime() + buyer.creditDays * 86400000),
+        ...taxFor('FABRIC', amount, now, buyer.state),
+        itcEligible: false, // output tax: input credit is the buyer's
       },
     });
     await syncStatus(tx, orderId);
@@ -126,23 +137,26 @@ async function listInvoices(query = {}) {
   return toPage(rows.map(withBalance), query);
 }
 
-async function addPayment(invoiceId, { amount, method }) {
+async function addPayment(invoiceId, { amount, method, reference }, user) {
   return prisma.$transaction(async (tx) => {
     const invoice = await tx.invoice.findUnique({ where: { id: invoiceId }, include: { payments: true } });
     if (!invoice) throw notFound('Invoice not found');
 
-    const balance = Number(invoice.amount) - sumAmount(invoice.payments);
-    const value = Number(amount);
-    if (value > balance) throw badRequest(`Payment exceeds the balance of ${balance}`);
+    // Whole paise, so a balance of 0.01 is not lost to floating point.
+    const balance = Math.round(payableOf(invoice) * 100) - Math.round(sumAmount(invoice.payments) * 100);
+    const value = Math.round(Number(amount) * 100);
+    if (value <= 0) throw badRequest('Payment must be more than zero');
+    if (value > balance) throw badRequest(`Payment exceeds the balance of ${(balance / 100).toFixed(2)}`);
 
-    await tx.payment.create({ data: { invoiceId, amount: value, method } });
+    await tx.payment.create({ data: { invoiceId, amount: value / 100, method, reference } });
     const updated = await tx.invoice.update({
       where: { id: invoiceId },
       data: { status: value === balance ? 'PAID' : 'PARTIAL' },
       include: invoiceInclude,
     });
+    await tx.auditLog.create({ data: { entity: 'Invoice', entityId: invoiceId, action: 'PAYMENT', detail: `${(value / 100).toFixed(2)} by ${method || 'unspecified'}${reference ? ` (${reference})` : ''}`, by: user?.name || 'system' } });
     return withBalance(updated);
   });
 }
 
-module.exports = { stock, create, list, get, listInvoices, addPayment };
+module.exports = { stock, create, list, get, listInvoices, addPayment, withBalance, payableOf };

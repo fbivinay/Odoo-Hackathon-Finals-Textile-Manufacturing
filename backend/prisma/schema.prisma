@@ -72,12 +72,27 @@ enum AttendanceStatus {
 }
 
 // Yarn is what orders are made from; the rest is what the mill uses up along the way.
+// Store sections. One item lives in one section; use by several departments is recorded on
+// each MaterialIssue (department), never by duplicating the item.
 enum MaterialCategory {
   YARN
-  DYE
-  CHEMICAL
-  PACKAGING
-  OTHER
+  WEAVING // sizing agents, loom lubricants, loom cleaners
+  DYEING // dyes and dyeing chemicals
+  FINISHING // softeners, fixing and finishing agents
+  QC // testing reagents, sample labels
+  PACKAGING // tubes, wraps, covers, labels, straps, cartons
+  MAINTENANCE // machine oil and grease, belts, bearings, spares, cleaning
+}
+
+enum ExpenseCategory {
+  LOGISTICS
+  UTILITIES
+}
+
+enum ExpenseStatus {
+  PAID
+  UNPAID
+  ACCRUED // used and owed, bill not received yet
 }
 
 enum PurchaseOrderStatus {
@@ -113,22 +128,28 @@ model User {
 }
 
 model Supplier {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  phone     String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  name       String   @unique
+  phone      String?
+  // GST place of supply: Gujarat = CGST+SGST, elsewhere IGST. No GSTIN is stored.
+  state      String   @default("Gujarat")
+  creditDays Int      @default(30)
+  createdAt  DateTime @default(now())
 
   inwards        MaterialInward[]
   purchaseOrders PurchaseOrder[]
   materials      RawMaterial[]
+  expenses       Expense[]
 }
 
 model Buyer {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  phone     String?
-  email     String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  name       String   @unique
+  phone      String?
+  email      String?
+  state      String   @default("Gujarat")
+  creditDays Int      @default(30)
+  createdAt  DateTime @default(now())
 
   orders     Order[]
   dispatches Dispatch[]
@@ -146,6 +167,12 @@ model RawMaterial {
   // Config: who it is usually bought from and how many days a delivery takes.
   supplierId   String?
   leadDays     Int              @default(7)
+  sku          String?          @unique
+  subcategory  String? // e.g. "Sizing agents", "Reactive dyes"
+  department   String? // the department that mainly uses it
+  taxCode      String? // GST rule in backend/src/lib/tax.js
+  // Maintenance spares are capitalised-in-store and expensed on issue; consumables go to order cost.
+  isSpare      Boolean          @default(false)
   createdAt    DateTime         @default(now())
 
   supplier       Supplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
@@ -160,21 +187,36 @@ model RawMaterial {
 
 // Yarn arriving at the gate
 model MaterialInward {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   materialId   String
   supplierId   String
   orderId      String?
   receivedById String
-  qty          Decimal  @db.Decimal(12, 2)
-  rate         Decimal  @db.Decimal(12, 2)
-  billAmount   Decimal  @db.Decimal(14, 2)
-  receivedAt   DateTime @default(now())
+  qty          Decimal   @db.Decimal(12, 2)
+  rate         Decimal   @db.Decimal(12, 2)
+  billAmount   Decimal   @db.Decimal(14, 2) // taxable value = qty x rate
+  receivedAt   DateTime  @default(now())
+  // The supplier's bill for this delivery: one delivery, one bill line.
+  billNo       String?
+  dueDate      DateTime?
+  batchNo      String?
+  // GST (backend/src/lib/tax.js). totalAmount = what is payable; null on rows from before GST
+  // fields existed, where it equals the pre-tax amount.
+  taxCode      String?
+  taxRatePct   Decimal   @default(0) @db.Decimal(5, 2)
+  taxTreatment String? // NIL, INTRA, INTER, EXEMPT, NON_GST, RCM_INTRA, RCM_INTER
+  cgst         Decimal   @default(0) @db.Decimal(14, 2)
+  sgst         Decimal   @default(0) @db.Decimal(14, 2)
+  igst         Decimal   @default(0) @db.Decimal(14, 2)
+  itcEligible  Boolean   @default(false)
+  totalAmount  Decimal?  @db.Decimal(14, 2)
 
-  material      RawMaterial    @relation(fields: [materialId], references: [id])
-  supplier      Supplier       @relation(fields: [supplierId], references: [id])
-  order         Order?         @relation(fields: [orderId], references: [id])
-  receivedBy    User           @relation(fields: [receivedById], references: [id])
+  material      RawMaterial       @relation(fields: [materialId], references: [id])
+  supplier      Supplier          @relation(fields: [supplierId], references: [id])
+  order         Order?            @relation(fields: [orderId], references: [id])
+  receivedBy    User              @relation(fields: [receivedById], references: [id])
   purchaseOrder PurchaseOrder?
+  payments      SupplierPayment[]
 
   @@index([materialId])
   @@index([receivedAt])
@@ -209,12 +251,15 @@ model MaterialIssue {
   id         String   @id @default(cuid())
   materialId String
   orderId    String?
+  jobId      String? // the production job it was used on
+  department String? // SPINNING, WEAVING, DYEING, FINISHING, QC, DISPATCH, MAINTENANCE
   qty        Decimal  @db.Decimal(12, 2)
   cost       Decimal  @db.Decimal(14, 2)
   issuedAt   DateTime @default(now())
 
-  material RawMaterial @relation(fields: [materialId], references: [id])
-  order    Order?      @relation(fields: [orderId], references: [id])
+  material RawMaterial    @relation(fields: [materialId], references: [id])
+  order    Order?         @relation(fields: [orderId], references: [id])
+  job      ProductionJob? @relation(fields: [jobId], references: [id])
 
   @@index([orderId])
 }
@@ -245,6 +290,7 @@ model Order {
   jobs       ProductionJob[]
   rolls      Roll[]
   dispatches Dispatch[]
+  expenses   Expense[]
 
   @@index([status])
   @@index([deadline])
@@ -282,6 +328,7 @@ model ProductionJob {
   worker  Worker?         @relation(fields: [workerId], references: [id])
   rolls   Roll[]
   logs    ProductionLog[]
+  issues  MaterialIssue[]
 
   @@index([orderId])
   @@index([machineId, status])
@@ -346,21 +393,33 @@ model Dispatch {
   vehicleNo    String?
   dispatchedAt DateTime @default(now())
 
-  order   Order    @relation(fields: [orderId], references: [id])
-  buyer   Buyer    @relation(fields: [buyerId], references: [id])
-  rolls   Roll[]
-  invoice Invoice?
+  order    Order     @relation(fields: [orderId], references: [id])
+  buyer    Buyer     @relation(fields: [buyerId], references: [id])
+  rolls    Roll[]
+  invoice  Invoice?
+  expenses Expense[]
 
   @@index([orderId])
 }
 
 model Invoice {
-  id         String        @id @default(cuid())
-  invoiceNo  String        @unique
-  dispatchId String        @unique
-  amount     Decimal       @db.Decimal(14, 2)
-  status     InvoiceStatus @default(UNPAID)
-  issuedAt   DateTime      @default(now())
+  id           String        @id @default(cuid())
+  invoiceNo    String        @unique
+  dispatchId   String        @unique // one invoice per dispatch: a truck cannot be billed twice
+  amount       Decimal       @db.Decimal(14, 2) // taxable value = dispatched metres x order price
+  status       InvoiceStatus @default(UNPAID)
+  issuedAt     DateTime      @default(now())
+  dueDate      DateTime?
+  // GST (backend/src/lib/tax.js). totalAmount = what is payable; null on rows from before GST
+  // fields existed, where it equals the pre-tax amount.
+  taxCode      String?
+  taxRatePct   Decimal       @default(0) @db.Decimal(5, 2)
+  taxTreatment String? // NIL, INTRA, INTER, EXEMPT, NON_GST, RCM_INTRA, RCM_INTER
+  cgst         Decimal       @default(0) @db.Decimal(14, 2)
+  sgst         Decimal       @default(0) @db.Decimal(14, 2)
+  igst         Decimal       @default(0) @db.Decimal(14, 2)
+  itcEligible  Boolean       @default(false)
+  totalAmount  Decimal?      @db.Decimal(14, 2)
 
   dispatch Dispatch  @relation(fields: [dispatchId], references: [id])
   payments Payment[]
@@ -371,6 +430,7 @@ model Payment {
   invoiceId String
   amount    Decimal  @db.Decimal(14, 2)
   method    String?
+  reference String?
   paidAt    DateTime @default(now())
 
   invoice Invoice @relation(fields: [invoiceId], references: [id])
@@ -379,13 +439,15 @@ model Payment {
 }
 
 model Worker {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  name      String
-  shift     Shift
-  dailyWage Decimal  @db.Decimal(10, 2)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  code       String   @unique
+  name       String
+  shift      Shift
+  dailyWage  Decimal  @db.Decimal(10, 2)
+  // Crews rotate across spinning, weaving and dyeing, so floor workers sit in one department.
+  department String   @default("Production floor")
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
 
   attendance Attendance[]
   wages      WagePayment[]
@@ -406,11 +468,18 @@ model Attendance {
 }
 
 model WagePayment {
-  id       String   @id @default(cuid())
-  workerId String
-  month    String // YYYY-MM
-  amount   Decimal  @db.Decimal(12, 2)
-  paidAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  workerId   String
+  month      String // YYYY-MM
+  amount     Decimal  @db.Decimal(12, 2) // net paid
+  paidAt     DateTime @default(now())
+  // Payslip (backend/src/lib/payroll.js); null on payments recorded before these fields.
+  daysWorked Decimal? @db.Decimal(5, 1)
+  basic      Decimal? @db.Decimal(12, 2)
+  allowances Decimal? @db.Decimal(12, 2)
+  overtime   Decimal? @db.Decimal(12, 2)
+  deductions Decimal? @db.Decimal(12, 2)
+  gross      Decimal? @db.Decimal(12, 2)
 
   worker Worker @relation(fields: [workerId], references: [id])
 
@@ -469,4 +538,75 @@ model ConfigChange {
   changedAt DateTime @default(now())
 
   @@index([changedAt])
+}
+
+// --------------------------------------------------------------- accounts --
+
+// Money paid to a supplier against a delivery's bill (MaterialInward).
+model SupplierPayment {
+  id        String   @id @default(cuid())
+  inwardId  String
+  amount    Decimal  @db.Decimal(14, 2)
+  method    String?
+  reference String?
+  paidAt    DateTime @default(now())
+
+  inward MaterialInward @relation(fields: [inwardId], references: [id])
+
+  @@index([paidAt])
+  @@index([inwardId])
+}
+
+// Logistics and factory-utility spending. Materials bought into the store are never booked here
+// (they are MaterialInward bills), so nothing is counted twice.
+model Expense {
+  id           String          @id @default(cuid())
+  voucherNo    String          @unique
+  category     ExpenseCategory
+  subcategory  String
+  description  String
+  supplierId   String?
+  payee        String
+  incurredAt   DateTime
+  dueDate      DateTime?
+  amount       Decimal         @db.Decimal(14, 2) // taxable value
+  status       ExpenseStatus   @default(UNPAID)
+  paidAt       DateTime?
+  method       String?
+  reference    String?
+  costCentre   String // e.g. Dispatch, Fleet, Utilities, Dyeing house
+  orderId      String?
+  dispatchId   String?
+  recurring    Boolean         @default(false)
+  // GST (backend/src/lib/tax.js). totalAmount = what is payable; null on rows from before GST
+  // fields existed, where it equals the pre-tax amount.
+  taxCode      String?
+  taxRatePct   Decimal         @default(0) @db.Decimal(5, 2)
+  taxTreatment String? // NIL, INTRA, INTER, EXEMPT, NON_GST, RCM_INTRA, RCM_INTER
+  cgst         Decimal         @default(0) @db.Decimal(14, 2)
+  sgst         Decimal         @default(0) @db.Decimal(14, 2)
+  igst         Decimal         @default(0) @db.Decimal(14, 2)
+  itcEligible  Boolean         @default(false)
+  totalAmount  Decimal?        @db.Decimal(14, 2)
+  createdAt    DateTime        @default(now())
+
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  order    Order?    @relation(fields: [orderId], references: [id])
+  dispatch Dispatch? @relation(fields: [dispatchId], references: [id])
+
+  @@index([incurredAt])
+  @@index([category])
+}
+
+// Every money edit made in the app: payments, expense changes, cancellations.
+model AuditLog {
+  id       String   @id @default(cuid())
+  entity   String
+  entityId String
+  action   String
+  detail   String?
+  by       String
+  at       DateTime @default(now())
+
+  @@index([entity, entityId])
 }

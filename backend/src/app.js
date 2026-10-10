@@ -9,6 +9,7 @@ const mastersRouter = require('./routes/masters');
 const materialsRouter = require('./routes/materials');
 const ordersRouter = require('./routes/orders');
 const configRouter = require('./routes/config');
+const accountsRouter = require('./routes/accounts');
 const productionRouter = require('./routes/production');
 const qcRouter = require('./routes/qc');
 const dispatchRouter = require('./routes/dispatch');
@@ -37,6 +38,7 @@ app.use('/api/track', trackRouter); // public buyer tracking
 app.use('/api/materials', materialsRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/config', configRouter);
+app.use('/api/accounts', accountsRouter);
 app.use('/api/qc', qcRouter);
 app.use('/api', usersRouter); // /me, /users
 app.use('/api', mastersRouter); // /suppliers, /buyers

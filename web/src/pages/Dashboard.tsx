@@ -139,8 +139,8 @@ export function Dashboard() {
           />
           <Figure
             label="Total expenses"
-            value={formatMoney((p?.materialBills ?? 0) + (p?.wagesEarned ?? 0))}
-            note={`Yarn ${formatMoney(p?.materialBills ?? 0)} + wages ${formatMoney(p?.wagesEarned ?? 0)}`}
+            value={formatMoney((p?.materialBills ?? 0) + (p?.wagesEarned ?? 0) + (p?.logistics ?? 0) + (p?.utilities ?? 0))}
+            note={`Materials ${formatMoney(p?.materialBills ?? 0)} + wages ${formatMoney(p?.wagesEarned ?? 0)} + logistics and utilities ${formatMoney((p?.logistics ?? 0) + (p?.utilities ?? 0))}`}
             loading={loading}
           />
           <Figure
@@ -154,7 +154,7 @@ export function Dashboard() {
             label="Cash flow"
             tone={(p?.cashFlow ?? 0) < 0 ? 'problem' : undefined}
             value={formatMoney(p?.cashFlow ?? 0)}
-            note="Collected − yarn bills − wages paid"
+            note="Collected − supplier bills and expenses paid − wages paid"
             loading={loading}
           />
         </div>

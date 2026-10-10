@@ -6,6 +6,6 @@ const dispatchSchema = z.object({
   vehicleNo: optionalText,
 });
 
-const paymentSchema = z.object({ amount: qty, method: optionalText });
+const paymentSchema = z.object({ amount: qty, method: optionalText, reference: optionalText });
 
 module.exports = { dispatchSchema, paymentSchema };

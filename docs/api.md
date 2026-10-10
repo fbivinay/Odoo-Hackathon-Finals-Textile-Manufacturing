@@ -164,6 +164,30 @@ Assumptions: an order short of yarn can't start for 7 days (delivery lead time),
 
 Read by: planning (`qcDays`, each material's `leadDays` when an order is short of yarn), finishing a dyeing job (`rollLength`), order costs (`shiftHours`), the order form (fabrics and rules) and dispatch checks (`dispatchTolerancePct`, `shelfWaitDays`).
 
+## Accounts (OWNER)
+
+Rules and assumptions: `accounts.md`. `?from=&to=` are IST dates (YYYY-MM-DD); default is this financial year to date. Lists take `?page=&pageSize=` (max 500) and return `{ rows, count, totals: { taxable, tax, total } }`.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/accounts/overview` | P&L lines, receivable/payable today, GST summary, cash movement, work in progress, month series, oldest open invoices, bills due |
+| GET | `/accounts/invoices` | `?status=UNPAID\|PARTIAL\|PAID\|OVERDUE&buyerId=&q=` (invoice, order or buyer) |
+| GET | `/accounts/invoices/:id` | Buyer, order, dispatch, rolls, payments, audit, HSN |
+| POST | `/accounts/invoices/:id/payments` | `{ amount, method?, reference? }` → 400 above the balance |
+| GET | `/accounts/bills` | Supplier bills (= deliveries). `?status=OPEN\|OVERDUE\|PAID&supplierId=&category=&q=` |
+| GET | `/accounts/bills/:id` | Supplier, material, tax rule with confidence, payments, audit |
+| POST | `/accounts/bills/:id/payments` | `{ amount, method?, reference?, paidAt? }`; 400 above balance or before receipt; 409 `DUPLICATE` reference |
+| GET | `/accounts/expenses` | `?category=LOGISTICS\|UTILITIES&subcategory=&status=&costCentre=&q=`; also `bySubcategory` |
+| POST | `/accounts/expenses` | `{ category, subcategory, description, payee, partyState?, incurredAt, amount, taxCode, costCentre, status, method?, reference?, dueDate?, orderId?, dispatchId? }`; GST worked out on the server; 409 `DUPLICATE` |
+| GET | `/accounts/expenses/:id` · POST `/accounts/expenses/:id/pay` | `{ method, reference?, paidAt? }`; 409 if already paid |
+| GET | `/accounts/payroll?month=` | Register: days, night shifts, basic, allowances, overtime, deductions, gross, net, paid |
+| GET | `/accounts/payslip?workerId=&month=` | One payslip |
+| GET | `/accounts/gst` | `?type=SALES\|PURCHASE\|EXPENSE&q=`; `{ summary, byMonth, count, rows }` with a link to each source |
+| GET | `/accounts/tax-rules` | Rules from `lib/tax.js` with rate history and confidence (`/materials/tax-codes` is the same list for store users) |
+| GET | `/accounts/reports/:name` | `pnl`, `monthly`, `receivables`, `payables` (ageing), `purchases`, `inventory`, `expenses`, `payroll`, `gst`, `order-costs` |
+
+Also changed: `POST /materials` takes `sku, subcategory, department, taxCode, isSpare`; categories are `YARN, WEAVING, DYEING, FINISHING, QC, PACKAGING, MAINTENANCE`. `POST /materials/inwards` takes `batchNo, billNo` and returns the bill with GST. `POST /materials/issues` takes `jobId, department`. Invoices from `POST /dispatch` carry GST and `dueDate`; `/invoices` `balance` is against `totalAmount`. `/reports/pnl` adds `logistics`, `utilities`, `supplierPayments`.
+
 ## Errors
 
 | Status | `error` |

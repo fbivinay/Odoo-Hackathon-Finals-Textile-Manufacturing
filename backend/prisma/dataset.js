@@ -7,15 +7,19 @@ const prisma = require('../src/lib/prisma');
 // Dataset = a folder with one JSON array per model, e.g. data/sample/Order.json.
 //   npm run data:export -- data/sample
 //   npm run data:check  -- data/sample            (no database needed)
-//   npm run data:import -- data/sample --reset    (--reset wipes every table first)
+//   npm run data:import -- data/sample --reset    (--reset wipes every table first: local only)
+//   npm run data:import -- data/sample --merge    (adds rows whose id is not there yet; never
+//                                                  deletes or overwrites, so re-running adds nothing)
 // Format and rules: docs/data-format.md
 
 // Insert order: every table comes after the tables it points to.
 const MODELS = [
   'User', 'Supplier', 'Buyer', 'RawMaterial', 'Worker', 'Machine', 'Order', 'MaterialInward',
-  'MaterialIssue', 'ProductionJob', 'ProductionLog', 'Dispatch', 'Roll', 'QCRecord', 'Invoice',
-  'Payment', 'Attendance', 'WagePayment', 'PurchaseOrder',
+  'ProductionJob', 'MaterialIssue', 'ProductionLog', 'Dispatch', 'Roll', 'QCRecord', 'Invoice',
+  'Payment', 'Attendance', 'WagePayment', 'PurchaseOrder', 'SupplierPayment', 'Expense', 'AuditLog',
 ];
+const { taxFor } = require('../src/lib/tax');
+const { payslip } = require('../src/lib/payroll');
 const delegate = (model) => prisma[model[0].toLowerCase() + model.slice(1)];
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const CHUNK = 2000;
@@ -77,6 +81,70 @@ function check(data) {
     if (!near(Number(i.billAmount), Number(i.qty) * Number(i.rate))) bad(`MaterialInward ${i.id}: billAmount != qty * rate`);
   }
 
+  // Stock never below zero at any moment, not just at the end.
+  const ledger = new Map();
+  for (const i of data.MaterialInward) ledger.set(i.materialId, [...(ledger.get(i.materialId) || []), [String(i.receivedAt), Number(i.qty)]]);
+  for (const i of data.MaterialIssue) ledger.set(i.materialId, [...(ledger.get(i.materialId) || []), [String(i.issuedAt), -Number(i.qty)]]);
+  for (const [materialId, moves] of ledger) {
+    let bal = 0;
+    for (const [at, q] of moves.sort((a, b) => a[0].localeCompare(b[0]) || b[1] - a[1])) {
+      bal += q;
+      if (bal < -0.011) { bad(`RawMaterial ${materialId}: stock below zero on ${at.slice(0, 10)}`); break; }
+    }
+  }
+
+  // GST: components match the rate and the place of supply, totals add up (lib/tax.js).
+  const suppliers = byId('Supplier');
+  const buyers = byId('Buyer');
+  const taxOk = (label, row, taxable, state) => {
+    if (row.taxCode == null) return;
+    const want = taxFor(row.taxCode, taxable, row.issuedAt || row.receivedAt || row.incurredAt, state);
+    for (const k of ['cgst', 'sgst', 'igst', 'totalAmount']) {
+      if (!near(Number(row[k]), want[k])) { bad(`${label}: ${k} ${row[k]} should be ${want[k]} (${row.taxCode} ${want.taxRatePct}%, ${state})`); return; }
+    }
+    if (row.taxTreatment !== want.taxTreatment) bad(`${label}: treatment ${row.taxTreatment} should be ${want.taxTreatment}`);
+  };
+  const supplierPaid = groupBy(data.SupplierPayment, 'inwardId');
+  for (const i of data.MaterialInward) {
+    taxOk(`MaterialInward ${i.id}`, i, Number(i.billAmount), suppliers.get(i.supplierId)?.state);
+    const paid = sum(supplierPaid.get(i.id) || [], 'amount');
+    if (paid > Number(i.totalAmount ?? i.billAmount) + 0.011) bad(`MaterialInward ${i.id}: supplier paid more than the bill`);
+  }
+  const inwardById = byId('MaterialInward');
+  for (const p of data.SupplierPayment) {
+    const i = inwardById.get(p.inwardId);
+    if (i && String(p.paidAt) < String(i.receivedAt)) bad(`SupplierPayment ${p.id}: paid before the goods arrived`);
+  }
+  const vouchers = new Set();
+  for (const e of data.Expense) {
+    if (vouchers.has(e.voucherNo)) bad(`Expense ${e.voucherNo}: duplicate voucher`);
+    vouchers.add(e.voucherNo);
+    if ((e.status === 'PAID') !== Boolean(e.paidAt)) bad(`Expense ${e.voucherNo}: PAID must go with paidAt, and only then`);
+    if (Number(e.amount) <= 0) bad(`Expense ${e.voucherNo}: amount must be positive`);
+  }
+  for (const w of data.WagePayment) {
+    if (w.gross == null) continue;
+    if (!near(Number(w.gross), Number(w.basic) + Number(w.allowances) + Number(w.overtime))) bad(`WagePayment ${w.id}: gross != basic + allowances + overtime`);
+    if (!near(Number(w.amount), Number(w.gross) - Number(w.deductions))) bad(`WagePayment ${w.id}: net paid != gross - deductions`);
+  }
+  // Payslips match the attendance register.
+  const register = new Map();
+  for (const a of data.Attendance) {
+    const k = `${a.workerId}|${String(a.date).slice(0, 7)}`;
+    const e = register.get(k) || { present: 0, halfDays: 0, nightDays: 0 };
+    if (a.status === 'PRESENT') e.present += 1;
+    if (a.status === 'HALF_DAY') e.halfDays += 1;
+    if (a.status !== 'ABSENT' && a.shift === 'NIGHT') e.nightDays += a.status === 'PRESENT' ? 1 : 0.5;
+    register.set(k, e);
+  }
+  const workers = byId('Worker');
+  for (const w of data.WagePayment) {
+    if (w.gross == null) continue;
+    const e = register.get(`${w.workerId}|${w.month}`) || { present: 0, halfDays: 0, nightDays: 0 };
+    const want = payslip({ ...e, dailyWage: workers.get(w.workerId)?.dailyWage, overtime: Number(w.overtime), deductions: Number(w.deductions) });
+    if (!near(Number(w.gross), want.gross)) bad(`WagePayment ${w.id}: gross ${w.gross} does not match the register (${want.gross})`);
+  }
+
   const machines = byId('Machine');
   const logs = groupBy(data.ProductionLog, 'jobId');
   const running = groupBy(data.ProductionJob.filter((j) => j.status === 'RUNNING'), 'machineId');
@@ -120,9 +188,11 @@ function check(data) {
     const invoice = invoiceOf.get(d.id);
     if (!invoice) { bad(`Dispatch ${d.dispatchNo}: no invoice`); continue; }
     if (order && !near(Number(invoice.amount), sum(rolls) * Number(order.pricePerUnit))) bad(`Invoice ${invoice.invoiceNo}: amount != dispatched qty * order.pricePerUnit`);
+    taxOk(`Invoice ${invoice.invoiceNo}`, invoice, Number(invoice.amount), buyers.get(d.buyerId)?.state);
+    const payable = Number(invoice.totalAmount ?? invoice.amount);
     const paid = sum(payments.get(invoice.id) || [], 'amount');
-    const status = paid <= 0 ? 'UNPAID' : near(paid, Number(invoice.amount)) ? 'PAID' : 'PARTIAL';
-    if (paid > Number(invoice.amount) + 0.011) bad(`Invoice ${invoice.invoiceNo}: overpaid`);
+    const status = paid <= 0 ? 'UNPAID' : near(paid, payable) ? 'PAID' : 'PARTIAL';
+    if (paid > payable + 0.011) bad(`Invoice ${invoice.invoiceNo}: overpaid`);
     else if (invoice.status !== status) bad(`Invoice ${invoice.invoiceNo}: status ${invoice.status} should be ${status}`);
   }
 
@@ -177,10 +247,11 @@ async function importFrom(dir) {
     throw new Error(`${problems.length} problem(s) found, nothing imported`);
   }
 
+  const merge = flags.includes('--merge');
   if (flags.includes('--reset')) {
     for (const model of [...MODELS].reverse()) await delegate(model).deleteMany();
-  } else if ((await prisma.user.count()) + (await prisma.order.count()) > 0) {
-    throw new Error('Database is not empty. Re-run with --reset to wipe it first.');
+  } else if (!merge && (await prisma.user.count()) + (await prisma.order.count()) > 0) {
+    throw new Error('Database is not empty. Re-run with --merge to add only missing rows, or --reset (local only) to wipe it first.');
   }
 
   for (const model of MODELS) {
@@ -194,8 +265,9 @@ async function importFrom(dir) {
       if (model === 'Attendance' && DATE_ONLY.test(out.date)) out.date = `${out.date}T00:00:00.000Z`;
       return out;
     });
-    for (let i = 0; i < rows.length; i += CHUNK) await delegate(model).createMany({ data: rows.slice(i, i + CHUNK) });
-    console.log(`${model.padEnd(15)} ${rows.length}`);
+    let added = 0;
+    for (let i = 0; i < rows.length; i += CHUNK) added += (await delegate(model).createMany({ data: rows.slice(i, i + CHUNK), skipDuplicates: merge })).count;
+    console.log(`${model.padEnd(15)} ${rows.length}${merge ? ` (${added} new)` : ''}`);
   }
 }
 

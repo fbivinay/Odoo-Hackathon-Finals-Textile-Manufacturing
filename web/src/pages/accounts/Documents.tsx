@@ -1,0 +1,477 @@
+import { useState, type FormEvent, type ReactNode } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, Printer } from 'lucide-react'
+import { toast } from 'sonner'
+import { Field, selectClass } from '@/components/Field'
+import { Pill } from '@/components/StatusPill'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { type AuditRow, type Bill, type Company, type Expense, type Rule, type SalesInvoice, TREATMENT, n, todayIst } from '@/lib/accounts'
+import { api, ApiError } from '@/lib/api'
+import { formatDate, formatDateTime } from '@/lib/format'
+import { useApi } from '@/lib/useApi'
+import { cn } from '@/lib/utils'
+
+// Documents show paise: ₹4,80,693.68, not a rounded figure.
+const formatINR = (v: number) => `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+// Rupees in words, Indian style (lakh, crore), for the foot of a document.
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+function words(num: number): string {
+  const two = (x: number) => (x < 20 ? ONES[x] : `${TENS[Math.floor(x / 10)]}${x % 10 ? ` ${ONES[x % 10]}` : ''}`)
+  const three = (x: number) => [x >= 100 ? `${ONES[Math.floor(x / 100)]} Hundred` : '', two(x % 100)].filter(Boolean).join(' ')
+  const parts: string[] = []
+  const crore = Math.floor(num / 1e7)
+  const lakh = Math.floor((num % 1e7) / 1e5)
+  const thousand = Math.floor((num % 1e5) / 1000)
+  const rest = num % 1000
+  if (crore) parts.push(`${words(crore)} Crore`)
+  if (lakh) parts.push(`${two(lakh)} Lakh`)
+  if (thousand) parts.push(`${two(thousand)} Thousand`)
+  if (rest) parts.push(three(rest))
+  return parts.join(' ') || 'Zero'
+}
+const inWords = (amount: number) => {
+  const rupees = Math.floor(amount)
+  const paise = Math.round((amount - rupees) * 100)
+  return `Rupees ${words(rupees)}${paise ? ` and ${two(paise)} Paise` : ''} only`
+}
+const two = (x: number) => (x < 20 ? ONES[x] : `${TENS[Math.floor(x / 10)]}${x % 10 ? ` ${ONES[x % 10]}` : ''}`)
+
+// ------------------------------------------------------------- layout --
+
+function Doc({ back, title, number, date, status, company, actions, children }: { back: string; title: string; number: string; date: string; status: ReactNode; company?: Company; actions?: ReactNode; children: ReactNode }) {
+  const navigate = useNavigate()
+  return (
+    <div className="space-y-4">
+      <style>{'@page { size: A4; margin: 14mm; } @media print { main { padding: 0 !important; } }'}</style>
+      <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+        <button type="button" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate(back))} className="inline-flex items-center gap-1 text-sm text-ink-2 hover:text-brand">
+          <ArrowLeft className="size-4" />
+          Back
+        </button>
+        <div className="flex gap-2">
+          {actions}
+          <Button variant="outline" className="gap-1.5" onClick={() => window.print()}>
+            <Printer className="size-4" />
+            Print
+          </Button>
+        </div>
+      </div>
+      <article className="print-area mx-auto max-w-[210mm] print:bottom-auto rounded-xl border border-border bg-white p-8 text-[13px] leading-relaxed text-zinc-900 shadow-sm print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none">
+        <header className="flex items-start justify-between gap-6 border-b-2 border-zinc-900 pb-4">
+          <div>
+            <p className="text-xl font-semibold tracking-tight">{company?.name ?? 'Everest Textile Mills'}</p>
+            <p className="text-xs text-zinc-600">{company?.state ?? 'Gujarat'}, India · address and GSTIN not configured</p>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-semibold uppercase tracking-wide">{title}</p>
+            <p className="font-mono text-sm">{number}</p>
+            <p className="text-xs text-zinc-600">{date}</p>
+            <div className="mt-1">{status}</div>
+          </div>
+        </header>
+        <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-center text-[11px] font-medium tracking-wide text-amber-800 uppercase print:border print:border-amber-300">
+          Synthetic demo document · not a tax invoice · not legally valid
+        </p>
+        <div className="mt-5 space-y-5">{children}</div>
+        <footer className="mt-8 border-t border-zinc-300 pt-3 text-[11px] text-zinc-500">Generated by Everest Textile Mills app on {formatDateTime(new Date().toISOString())}. No signature, seal or GSTIN is reproduced.</footer>
+      </article>
+    </div>
+  )
+}
+
+function Parties({ left, right }: { left: [string, ReactNode]; right: [string, ReactNode] }) {
+  return (
+    <div className="grid grid-cols-2 gap-6">
+      {[left, right].map(([h, body]) => (
+        <div key={h}>
+          <p className="text-[11px] font-semibold text-zinc-500 uppercase">{h}</p>
+          <div className="mt-1">{body}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Lines({ head, rows, right = [] }: { head: string[]; rows: ReactNode[][]; right?: number[] }) {
+  return (
+    <table className="w-full border-collapse text-[12.5px]">
+      <thead>
+        <tr className="border-y border-zinc-900 text-left">
+          {head.map((h, i) => (
+            <th key={h} className={cn('px-2 py-1.5 font-semibold', right.includes(i) && 'text-right')}>
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={i} className="border-b border-zinc-200 break-inside-avoid">
+            {r.map((c, j) => (
+              <td key={j} className={cn('px-2 py-1', right.includes(j) && 'text-right tabular-nums')}>
+                {c}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function Sums({ rows, total, words: w }: { rows: [string, number][]; total: [string, number]; words?: boolean }) {
+  return (
+    <div className="ml-auto w-80 break-inside-avoid">
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex justify-between py-0.5">
+          <span className="text-zinc-600">{k}</span>
+          <span className="tabular-nums">{formatINR(v)}</span>
+        </div>
+      ))}
+      <div className="mt-1 flex justify-between border-t-2 border-zinc-900 pt-1 text-base font-semibold">
+        <span>{total[0]}</span>
+        <span className="tabular-nums">{formatINR(total[1])}</span>
+      </div>
+      {w && <p className="mt-1 text-right text-[11px] text-zinc-600">{inWords(total[1])}</p>}
+    </div>
+  )
+}
+
+const taxRows = (r: { cgst: number; sgst: number; igst: number; taxRatePct: number; taxTreatment: string | null }): [string, number][] => {
+  const rate = n(r.taxRatePct)
+  if (r.taxTreatment?.startsWith('RCM')) return [[`GST payable by us under reverse charge (${rate}%)`, n(r.cgst) + n(r.sgst) + n(r.igst)]]
+  if (n(r.igst)) return [[`IGST ${rate}%`, n(r.igst)]]
+  if (n(r.cgst) || n(r.sgst)) return [[`CGST ${rate / 2}%`, n(r.cgst)], [`SGST ${rate / 2}%`, n(r.sgst)]]
+  return [[`GST (${TREATMENT[r.taxTreatment ?? ''] ?? 'none'})`, 0]]
+}
+
+function History({ payments, audit, receiptBase }: { payments: { id: string; amount: number; method: string | null; reference: string | null; paidAt: string }[]; audit: AuditRow[]; receiptBase?: string }) {
+  return (
+    <div className="break-inside-avoid">
+      <p className="text-[11px] font-semibold text-zinc-500 uppercase">Payment history</p>
+      {payments.length === 0 ? (
+        <p className="mt-1 text-zinc-600">No payments recorded.</p>
+      ) : (
+        <Lines
+          head={['Date', 'Method', 'Reference', 'Amount', '']}
+          right={[3]}
+          rows={payments.map((p) => [formatDate(p.paidAt), p.method ?? '—', p.reference ?? '—', formatINR(n(p.amount)), receiptBase ? <Link to={`${receiptBase}?receipt=${p.id}`} className="text-xs text-brand print:hidden">Receipt</Link> : ''])}
+        />
+      )}
+      {audit.length > 0 && (
+        <p className="mt-2 text-[11px] text-zinc-500 print:hidden">
+          Audit: {audit.map((a) => `${formatDateTime(a.at)} ${a.action.toLowerCase()} ${a.detail ?? ''} by ${a.by}`).join(' · ')}
+        </p>
+      )}
+    </div>
+  )
+}
+
+const statusPill = (status: string, overdueDays = 0) =>
+  status === 'PAID' ? <Pill tone="good">Paid</Pill> : overdueDays > 0 ? <Pill tone="problem">Overdue {overdueDays} days</Pill> : status === 'PARTIAL' ? <Pill tone="watch">Part paid</Pill> : status === 'ACCRUED' ? <Pill tone="watch">Accrued</Pill> : <Pill>Unpaid</Pill>
+
+// ------------------------------------------------------- sales invoice --
+
+type InvoiceDetail = SalesInvoice & { hsn: string; company: Company; audit: AuditRow[] }
+
+export function InvoiceDoc() {
+  const { id } = useParams()
+  const [params] = useSearchParams()
+  const doc = useApi<InvoiceDetail>(`/accounts/invoices/${id}`)
+  const [paying, setPaying] = useState(false)
+  if (doc.error) return <p className="text-sm text-problem">{doc.error}</p>
+  if (!doc.data) return <Skeleton className="h-[80vh] w-full" />
+  const i = doc.data
+  const receipt = params.get('receipt') && i.payments.find((p) => p.id === params.get('receipt'))
+  const metres = (i.dispatch.rolls ?? []).reduce((t, x) => t + n(x.qty), 0)
+  const buyer = (
+    <>
+      <p className="font-semibold">{i.dispatch.buyer.name}</p>
+      <p>State: {i.dispatch.buyer.state}</p>
+      {i.dispatch.buyer.phone && <p>{i.dispatch.buyer.phone}</p>}
+      {i.dispatch.buyer.email && <p>{i.dispatch.buyer.email}</p>}
+    </>
+  )
+  if (receipt) {
+    return (
+      <Doc back={`/accounts/invoices/${i.id}`} title="Payment receipt" number={`RCPT-${i.invoiceNo}-${i.payments.indexOf(receipt) + 1}`} date={formatDate(receipt.paidAt)} status={<Pill tone="good">Received</Pill>} company={i.company}>
+        <Parties left={['Received from', buyer]} right={['Against', <><p className="font-semibold">Invoice {i.invoiceNo}</p><p>Dated {formatDate(i.issuedAt)}</p><p>Order {i.dispatch.order.orderNo}</p></>]} />
+        <Lines head={['Mode', 'Reference', 'Amount']} right={[2]} rows={[[receipt.method ?? '—', receipt.reference ?? '—', formatINR(n(receipt.amount))]]} />
+        <Sums rows={[['Invoice total', i.payable], ['Paid before this receipt', i.payments.slice(0, i.payments.indexOf(receipt)).reduce((t, p) => t + n(p.amount), 0)]]} total={['This receipt', n(receipt.amount)]} words />
+        <p className="text-zinc-600">Balance on the invoice after this receipt: {formatINR(i.payable - i.payments.slice(0, i.payments.indexOf(receipt) + 1).reduce((t, p) => t + n(p.amount), 0))}</p>
+      </Doc>
+    )
+  }
+  return (
+    <Doc
+      back="/accounts?tab=invoices"
+      title="Sales invoice"
+      number={i.invoiceNo}
+      date={`Issued ${formatDate(i.issuedAt)}${i.dueDate ? ` · due ${formatDate(i.dueDate)}` : ''}`}
+      status={statusPill(i.status, i.overdueDays)}
+      company={i.company}
+      actions={i.balance > 0 && <Button onClick={() => setPaying(true)}>Record payment</Button>}
+    >
+      <Parties
+        left={['Bill to', buyer]}
+        right={['Shipment', <><p>Order <Link to={`/orders/${i.dispatch.order.id}`} className="font-semibold hover:text-brand">{i.dispatch.order.orderNo}</Link></p><p>Dispatch {i.dispatch.dispatchNo} on {formatDate(i.dispatch.dispatchedAt)}</p>{i.dispatch.vehicleNo && <p>Vehicle {i.dispatch.vehicleNo}</p>}<p>Place of supply: {i.dispatch.buyer.state} ({TREATMENT[i.taxTreatment ?? ''] ?? '—'})</p></>]}
+      />
+      <Lines
+        head={['#', 'Description', 'HSN', 'Qty (m)', 'Rate (₹/m)', 'Taxable value']}
+        right={[3, 4, 5]}
+        rows={[[1, `${i.dispatch.order.fabricType} fabric${i.dispatch.order.colour ? `, ${i.dispatch.order.colour}` : ''} · ${(i.dispatch.rolls ?? []).length} rolls`, i.hsn, metres.toLocaleString('en-IN', { maximumFractionDigits: 2 }), formatINR(n(i.dispatch.order.pricePerUnit)), formatINR(n(i.amount))]]}
+      />
+      <p className="text-[11px] text-zinc-500">Rolls: {(i.dispatch.rolls ?? []).map((r) => `${r.rollNo} (${n(r.qty)} m)`).join(', ')}</p>
+      <Sums rows={[['Taxable value', n(i.amount)], ...taxRows(i)]} total={['Total payable', i.payable]} words />
+      <History payments={i.payments} audit={i.audit} receiptBase={`/accounts/invoices/${i.id}`} />
+      <div className="flex justify-between font-medium break-inside-avoid">
+        <span>Paid {formatINR(i.paid)}</span>
+        <span>Balance {formatINR(i.balance)}</span>
+      </div>
+      {paying && <PaymentDialog title={`Payment for ${i.invoiceNo}`} balance={i.balance} url={`/accounts/invoices/${i.id}/payments`} withDate={false} onClose={() => setPaying(false)} onSaved={doc.reload} />}
+    </Doc>
+  )
+}
+
+// -------------------------------------------------------- supplier bill --
+
+type BillDetail = Bill & { rule: (Rule & { code: string }) | null; company: Company; audit: AuditRow[]; receivedBy?: { name: string }; purchaseOrder?: { poNo: string } | null; order?: { orderNo: string } | null }
+
+export function BillDoc() {
+  const { id } = useParams()
+  const doc = useApi<BillDetail>(`/accounts/bills/${id}`)
+  const [paying, setPaying] = useState(false)
+  if (doc.error) return <p className="text-sm text-problem">{doc.error}</p>
+  if (!doc.data) return <Skeleton className="h-[80vh] w-full" />
+  const b = doc.data
+  return (
+    <Doc
+      back="/accounts?tab=bills"
+      title="Purchase bill record"
+      number={b.billNo ?? b.id}
+      date={`Received ${formatDate(b.receivedAt)}${b.dueDate ? ` · due ${formatDate(b.dueDate)}` : ''}`}
+      status={statusPill(b.status, b.overdueDays)}
+      company={b.company}
+      actions={b.balance > 0 && <Button onClick={() => setPaying(true)}>Record payment</Button>}
+    >
+      <Parties
+        left={['Supplier', <><p className="font-semibold">{b.supplier.name}</p><p>State: {b.supplier.state}</p>{b.supplier.phone && <p>{b.supplier.phone}</p>}</>]}
+        right={['Receipt', <><p>Into store: {b.material.category.toLowerCase()} section</p>{b.batchNo && <p>Batch {b.batchNo}</p>}{b.purchaseOrder && <p>Against {b.purchaseOrder.poNo}</p>}{b.order && <p>For order {b.order.orderNo}</p>}{b.receivedBy && <p>Received by {b.receivedBy.name}</p>}</>]}
+      />
+      <Lines
+        head={['#', 'Item', 'SKU / HSN', 'Qty', 'Rate', 'Taxable value']}
+        right={[3, 4, 5]}
+        rows={[[1, `${b.material.yarnType}${b.material.colour ? ` · ${b.material.colour}` : ''}`, [b.material.sku, b.rule?.hsn].filter(Boolean).join(' / ') || '—', `${n(b.qty).toLocaleString('en-IN')} ${b.material.unit}`, formatINR(n(b.rate)), formatINR(n(b.billAmount))]]}
+      />
+      <Sums rows={[['Taxable value', n(b.billAmount)], ...taxRows(b)]} total={['Bill total', b.payable]} words />
+      {b.rule && (
+        <p className="text-[11px] text-zinc-500">
+          GST rule: {b.rule.label} (HSN {b.rule.hsn}), {b.rule.confidence.toLowerCase().replace('_', ' ')}. {b.rule.note} Input tax credit: {b.itcEligible ? 'eligible' : 'not claimed'}.
+        </p>
+      )}
+      <History payments={b.payments} audit={b.audit} />
+      <div className="flex justify-between font-medium break-inside-avoid">
+        <span>Paid {formatINR(b.paid)}</span>
+        <span>Balance {formatINR(b.balance)}</span>
+      </div>
+      {paying && <PaymentDialog title={`Pay ${b.supplier.name} for ${b.billNo}`} balance={b.balance} url={`/accounts/bills/${b.id}/payments`} withDate onClose={() => setPaying(false)} onSaved={doc.reload} minDate={b.receivedAt.slice(0, 10)} />}
+    </Doc>
+  )
+}
+
+// -------------------------------------------------------- expense voucher --
+
+type ExpenseDetail = Expense & { rule: (Rule & { code: string }) | null; company: Company; audit: AuditRow[] }
+
+export function ExpenseDoc() {
+  const { id } = useParams()
+  const doc = useApi<ExpenseDetail>(`/accounts/expenses/${id}`)
+  const [paying, setPaying] = useState(false)
+  if (doc.error) return <p className="text-sm text-problem">{doc.error}</p>
+  if (!doc.data) return <Skeleton className="h-[80vh] w-full" />
+  const e = doc.data
+  const total = n(e.totalAmount ?? e.amount)
+  return (
+    <Doc
+      back="/accounts?tab=expenses"
+      title="Expense voucher"
+      number={e.voucherNo}
+      date={`Dated ${formatDate(e.incurredAt)}${e.dueDate && e.status !== 'PAID' ? ` · due ${formatDate(e.dueDate)}` : ''}`}
+      status={statusPill(e.status)}
+      company={e.company}
+      actions={e.status !== 'PAID' && <Button onClick={() => setPaying(true)}>Mark paid</Button>}
+    >
+      <Parties
+        left={['Pay to', <><p className="font-semibold">{e.payee}</p><p>{e.category === 'LOGISTICS' ? 'Logistics and transport' : 'Factory utilities'} · {e.subcategory}</p></>]}
+        right={['Charged to', <><p>Cost centre: {e.costCentre}</p>{e.dispatch && <p>Dispatch {e.dispatch.dispatchNo}</p>}{e.order && <p>Order {e.order.orderNo}</p>}{e.recurring && <p>Recurring monthly</p>}</>]}
+      />
+      <Lines head={['Particulars', 'Amount']} right={[1]} rows={[[e.description, formatINR(n(e.amount))]]} />
+      <Sums rows={[['Amount before GST', n(e.amount)], ...taxRows(e)]} total={[e.taxTreatment?.startsWith('RCM') ? 'Paid to payee' : 'Total', total]} words />
+      {e.rule && <p className="text-[11px] text-zinc-500">GST rule: {e.rule.label} ({e.rule.hsn}), {e.rule.confidence.toLowerCase().replace('_', ' ')}. {e.rule.note}</p>}
+      <div className="break-inside-avoid">
+        <p className="text-[11px] font-semibold text-zinc-500 uppercase">Payment</p>
+        <p>{e.status === 'PAID' ? `Paid ${formatDate(e.paidAt!)} by ${e.method ?? '—'}${e.reference ? `, ref ${e.reference}` : ''}` : e.status === 'ACCRUED' ? 'Accrued: service used, bill not received yet.' : 'Not paid yet.'}</p>
+        {e.audit.length > 0 && <p className="mt-1 text-[11px] text-zinc-500 print:hidden">Audit: {e.audit.map((a) => `${formatDateTime(a.at)} ${a.action.toLowerCase()} by ${a.by}`).join(' · ')}</p>}
+      </div>
+      <div className="grid grid-cols-2 gap-8 pt-6 text-[11px] text-zinc-500 break-inside-avoid">
+        <p className="border-t border-zinc-400 pt-1">Prepared by</p>
+        <p className="border-t border-zinc-400 pt-1">Approved by</p>
+      </div>
+      {paying && <PayExpenseDialog id={e.id} voucher={e.voucherNo} onClose={() => setPaying(false)} onSaved={doc.reload} />}
+    </Doc>
+  )
+}
+
+// --------------------------------------------------------------- payslip --
+
+type Slip = {
+  worker: { id: string; code: string; name: string; shift: string; dailyWage: number; department: string }
+  month: string
+  present: number
+  halfDays: number
+  absent: number
+  nightDays: number
+  daysWorked: number
+  basic: number
+  allowances: number
+  overtime: number
+  deductions: number
+  gross: number
+  net: number
+  paid: number
+  due: number
+  paidAt: string | null
+  company: Company
+}
+
+export function PayslipDoc() {
+  const { workerId, month } = useParams()
+  const doc = useApi<Slip>(`/accounts/payslip?workerId=${workerId}&month=${month}`)
+  if (doc.error) return <p className="text-sm text-problem">{doc.error}</p>
+  if (!doc.data) return <Skeleton className="h-[80vh] w-full" />
+  const s = doc.data
+  const monthName = new Date(`${s.month}-01T00:00:00Z`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  return (
+    <Doc back={`/accounts?tab=payroll&month=${s.month}`} title="Payslip" number={`${s.worker.code} · ${s.month}`} date={monthName} status={s.paidAt ? <Pill tone="good">Paid {formatDate(s.paidAt)}</Pill> : <Pill tone="watch">Not paid yet</Pill>} company={s.company}>
+      <Parties
+        left={['Employee', <><p className="font-semibold">{s.worker.name}</p><p>Code {s.worker.code}</p><p>{s.worker.department} · {s.worker.shift.toLowerCase()} shift</p></>]}
+        right={['Attendance', <><p>Present {s.present} days, half days {s.halfDays}, absent {s.absent}</p><p>Days payable {s.daysWorked}</p><p>Night shifts {s.nightDays}</p></>]}
+      />
+      <div className="grid grid-cols-2 gap-6">
+        <Lines head={['Earnings', 'Amount']} right={[1]} rows={[[`Basic (${s.daysWorked} days × ${formatINR(n(s.worker.dailyWage))})`, formatINR(s.basic)], ['Night-shift allowance', formatINR(s.allowances)], ['Overtime', formatINR(s.overtime)], [<b>Gross</b>, <b>{formatINR(s.gross)}</b>]]} />
+        <Lines head={['Deductions', 'Amount']} right={[1]} rows={[['Deductions and adjustments', formatINR(s.deductions)], [<b>Total deductions</b>, <b>{formatINR(s.deductions)}</b>]]} />
+      </div>
+      <Sums rows={[['Gross pay', s.gross], ['Less: deductions', s.deductions]]} total={['Net pay', s.net]} words />
+      <p className="text-[11px] text-zinc-500">Worked out from the attendance register. No statutory deductions (PF, ESI, PT) are modelled in this demo dataset.</p>
+    </Doc>
+  )
+}
+
+// --------------------------------------------------------------- dialogs --
+
+function PaymentDialog({ title, balance, url, withDate, minDate, onClose, onSaved }: { title: string; balance: number; url: string; withDate: boolean; minDate?: string; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({ amount: String(balance), method: 'NEFT', reference: '', paidAt: todayIst() })
+  const [busy, setBusy] = useState(false)
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      await api(url, { method: 'POST', body: { amount: Number(f.amount), method: f.method, reference: f.reference || undefined, ...(withDate ? { paidAt: f.paidAt } : {}) } })
+      toast.success('Payment recorded')
+      onSaved()
+      onClose()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>Balance {formatINR(balance)}. A part payment leaves the rest open.</DialogDescription>
+        </DialogHeader>
+        <form id="pay" onSubmit={submit} className="grid gap-3">
+          <Field label="Amount (₹)" htmlFor="amount">
+            <Input id="amount" type="number" min="0.01" max={balance} step="0.01" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} />
+          </Field>
+          <Field label="Method" htmlFor="method">
+            <select id="method" className={selectClass} value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}>
+              {['NEFT', 'RTGS', 'UPI', 'Cheque', 'Cash'].map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Reference (UTR / cheque no.)" htmlFor="reference">
+            <Input id="reference" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />
+          </Field>
+          {withDate && (
+            <Field label="Paid on" htmlFor="paidAt">
+              <Input id="paidAt" type="date" min={minDate} max={todayIst()} value={f.paidAt} onChange={(e) => setF({ ...f, paidAt: e.target.value })} />
+            </Field>
+          )}
+        </form>
+        <DialogFooter>
+          <Button type="submit" form="pay" disabled={busy}>
+            {busy ? 'Saving…' : 'Record payment'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function PayExpenseDialog({ id, voucher, onClose, onSaved }: { id: string; voucher: string; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({ method: 'NEFT', reference: '', paidAt: todayIst() })
+  const [busy, setBusy] = useState(false)
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      await api(`/accounts/expenses/${id}/pay`, { method: 'POST', body: { method: f.method, reference: f.reference || undefined, paidAt: f.paidAt } })
+      toast.success(`${voucher} marked paid`)
+      onSaved()
+      onClose()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Pay {voucher}</DialogTitle>
+        </DialogHeader>
+        <form id="pay-expense" onSubmit={submit} className="grid gap-3">
+          <Field label="Method" htmlFor="method">
+            <select id="method" className={selectClass} value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}>
+              {['NEFT', 'RTGS', 'UPI', 'Cheque', 'Card', 'Cash'].map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Reference" htmlFor="reference">
+            <Input id="reference" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />
+          </Field>
+          <Field label="Paid on" htmlFor="paidAt">
+            <Input id="paidAt" type="date" max={todayIst()} value={f.paidAt} onChange={(e) => setF({ ...f, paidAt: e.target.value })} />
+          </Field>
+        </form>
+        <DialogFooter>
+          <Button type="submit" form="pay-expense" disabled={busy}>
+            {busy ? 'Saving…' : 'Mark paid'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

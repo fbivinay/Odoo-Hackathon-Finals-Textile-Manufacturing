@@ -8,6 +8,8 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/', handle((req) => materialService.list(req.query)));
+// GST rules a new material can be filed under (read-only; the rules live in lib/tax.js).
+router.get('/tax-codes', handle(() => require('../services/accountsService').taxRules()));
 router.post('/', requireRole('STORE'), handle((req) => materialService.create(v.createMaterialSchema.parse(req.body)), 201));
 
 router.get('/inwards', handle((req) => materialService.listInwards(req.query)));
