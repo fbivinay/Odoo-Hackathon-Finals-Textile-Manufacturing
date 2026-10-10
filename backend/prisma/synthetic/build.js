@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { generate } = require('./generate');
 const { applyLiveEvents } = require('./live');
+const { verifyFloor } = require('./verify');
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -34,6 +35,7 @@ function summary(data) {
 }
 
 const { data, asOf } = generate({ asOfDate });
+verifyFloor(data, 'everest');
 write(
   path.join(root, 'everest'),
   data,
@@ -44,6 +46,7 @@ console.log(`data/everest       as of ${asOf}`);
 console.log(summary(data));
 
 const live = applyLiveEvents(JSON.parse(JSON.stringify(data)), { asOf });
+verifyFloor(live.data, 'everest-live');
 write(
   path.join(root, 'everest-live'),
   live.data,

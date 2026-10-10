@@ -1,14 +1,14 @@
 [
-{"id":"mat_000001","yarnType":"Cotton 40s","colour":"Raw White","unit":"kg","qtyInStock":1990,"reorderLevel":500,"avgCost":268.05,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000002","yarnType":"Cotton 60s Combed","colour":"Raw White","unit":"kg","qtyInStock":25,"reorderLevel":250,"avgCost":349.02,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000003","yarnType":"Cotton 80s Compact","colour":"Raw White","unit":"kg","qtyInStock":590,"reorderLevel":100,"avgCost":409.42,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000004","yarnType":"Cotton 30s","colour":"Raw White","unit":"kg","qtyInStock":1560,"reorderLevel":450,"avgCost":238.12,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000005","yarnType":"Cotton 10s OE","colour":"Raw White","unit":"kg","qtyInStock":3895,"reorderLevel":1150,"avgCost":181.36,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000006","yarnType":"Cotton 20s Rope-dyed","colour":"Indigo","unit":"kg","qtyInStock":1795,"reorderLevel":1800,"avgCost":320.79,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000007","yarnType":"Poly-Cotton 2/40","colour":"Grey","unit":"kg","qtyInStock":895,"reorderLevel":900,"avgCost":224.78,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000008","yarnType":"Polyester 150D Semi-dull","colour":"Raw White","unit":"kg","qtyInStock":410,"reorderLevel":400,"avgCost":179.16,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000009","yarnType":"Polyester 75D Bright","colour":"Raw White","unit":"kg","qtyInStock":20,"reorderLevel":200,"avgCost":200.31,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000010","yarnType":"Viscose 30s","colour":"Natural","unit":"kg","qtyInStock":1510,"reorderLevel":450,"avgCost":265.44,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000011","yarnType":"Linen 25s","colour":"Natural","unit":"kg","qtyInStock":1220,"reorderLevel":350,"avgCost":622.46,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"mat_000012","yarnType":"Cotton 30s Melange","colour":"Grey","unit":"kg","qtyInStock":865,"reorderLevel":300,"avgCost":302.4,"createdAt":"2022-12-31T18:30:00.000Z"}
+{"id":"mat_000001","yarnType":"Cotton 40s","colour":"Raw White","unit":"kg","qtyInStock":890,"reorderLevel":500,"avgCost":273.27,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000002","yarnType":"Cotton 60s Combed","colour":"Raw White","unit":"kg","qtyInStock":1000,"reorderLevel":250,"avgCost":327.76,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000003","yarnType":"Cotton 80s Compact","colour":"Raw White","unit":"kg","qtyInStock":590,"reorderLevel":100,"avgCost":419.59,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000004","yarnType":"Cotton 30s","colour":"Raw White","unit":"kg","qtyInStock":445,"reorderLevel":450,"avgCost":251.53,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000005","yarnType":"Cotton 10s OE","colour":"Raw White","unit":"kg","qtyInStock":4595,"reorderLevel":1150,"avgCost":186.92,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000006","yarnType":"Cotton 20s Rope-dyed","colour":"Indigo","unit":"kg","qtyInStock":1795,"reorderLevel":1800,"avgCost":319.88,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000007","yarnType":"Poly-Cotton 2/40","colour":"Grey","unit":"kg","qtyInStock":3340,"reorderLevel":900,"avgCost":216.45,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000008","yarnType":"Polyester 150D Semi-dull","colour":"Raw White","unit":"kg","qtyInStock":410,"reorderLevel":400,"avgCost":177.34,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000009","yarnType":"Polyester 75D Bright","colour":"Raw White","unit":"kg","qtyInStock":20,"reorderLevel":200,"avgCost":202.33,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000010","yarnType":"Viscose 30s","colour":"Natural","unit":"kg","qtyInStock":1785,"reorderLevel":450,"avgCost":262.02,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000011","yarnType":"Linen 25s","colour":"Natural","unit":"kg","qtyInStock":170,"reorderLevel":350,"avgCost":633.88,"createdAt":"2022-12-31T18:30:00.000Z"},
+{"id":"mat_000012","yarnType":"Cotton 30s Melange","colour":"Grey","unit":"kg","qtyInStock":865,"reorderLevel":300,"avgCost":296.99,"createdAt":"2022-12-31T18:30:00.000Z"}
 ]

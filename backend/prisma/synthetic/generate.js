@@ -223,10 +223,10 @@ function generate({ asOfDate }) {
     }
   }
   const staff = (t) => {
+    if (t > T) return null; // future shift: no register yet, and the job is cut at T anyway
     const list = onShift.get(`${rosterDay(t)}|${shiftOf(t)}`);
-    if (list && list.length) return r.pick(list);
-    const pool = workers.filter((w) => w.shift === shiftOf(t) && w.joined <= t && (!w.left || w.left > t));
-    return (pool.length ? r.pick(pool) : r.pick(workers)).id;
+    if (!list || !list.length) throw new Error(`No one on the register for ${rosterDay(t)} ${shiftOf(t)}`);
+    return r.pick(list);
   };
 
   // ---------- orders ----------
@@ -269,11 +269,17 @@ function generate({ asOfDate }) {
   const rolls = [];
   const qc = [];
 
+  // The mill runs three shifts round the clock, Monday to Saturday; Sundays and festival
+  // holidays are off, matching the attendance register.
+  const closed = (s) => {
+    const day = rosterDay(s);
+    return new Date(`${day}T00:00:00Z`).getUTCDay() === 0 || HOLIDAYS.has(day);
+  };
   const blocked = (m, a, b) => m.maintenance.some(([x, y]) => a < y && b > x);
   function nextSlot(m, at) {
     let s = Math.max(m.free, at);
     s = s === shiftStart(s) ? s : nextShiftStart(s);
-    while (blocked(m, s, s + SHIFT_HOURS * H)) s += SHIFT_HOURS * H;
+    while (closed(s) || blocked(m, s, s + SHIFT_HOURS * H)) s += SHIFT_HOURS * H;
     return s;
   }
 
@@ -290,6 +296,7 @@ function generate({ asOfDate }) {
       let s = nextSlot(m, at);
       avoid = null;
       while (remaining > 0.5) {
+        while (closed(s)) s += SHIFT_HOURS * H; // pick up again on the next working shift
         if (blocked(m, s, s + SHIFT_HOURS * H)) break; // maintenance: hand over to whichever machine is free
         const cap = PER_SHIFT[stage] * m.speed;
         const start = s + (out.length && out.at(-1).machine === m ? 0 : r.int(5, 40) * 60 * 1000);
@@ -614,4 +621,4 @@ function syncOrderStatuses(data) {
   }
 }
 
-module.exports = { generate, syncOrderStatuses, PER_SHIFT, SHIFT_HOURS, round2, pad };
+module.exports = { generate, syncOrderStatuses, PER_SHIFT, SHIFT_HOURS, HOLIDAYS, round2, pad };

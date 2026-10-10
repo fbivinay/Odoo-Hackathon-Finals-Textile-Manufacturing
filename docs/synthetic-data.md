@@ -22,14 +22,14 @@ Pass the import date as `--as-of`. History stops at 10:30 IST on that date. "Tod
 One timeline is simulated, then cut at the as-of moment, so history, today's floor and the order book come from the same run:
 
 1. Orders arrive daily (Poisson). Volume rises in the Aug–Oct festive season, dips in the monsoon and grows about 7% a year. 18% of orders are rush orders with tight deadlines. Over the last 3 weeks the order book for the next quarter is added, due 25–92 days out.
-2. Each order runs spinning → weaving → dyeing. **One job = one machine for one 8-hour shift** (06/14/22 IST), staffed by a worker from that shift's attendance. Machines take the first free shift, skip planned maintenance (24 h every 45–75 days), and occasionally break down (job `STOPPED`, 1–6 shifts of repair, the rest moves to another machine).
+2. Each order runs spinning → weaving → dyeing. The mill runs **24 hours, Monday to Saturday**, in three 8-hour shifts (06/14/22 IST), and is closed on Sundays and festival holidays, the same calendar as the attendance register. **One job = one machine for one shift**, staffed by a worker from that shift's attendance. Machines take the first free shift, skip planned maintenance (24 h every 45–75 days), and occasionally break down (job `STOPPED`, 1–6 shifts of repair, the rest moves to another machine).
 3. Dyeing output is cut into ~1,000–1,400 m rolls. QC checks each roll 3–30 h later: about 90% pass, 6% rework (re-checked 1–2.5 days later), 4% reject. Rates are worse in the monsoon, on worse machines and on the 5% of "bad batch" orders. Orders short after QC get a top-up dyeing lot.
 4. Every passed roll leaves in one truck, or two for 28% of orders. Each dispatch gets an invoice at dispatched qty × price. Buyers pay on their own terms (15–60 days, some late), 15% in two parts, 1.5% never.
 5. Yarn is issued when spinning starts. Stock is tracked in time order: bulk reorders arrive 4–12 days after stock falls below the reorder level, and a shortfall triggers an urgent truck for that order at a 6% premium. The price index follows seasons, inflation and the mid-2024 cotton spike.
 6. Attendance runs Mon–Sat, excluding festival holidays. Each month's wages are paid on the 5th of the next month, at exactly what the register earned.
 7. Cut at T: jobs crossing T are `RUNNING` with partial output. Rolls, QC, dispatches, payments, wages and yarn movements after T are dropped. One loom breaks down this morning and one machine is on maintenance. Every order status is derived with the same rule as `orderService.syncStatus`.
 
-Same as-of date in, same bytes out (seeded PRNG, ids like `ord_000123`). The datasets pass `data:check`, and both were imported with `npm run data:import` into a local Postgres 16 and read back through the API.
+Same as-of date in, same bytes out (seeded PRNG, ids like `ord_000123`). `build.js` also runs `verify.js`: every job is staffed by a worker who is on that day and shift's register, no shift runs on a closed day, and no job is longer than one shift. The datasets pass `data:check`, and both were imported with `npm run data:import` into a local Postgres 16 and read back through the API.
 
 ## Volume (`data/everest`)
 
@@ -42,15 +42,15 @@ Same as-of date in, same bytes out (seeded PRNG, ids like `ord_000123`). The dat
 | Worker | | | | | 48 | 48 |
 | Machine | | | | | 13 | 13 |
 | Order | 430 | 416 | 453 | 467 | 1766 | 1766 |
-| MaterialInward | 155 | 144 | 160 | 148 | 607 | 608 |
-| MaterialIssue | 412 | 406 | 449 | 394 | 1661 | 1661 |
-| ProductionJob | 7064 | 6669 | 7619 | 6532 | 27884 | 27891 |
-| ProductionLog | 7064 | 6668 | 7618 | 6534 | 27884 | 27902 |
-| Roll | 1199 | 1146 | 1339 | 1115 | 4799 | 4800 |
-| QCRecord | 1279 | 1212 | 1444 | 1186 | 5121 | 5126 |
-| Dispatch | 417 | 419 | 468 | 394 | 1698 | 1699 |
-| Invoice | 417 | 419 | 468 | 394 | 1698 | 1699 |
-| Payment | 409 | 482 | 511 | 421 | 1823 | 1824 |
+| MaterialInward | 156 | 143 | 161 | 142 | 602 | 603 |
+| MaterialIssue | 411 | 406 | 450 | 389 | 1656 | 1656 |
+| ProductionJob | 7038 | 6648 | 7628 | 6327 | 27641 | 27651 |
+| ProductionLog | 7038 | 6645 | 7631 | 6327 | 27641 | 27660 |
+| Roll | 1200 | 1162 | 1323 | 1051 | 4736 | 4737 |
+| QCRecord | 1286 | 1240 | 1401 | 1122 | 5049 | 5052 |
+| Dispatch | 426 | 418 | 469 | 386 | 1699 | 1700 |
+| Invoice | 426 | 418 | 469 | 386 | 1699 | 1700 |
+| Payment | 435 | 470 | 513 | 414 | 1832 | 1833 |
 | Attendance | 12286 | 12901 | 13564 | 10540 | 49291 | 49306 |
 | WagePayment | 483 | 506 | 532 | 399 | 1920 | 1920 |
 
@@ -60,12 +60,12 @@ Revenue is ₹7.7–9.0 Cr a year. Yarn is about 70% of revenue and wages about 
 
 | Area | State |
 |---|---|
-| Orders | 1,766 total: 1,628 dispatched, 38 cancelled, 100 open (67 pending, 9 spinning, 15 weaving, 1 dyeing, 3 at QC, 5 ready). **5 delayed.** |
-| Order book | 114 orders due after today, the last on 2027-01-07. 67 have not started. |
-| Floor | 9 machines running, WV-01 in breakdown (job stopped 09:40), DY-03 on maintenance, 2 idle. Logs from this morning feed "produced today". |
+| Orders | 1766 total: 1621 dispatched, 38 cancelled, 107 open (72 pending, 14 spinning, 13 weaving, 1 dyeing, 3 at QC, 4 ready). **6 delayed.** |
+| Order book | 114 orders due after today, the last on 2027-01-07. 72 have not started. |
+| Floor | 9 machines running, WV-02 in breakdown (job stopped 09:40), DY-02 on maintenance, 2 idle. Logs from this morning feed "produced today". |
 | Yarn | 4 of 12 yarns at or below reorder level. The pending order book needs more yarn than is in stock for 9 of 10 yarns (`availability.shortBy` on each order). |
 | QC | Rolls pending, in rework and passed are on the shelf. 250 rejected rolls in history. |
-| Money | 99 unpaid and 8 part-paid invoices, ₹1.91 Cr receivable. All months up to September have wages paid; October wages are due. |
+| Money | 102 unpaid and 5 part-paid invoices, ₹1.96 Cr receivable. All months up to September have wages paid; October wages are due. |
 | People | 48 workers, 45 active. Today only the morning shift is marked present. |
 
 ## Live scenario (`data/everest-live`)
