@@ -5,6 +5,7 @@ import { AlertTriangle, PackagePlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { DataTable } from '@/components/DataTable'
+import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
 import { LoadMore } from '@/components/LoadMore'
 import { PageHead } from '@/components/PageHead'
@@ -146,17 +147,24 @@ export function RawMaterials() {
             columns={stockCols}
             data={rows}
             loading={stock.loading}
-            empty="No materials here yet. Use Receive material to add the first one."
+            empty={
+              <EmptyState
+                icon={PackagePlus}
+                line={category === 'ALL' ? 'No raw materials yet.' : `No ${CATEGORY[category].toLowerCase()}${category === 'OTHER' ? ' materials' : ''} yet.`}
+                actionLabel={canEdit ? 'Receive material' : undefined}
+                onAction={canEdit ? () => setReceiving(true) : undefined}
+              />
+            }
             onRowClick={(m) => navigate(`/raw-materials/${m.id}`)}
           />
         </TabsContent>
         <TabsContent value="received" className="space-y-3">
-          <DataTable columns={receivedCols} data={received.rows} loading={received.loading} empty="Nothing received yet." />
+          <DataTable columns={receivedCols} data={received.rows} loading={received.loading} empty={<EmptyState icon={PackagePlus} line="Nothing received yet." />} />
           <LoadMore hasMore={received.hasMore} more={received.more} />
         </TabsContent>
       </Tabs>
 
-      {receiving && <ReceiveDialog materials={all} onClose={() => setReceiving(false)} onSaved={reload} />}
+      {receiving && <ReceiveDialog materials={all} startWith={category === 'ALL' ? null : category} onClose={() => setReceiving(false)} onSaved={reload} />}
       {using && <UseDialog m={using} onClose={() => setUsing(null)} onSaved={reload} />}
     </div>
   )
@@ -168,9 +176,11 @@ const emptyForm = {
   name: '', spec: '', category: 'DYE' as Category, unit: 'kg', supplierName: '', supplierPhone: '',
 }
 
-function ReceiveDialog({ materials, onClose, onSaved }: { materials: RawMaterial[]; onClose: () => void; onSaved: () => void }) {
+function ReceiveDialog({ materials, startWith, onClose, onSaved }: { materials: RawMaterial[]; startWith: Category | null; onClose: () => void; onSaved: () => void }) {
   const suppliers = useApi<Ref[]>('/suppliers')
-  const [form, setForm] = useState(emptyForm)
+  // Opened from an empty type (say Other): start on "add new" with that type chosen.
+  const nothingYet = startWith !== null && !materials.some((m) => m.category === startWith)
+  const [form, setForm] = useState({ ...emptyForm, category: startWith ?? emptyForm.category, materialId: nothingYet ? NEW : '' })
   const [busy, setBusy] = useState(false)
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const newMaterial = form.materialId === NEW
