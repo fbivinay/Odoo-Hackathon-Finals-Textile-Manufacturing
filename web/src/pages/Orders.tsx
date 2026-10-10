@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Copy, PackageSearch, Plus } from 'lucide-react'
+import { PackageSearch, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { PageHead } from '@/components/PageHead'
@@ -99,22 +99,11 @@ export function Orders() {
       header: 'Track',
       enableSorting: false,
       cell: ({ row: { original: o } }) => (
-        <div className="flex gap-0.5">
-          <Button variant="ghost" size="icon-xs" title="Open tracking page" aria-label={`Open tracking page for ${o.orderNo}`} asChild>
-            <a href={trackingUrl(o.trackingToken)} target="_blank" rel="noreferrer">
-              <PackageSearch className="size-3.5" />
-            </a>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            title="Copy link for the buyer"
-            aria-label={`Copy tracking link for ${o.orderNo}`}
-            onClick={() => navigator.clipboard.writeText(trackingUrl(o.trackingToken)).then(() => toast.success(`Tracking link for ${o.orderNo} copied`))}
-          >
-            <Copy className="size-3.5" />
-          </Button>
-        </div>
+        <Button variant="ghost" size="icon-xs" title="Open tracking page" aria-label={`Open tracking page for ${o.orderNo}`} asChild>
+          <a href={trackingUrl(o.trackingToken)} target="_blank" rel="noreferrer">
+            <PackageSearch className="size-3.5" />
+          </a>
+        </Button>
       ),
     },
   ]
