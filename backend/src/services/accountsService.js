@@ -218,8 +218,9 @@ async function overview(query) {
     purchases: sum('purchases'),
     workInProgress: wip,
     series,
-    topReceivables: invoices.sort((a, b) => b.daysOverdue - a.daysOverdue || b.balance - a.balance).slice(0, 8),
-    billsDue: bills.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)).slice(0, 8),
+    // Every open item (a few dozen), most overdue first; the overview filters them on screen.
+    topReceivables: invoices.sort((a, b) => b.daysOverdue - a.daysOverdue || b.balance - a.balance),
+    billsDue: bills.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)),
   };
 }
 

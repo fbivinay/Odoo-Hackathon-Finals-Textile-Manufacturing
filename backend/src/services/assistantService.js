@@ -152,4 +152,4 @@ async function chat(user, messages) {
   return { reply: 'That needs more digging than I can do in one go. Try a narrower question.', lookups: used };
 }
 
-module.exports = { chat, OFF_TOPIC };
+module.exports = { chat, generate, OFF_TOPIC };

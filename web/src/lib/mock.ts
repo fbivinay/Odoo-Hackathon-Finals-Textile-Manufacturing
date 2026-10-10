@@ -452,7 +452,7 @@ function handle(path: string, method: string, body: Record<string, any>): unknow
       g.rolls.push({ id: r.id, rollNo: r.rollNo, qty: r.qty })
       g.totalQty += r.qty
     }
-    const stock: ShelfStock = { orders: [...groups.values()], totalRolls: shelf.length, totalQty: sum(shelf, (r) => r.qty) }
+    const stock: ShelfStock = { orders: [...groups.values()], totalRolls: shelf.length, totalQty: sum(shelf, (r) => r.qty), unsold: { rolls: [], totalQty: 0 } }
     return stock
   }
   if (is('GET', '/dispatch')) return [...dispatches].reverse().map(fullDispatch)

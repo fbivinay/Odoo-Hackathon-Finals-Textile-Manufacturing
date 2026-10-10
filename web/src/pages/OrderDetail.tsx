@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, PackageSearch, Phone } from 'lucide-react'
 import { useSession } from '@/auth/session'
@@ -5,9 +6,12 @@ import { PageHead } from '@/components/PageHead'
 import { Pill, StatusPill, label } from '@/components/StatusPill'
 import { KpiCard } from '@/components/tremor/KpiCard'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Field } from '@/components/Field'
+import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatDate, formatDateTime, formatINR, formatMoney, formatQty, unitFor } from '@/lib/format'
-import { useApi } from '@/lib/useApi'
+import { mutate, useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
 import type { Order, OrderCost, Planning, RawMaterial, Stage } from '@/types'
 
@@ -59,6 +63,7 @@ export function OrderDetail() {
   const order = useApi<Detail>(`/orders/${id}`)
   const cost = useApi<OrderCost[]>(isOwner ? `/reports/order-costs?id=${id}` : null)
   const plan = useApi<Planning>('/planning/schedule')
+  const [cancelling, setCancelling] = useState(false)
 
   const back = (
     <Link to="/orders" className="inline-flex items-center gap-1 text-sm text-ink-2 hover:text-brand">
@@ -152,15 +157,34 @@ export function OrderDetail() {
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill status={o.status} />
             {o.isDelayed && <Pill tone="problem">Late</Pill>}
+            {o.priority && <Pill tone="problem">Priority</Pill>}
             <Button variant="outline" size="sm" className="gap-1.5" asChild>
               <a href={`/track/${o.trackingToken}`} target="_blank" rel="noreferrer">
                 <PackageSearch className="size-4" />
                 Buyer tracking page
               </a>
             </Button>
+            {isOwner && o.status !== 'CANCELLED' && o.dispatches.length === 0 && (
+              <Button variant="outline" size="sm" className="text-problem hover:text-problem" onClick={() => setCancelling(true)}>
+                Cancel order
+              </Button>
+            )}
           </div>
         }
       />
+      {o.note && (
+        <p className={cn('rounded-lg border p-3 text-sm', o.status === 'CANCELLED' ? 'border-border bg-zinc-50 text-ink-2' : 'border-problem/30 bg-problem/5 text-problem')}>
+          {o.note}
+          {o.remakeOfId && (
+            <>
+              {' '}
+              <Link to={`/orders/${o.remakeOfId}`} className="font-medium underline">
+                Open the original order
+              </Link>
+            </>
+          )}
+        </p>
+      )}
       <div className="-mt-3 flex flex-wrap gap-4 text-sm text-ink-2">
         {isOwner ? (
           <Link to={`/clients/${o.buyer.id}`} className="font-medium hover:text-brand">
@@ -400,6 +424,55 @@ export function OrderDetail() {
           </div>
         </section>
       )}
+      {cancelling && <CancelDialog o={o} onClose={() => setCancelling(false)} onDone={order.reload} />}
     </div>
+  )
+}
+
+// Owner only, and only before anything has shipped. Machines on it stop, unspun yarn goes back to the
+// store, and rolls already made become unsold stock on Dispatch.
+function CancelDialog({ o, onClose, onDone }: { o: Detail; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const running = o.jobs.filter((j) => j.status === 'RUNNING').length
+  const made = o.rolls.filter((r) => r.status !== 'REJECTED')
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    if (await mutate(`/orders/${o.id}/cancel`, 'POST', { reason: reason.trim() }, `${o.orderNo} cancelled`)) {
+      onDone()
+      onClose()
+    }
+    setBusy(false)
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cancel {o.orderNo}?</DialogTitle>
+          <DialogDescription>This can't be undone.</DialogDescription>
+        </DialogHeader>
+        <ul className="list-disc space-y-1 pl-5 text-sm text-ink-2">
+          <li>{running ? `${running} machine${running === 1 ? '' : 's'} working on it will stop and be freed.` : 'No machine is working on it.'}</li>
+          <li>Yarn issued to it but not yet spun goes back to the store.</li>
+          <li>{made.length ? `${made.length} roll${made.length === 1 ? '' : 's'} already made move to Unsold stock on Dispatch.` : 'No fabric has been made yet.'}</li>
+        </ul>
+        <form id="cancel-order" onSubmit={submit}>
+          <Field label="Reason" htmlFor="cancel-reason">
+            <Textarea id="cancel-reason" required maxLength={200} placeholder="e.g. Buyer withdrew the order" value={reason} onChange={(e) => setReason(e.target.value)} />
+          </Field>
+        </form>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Keep order
+          </Button>
+          <Button type="submit" form="cancel-order" variant="destructive" disabled={busy || !reason.trim()}>
+            Cancel order
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

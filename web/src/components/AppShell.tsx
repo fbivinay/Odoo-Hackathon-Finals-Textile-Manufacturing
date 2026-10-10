@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { ClipboardCheck, Factory, FlaskConical, Landmark, LayoutDashboard, Menu, Package, Recycle, ShoppingCart, SlidersHorizontal, Truck, UserCog, Users } from 'lucide-react'
+import { ClipboardCheck, Factory, FlaskConical, Landmark, Lightbulb, LayoutDashboard, Menu, Package, Recycle, ShoppingCart, SlidersHorizontal, Truck, UserCog, Users } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 import { Assistant } from '@/components/Assistant'
 import { Logo } from '@/components/Logo'
@@ -25,6 +25,7 @@ export const NAV: NavItem[] = [
   { to: '/raw-materials', label: 'Raw Materials', icon: FlaskConical, roles: ['STORE', 'PRODUCTION'] },
   { to: '/clients', label: 'Clients', icon: Users, roles: [] },
   { to: '/accounts', label: 'Accounts', icon: Landmark, roles: [] },
+  { to: '/lab', label: 'Everest Lab', icon: Lightbulb, roles: [] },
   { to: '/production', label: 'Machines', icon: Factory, roles: ['PRODUCTION'] },
   { to: '/qc', label: 'Quality check', icon: ClipboardCheck, roles: ['QC'] },
   { to: '/waste', label: 'Waste', icon: Recycle, roles: ['PRODUCTION', 'QC'] },
@@ -35,9 +36,9 @@ export const NAV: NavItem[] = [
 
 type Access = Pick<User, 'role' | 'extraTabs'>
 
-// Overview, Accounts and Employees stay with the owner; every other tab can be granted to one
+// Overview, Accounts, Everest Lab and Employees stay with the owner; every other tab can be granted to one
 // employee on top of their role. Keep in step with EXTRA_TABS in backend/src/lib/tabs.js.
-const OWNER_ONLY = ['/dashboard', '/accounts', '/employees']
+const OWNER_ONLY = ['/dashboard', '/accounts', '/lab', '/employees']
 export const GRANTABLE = NAV.filter((n) => !OWNER_ONLY.includes(n.to))
 // The role whose rights a granted tab carries, mirroring backend/src/lib/tabs.js.
 const TAB_ROLE: Record<string, Role> = { '/materials': 'STORE', '/raw-materials': 'STORE', '/orders': 'STORE', '/production': 'PRODUCTION', '/qc': 'QC', '/dispatch': 'DISPATCH' }

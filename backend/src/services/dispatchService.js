@@ -20,10 +20,16 @@ const withBalance = (invoice) => {
 };
 const sumAmount = (rows) => rows.reduce((total, r) => total + Number(r.amount), 0);
 
-// Finished fabric sitting on the shelf: passed QC, not yet loaded on a truck.
+// Finished fabric sitting on the shelf: passed QC, not yet loaded on a truck. Rolls of cancelled
+// orders are listed apart as unsold stock: made, but no buyer waiting for them.
 async function stock() {
+  const unsold = await prisma.roll.findMany({
+    where: { dispatchId: null, status: { in: ['PASSED', 'PENDING_QC', 'REWORK'] }, order: { status: 'CANCELLED' } },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, rollNo: true, qty: true, status: true, createdAt: true, order: { select: { id: true, orderNo: true, fabricType: true, colour: true, note: true, buyer: { select: { name: true } } } } },
+  });
   const rolls = await prisma.roll.findMany({
-    where: { status: 'PASSED', dispatchId: null },
+    where: { status: 'PASSED', dispatchId: null, order: { status: { not: 'CANCELLED' } } },
     orderBy: { createdAt: 'asc' },
     include: {
       order: {
@@ -42,7 +48,7 @@ async function stock() {
     group.rolls.push(roll);
     group.totalQty += Number(roll.qty);
   }
-  return { orders: [...groups.values()], totalRolls: rolls.length, totalQty: sumQty(rolls) };
+  return { orders: [...groups.values()], totalRolls: rolls.length, totalQty: sumQty(rolls), unsold: { rolls: unsold, totalQty: sumQty(unsold) } };
 }
 
 async function create({ orderId, rollIds, vehicleNo }) {

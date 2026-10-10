@@ -139,6 +139,10 @@ export interface Order {
   yarnPerMetre?: number | null
   wastagePct?: number | null
   listPrice?: number | null
+  // Remakes and orders with rolls in rework jump the queue; `note` says why (or why it was cancelled).
+  priority?: boolean
+  remakeOfId?: string | null
+  note?: string | null
 }
 
 export interface Machine {
@@ -205,6 +209,11 @@ export interface ShelfStock {
   }[]
   totalRolls: number
   totalQty: number
+  // Rolls of cancelled orders: made, no buyer waiting.
+  unsold: {
+    rolls: { id: string; rollNo: string; qty: number; status: string; createdAt: string; order: Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour' | 'note'> & { buyer: { name: string } } }[]
+    totalQty: number
+  }
 }
 
 export interface Payment {

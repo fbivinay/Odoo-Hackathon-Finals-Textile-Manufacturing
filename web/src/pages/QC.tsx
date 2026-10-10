@@ -5,7 +5,7 @@ import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
-import { StatusPill } from '@/components/StatusPill'
+import { Pill, StatusPill } from '@/components/StatusPill'
 import { KpiCard } from '@/components/tremor/KpiCard'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -31,19 +31,20 @@ const historyCols: ColumnDef<LogRow>[] = [
 ]
 
 export function QC() {
-  // The queue is two filtered calls; totals come from /qc/summary; the log pages through recent rolls.
+  // Rolls in rework are back on the finishing line (Machines page) until production returns them here.
+  // Totals come from /qc/summary; the log pages through recent rolls.
   const pending = useApi<Roll[]>('/qc/rolls?status=PENDING_QC&limit=500')
-  const rework = useApi<Roll[]>('/qc/rolls?status=REWORK&limit=500')
   const summary = useApi<QcSummary>('/qc/summary')
   const recent = usePaged<Roll>('/qc/rolls', 60)
-  const waiting = [...(rework.data ?? []), ...(pending.data ?? [])]
+  // Rolls back from rework are checked first.
+  const reworked = (r: Roll) => r.qcRecords.some((q) => q.result === 'REWORK')
+  const waiting = [...(pending.data ?? [])].sort((a, b) => Number(reworked(b)) - Number(reworked(a)))
   const history = recent.rows
     .flatMap((roll) => roll.qcRecords.map((q) => ({ ...q, roll })))
     .sort((a, b) => (a.checkedAt < b.checkedAt ? 1 : -1))
   const [defectFor, setDefectFor] = useState<{ roll: Roll; result: QCResult } | null>(null)
   const reload = () => {
     pending.reload()
-    rework.reload()
     summary.reload()
     recent.reload()
   }
@@ -58,7 +59,11 @@ export function QC() {
     { id: 'order', header: 'Order', accessorFn: (r) => `${r.order.orderNo} · ${r.order.fabricType} ${r.order.colour}` },
     { id: 'machine', header: 'Machine', accessorFn: (r) => r.machine.code },
     { id: 'qty', header: 'Length', accessorFn: (r) => r.qty, cell: ({ row: { original: r } }) => formatQty(r.qty) },
-    { accessorKey: 'status', header: 'Status', cell: ({ row: { original: r } }) => <StatusPill status={r.status} /> },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row: { original: r } }) => (reworked(r) ? <Pill tone="watch">Back from rework</Pill> : <StatusPill status={r.status} />),
+    },
     {
       id: 'act',
       header: '',
@@ -83,7 +88,7 @@ export function QC() {
     <div className="space-y-6">
       <PageHead eyebrow="Quality" title="Before it leaves the line" lede="Each roll is traced to its order and machine, so a defect leads back to its cause." />
       <div className="grid gap-4 sm:grid-cols-4">
-        <KpiCard label="Waiting for check" tone="watch" value={String(waiting.length)} loading={pending.loading || rework.loading} />
+        <KpiCard label="Waiting for check" tone="watch" value={String(waiting.length)} loading={pending.loading} />
         <KpiCard
           label="Pass rate"
           tone="good"
@@ -91,7 +96,7 @@ export function QC() {
           hint={counts && `${(counts.PASSED + counts.DISPATCHED).toLocaleString('en-IN')} rolls passed`}
           loading={summary.loading}
         />
-        <KpiCard label="In rework" tone="watch" value={String(counts?.REWORK ?? 0)} loading={summary.loading} />
+        <KpiCard label="In rework" tone="watch" value={String(counts?.REWORK ?? 0)} hint="Back on the finishing line" loading={summary.loading} />
         <KpiCard
           label="Rejected"
           tone="problem"
@@ -106,7 +111,7 @@ export function QC() {
         <DataTable
           columns={waitingCols}
           data={waiting}
-          loading={pending.loading || rework.loading}
+          loading={pending.loading}
           empty={<EmptyState icon={ClipboardCheck} line="No rolls waiting. Nice." />}
         />
       </section>
@@ -130,7 +135,7 @@ function DefectDialog({ target, onClose, onSaved }: { target: { roll: Roll; resu
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    const ok = await mutate(`/qc/rolls/${target!.roll.id}/inspect`, 'POST', { result: target!.result, defectType, notes: notes || undefined }, `${target!.roll.rollNo}: ${verb.toLowerCase()}`)
+    const ok = await mutate(`/qc/rolls/${target!.roll.id}/inspect`, 'POST', { result: target!.result, defectType, notes: notes || undefined }, target!.result === 'REJECT' ? `${target!.roll.rollNo} rejected: moved to Waste, priority remake order opened` : `${target!.roll.rollNo} sent for rework: its order is back on the line with priority`)
     if (ok) {
       onSaved()
       onClose()
@@ -149,6 +154,11 @@ function DefectDialog({ target, onClose, onSaved }: { target: { roll: Roll; resu
         </DialogHeader>
         <p className="text-xs text-muted-foreground">
           {target.roll.order.orderNo} · made on {target.roll.machine.code}
+        </p>
+        <p className="rounded-lg bg-zinc-50 p-2 text-sm text-ink-2">
+          {target.result === 'REJECT'
+            ? 'The roll goes to Waste, and a new priority order is opened to make its metres again for the same buyer.'
+            : 'The roll goes back to the finishing line. Its order jumps the production queue, with this reason, until it is redone and returned here.'}
         </p>
         <form id="defect" onSubmit={submit} className="space-y-4">
           <Field label="Defect" htmlFor="defectType">

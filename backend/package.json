@@ -17,7 +17,8 @@
     "data:check": "node prisma/dataset.js check",
     "data:import": "node prisma/dataset.js import",
     "data:generate": "node prisma/synthetic/build.js",
-    "stream": "python stream/live_stream.py"
+    "stream": "python stream/live_stream.py",
+    "test": "node --test \"src/**/*.test.js\""
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

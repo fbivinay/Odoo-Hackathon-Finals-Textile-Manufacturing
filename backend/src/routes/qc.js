@@ -11,5 +11,6 @@ router.get('/summary', handle((req) => qcService.summary(req.query)));
 router.get('/rolls', handle((req) => qcService.listRolls(req.query)));
 router.get('/rolls/:id', handle((req) => qcService.getRoll(req.params.id)));
 router.post('/rolls/:id/inspect', requireRole('QC'), handle((req) => qcService.inspect(req.params.id, inspectSchema.parse(req.body), req.user.id), 201));
+router.post('/rolls/:id/reworked', requireRole('PRODUCTION'), handle((req) => qcService.reworked(req.params.id)));
 
 module.exports = router;

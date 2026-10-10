@@ -47,6 +47,30 @@ async function removeWorker(id, user) {
   });
 }
 
+// Floor crew for the Employees page: each worker with the machine they last ran, their mark on the
+// latest register day, and days worked in that month (half day = 0.5).
+async function roster() {
+  const last = (await prisma.attendance.aggregate({ _max: { date: true } }))._max.date;
+  const monthStart = last && new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), 1));
+  const workers = await prisma.worker.findMany({
+    where: { removedAt: null },
+    orderBy: { code: 'asc' },
+    include: {
+      jobs: { orderBy: { startedAt: 'desc' }, take: 1, select: { stage: true, machine: { select: { code: true, name: true } } } },
+      attendance: last ? { where: { date: { gte: monthStart, lte: last } }, select: { date: true, status: true } } : false,
+    },
+  });
+  return {
+    date: last ? last.toISOString().slice(0, 10) : null,
+    workers: workers.map(({ jobs, attendance = [], ...w }) => ({
+      ...w,
+      machine: jobs[0] ? { ...jobs[0].machine, stage: jobs[0].stage } : null,
+      status: attendance.find((a) => a.date.getTime() === last.getTime())?.status || null,
+      daysWorked: attendance.reduce((t, a) => t + (a.status === 'PRESENT' ? 1 : a.status === 'HALF_DAY' ? 0.5 : 0), 0),
+    })),
+  };
+}
+
 // The day's register: every active worker, marked or not.
 async function attendance({ date } = {}) {
   const day = dateOnly(date);
@@ -86,7 +110,8 @@ async function markAttendance({ date, entries }) {
 async function wages({ month } = {}) {
   const range = monthRange(month);
   const [workers, marks, payments] = await Promise.all([
-    prisma.worker.findMany({ orderBy: { code: 'asc' } }),
+    // The stage of the last job they ran is their role on the floor (spinning, weaving or dyeing).
+    prisma.worker.findMany({ orderBy: { code: 'asc' }, include: { jobs: { orderBy: { startedAt: 'desc' }, take: 1, select: { stage: true } } } }),
     prisma.attendance.findMany({ where: { date: { gte: range.start, lt: range.end } } }),
     prisma.wagePayment.findMany({ where: { month: range.month } }),
   ]);
@@ -104,7 +129,7 @@ async function wages({ month } = {}) {
       const earned = slip.gross;
       const paid = payment ? Number(payment.amount) : 0;
       return {
-        worker: { id: worker.id, code: worker.code, name: worker.name, shift: worker.shift, dailyWage: worker.dailyWage, department: worker.department },
+        worker: { id: worker.id, code: worker.code, name: worker.name, shift: worker.shift, dailyWage: worker.dailyWage, department: worker.department, stage: worker.jobs[0]?.stage || null, joined: worker.createdAt },
         present,
         halfDays,
         absent: days('ABSENT'),
@@ -139,4 +164,4 @@ async function payWages({ month } = {}) {
   return wages({ month });
 }
 
-module.exports = { listWorkers, createWorker, updateWorker, removeWorker, attendance, markAttendance, wages, payWages };
+module.exports = { listWorkers, roster, createWorker, updateWorker, removeWorker, attendance, markAttendance, wages, payWages };

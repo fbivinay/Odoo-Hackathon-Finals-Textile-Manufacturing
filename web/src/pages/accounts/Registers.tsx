@@ -223,15 +223,6 @@ export function Expenses({ from, to }: PeriodProps) {
           New expense
         </Button>
       </Toolbar>
-      {list.data && list.data.bySubcategory.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {list.data.bySubcategory.slice(0, 10).map((s) => (
-            <span key={s.subcategory} className="rounded-full border border-border bg-surface px-3 py-1 text-xs">
-              {s.subcategory} <b className="tabular-nums">{formatINR(s.amount)}</b> <span className="text-muted-foreground">· {s.count}</span>
-            </span>
-          ))}
-        </div>
-      )}
       <Totals totals={list.data?.totals} label={`${list.data?.count ?? 0} entries`} />
       {list.error && <p className="text-sm text-problem">{list.error}</p>}
       <DataTable columns={cols} data={list.data?.rows ?? []} loading={list.loading && !list.data} onRowClick={(e) => navigate(`/accounts/expenses/${e.id}`)} empty="No expenses match." />

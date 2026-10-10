@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Printer } from 'lucide-react'
 import { selectClass } from '@/components/Field'
 import { Pill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatDate, formatINR } from '@/lib/format'
 import { useApi } from '@/lib/useApi'
@@ -10,7 +12,7 @@ import { cn } from '@/lib/utils'
 import { usePeriod, type PeriodProps } from '@/pages/Accounts'
 
 type Row = {
-  worker: { id: string; code: string; name: string; shift: string; dailyWage: number; department?: string }
+  worker: { id: string; code: string; name: string; shift: string; dailyWage: number; department?: string; stage: string | null; joined: string }
   present: number
   halfDays: number
   absent: number
@@ -38,6 +40,11 @@ const MONTHS = (from: string, to: string) => {
   }
   return out
 }
+const SHIFT_NAMES: Record<string, string> = { MORNING: 'Morning', EVENING: 'Evening', NIGHT: 'Night' }
+// Role on the floor: the stage of the last machine they ran.
+const ROLE: Record<string, string> = { SPINNING: 'Spinning operator', WEAVING: 'Weaving operator', DYEING: 'Dyeing operator' }
+const SUMS = ['basic', 'allowances', 'overtime', 'deductions', 'gross', 'net', 'due'] as const
+
 const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
 // Payroll register from the attendance register (backend/src/lib/payroll.js): basic for days
@@ -49,7 +56,17 @@ export function Payroll({ from, to }: PeriodProps) {
   const month = params.get('month') && months.includes(params.get('month')!) ? params.get('month')! : months[0]
   const sheet = useApi<Sheet>(`/accounts/payroll?month=${month}`)
   const year = useApi<Year>(`/accounts/reports/payroll?from=${from}&to=${to}`)
-  const t = sheet.data?.totals
+  const [shift, setShift] = useState('')
+  const [role, setRole] = useState('')
+  const [joinedFrom, setJoinedFrom] = useState('')
+  const [joinedTo, setJoinedTo] = useState('')
+  const filtered = !!(shift || role || joinedFrom || joinedTo)
+  const rows = (sheet.data?.rows ?? []).filter((r) => {
+    const joined = r.worker.joined.slice(0, 10)
+    return (!shift || r.worker.shift === shift) && (!role || r.worker.stage === role) && (!joinedFrom || joined >= joinedFrom) && (!joinedTo || joined <= joinedTo)
+  })
+  // Totals follow the filters.
+  const t = sheet.data && { workers: rows.length, ...Object.fromEntries(SUMS.map((k) => [k, rows.reduce((sum, r) => sum + r[k], 0)])) } as Record<(typeof SUMS)[number] | 'workers', number>
   return (
     <div className="mt-4 space-y-5">
       <section className="print-area space-y-3 print:bottom-auto">
@@ -61,6 +78,42 @@ export function Payroll({ from, to }: PeriodProps) {
               </option>
             ))}
           </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <select aria-label="Shift" className={cn(selectClass, 'w-36 bg-surface')} value={shift} onChange={(e) => setShift(e.target.value)}>
+              <option value="">All shifts</option>
+              {Object.entries(SHIFT_NAMES).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <select aria-label="Role" className={cn(selectClass, 'w-44 bg-surface')} value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value="">All roles</option>
+              {Object.entries(ROLE).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <span className="text-sm text-muted-foreground">Joined</span>
+            <Input aria-label="Joined from" type="date" className="h-9 w-40" value={joinedFrom} max={joinedTo || undefined} onChange={(e) => setJoinedFrom(e.target.value)} />
+            <span className="text-sm text-muted-foreground">to</span>
+            <Input aria-label="Joined to" type="date" className="h-9 w-40" value={joinedTo} min={joinedFrom || undefined} onChange={(e) => setJoinedTo(e.target.value)} />
+            {filtered && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShift('')
+                  setRole('')
+                  setJoinedFrom('')
+                  setJoinedTo('')
+                }}
+              >
+                Reset
+              </Button>
+            )}
+          </div>
           <Button variant="outline" className="gap-1.5" onClick={() => window.print()}>
             <Printer className="size-4" />
             Print payroll register
@@ -77,22 +130,31 @@ export function Payroll({ from, to }: PeriodProps) {
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
-                  {['Worker', 'Shift', 'Days', 'Night', 'Daily wage', 'Basic', 'Allowances', 'Overtime', 'Deductions', 'Gross', 'Net', 'Status'].map((h) => (
-                    <th key={h} className="px-3 py-2 font-medium">
+                  {['Worker', 'Role', 'Shift', 'Joined', 'Days', 'Night', 'Daily wage', 'Basic', 'Allowances', 'Overtime', 'Deductions', 'Gross', 'Net', 'Status'].map((h) => (
+                    <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {sheet.data.rows.map((r) => (
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={14} className="px-3 py-6 text-center text-muted-foreground">
+                      No worker matches these filters.
+                    </td>
+                  </tr>
+                )}
+                {rows.map((r) => (
                   <tr key={r.worker.id} className="cursor-pointer border-t border-border hover:bg-zinc-50" onClick={() => navigate(`/accounts/payslip/${r.worker.id}/${month}`)}>
-                    <td className="px-3 py-1.5">
+                    <td className="px-3 py-1.5 whitespace-nowrap">
                       <span className="font-medium">{r.worker.name}</span>
                       <span className="ml-1.5 text-xs text-muted-foreground">{r.worker.code}</span>
                     </td>
-                    <td className="px-3 py-1.5 text-ink-2">{r.worker.shift.toLowerCase()}</td>
-                    <td className="px-3 py-1.5 tabular-nums">
+                    <td className="px-3 py-1.5 whitespace-nowrap text-ink-2">{r.worker.stage ? ROLE[r.worker.stage] : '—'}</td>
+                    <td className="px-3 py-1.5 text-ink-2">{SHIFT_NAMES[r.worker.shift] ?? r.worker.shift}</td>
+                    <td className="px-3 py-1.5 whitespace-nowrap text-ink-2">{formatDate(r.worker.joined)}</td>
+                    <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">
                       {r.daysWorked}
                       {r.absent > 0 && <span className="ml-1 text-xs text-muted-foreground">({r.absent} absent)</span>}
                     </td>
@@ -111,7 +173,7 @@ export function Payroll({ from, to }: PeriodProps) {
               {t && (
                 <tfoot>
                   <tr className="border-t-2 border-border font-semibold">
-                    <td className="px-3 py-2" colSpan={5}>
+                    <td className="px-3 py-2" colSpan={7}>
                       {t.workers} workers
                     </td>
                     <td className="px-3 py-2 tabular-nums">{formatINR(t.basic)}</td>

@@ -186,6 +186,31 @@ export function Dispatch() {
         </section>
       )}
 
+      {(shelf.data?.unsold.rolls.length ?? 0) > 0 && (
+        <section className="space-y-3">
+          <h2 className="section-head">
+            Unsold stock <span className="font-normal text-muted-foreground">({formatQty(shelf.data!.unsold.totalQty)} from cancelled orders)</span>
+          </h2>
+          <div className="card divide-y p-0">
+            {shelf.data!.unsold.rolls.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                <span>
+                  <span className="font-medium">{r.rollNo}</span> · {r.order.fabricType} {r.order.colour}
+                  <span className="block text-xs text-muted-foreground">
+                    {r.order.orderNo} for {r.order.buyer.name}
+                    {r.order.note && ` · ${r.order.note}`}
+                  </span>
+                </span>
+                <span className="flex items-center gap-2 tabular-nums text-ink-2">
+                  {r.status !== 'PASSED' && <Pill tone="watch">Not checked</Pill>}
+                  {formatQty(r.qty)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="section-head">Dispatched</h2>

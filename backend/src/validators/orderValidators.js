@@ -14,5 +14,6 @@ const createOrderSchema = z.object({
 });
 
 const orderStatusSchema = z.object({ status: z.enum(ORDER_STATUSES) });
+const cancelOrderSchema = z.object({ reason: text.max(200) }).strict();
 
-module.exports = { ORDER_STATUSES, createOrderSchema, orderStatusSchema };
+module.exports = { ORDER_STATUSES, createOrderSchema, orderStatusSchema, cancelOrderSchema };

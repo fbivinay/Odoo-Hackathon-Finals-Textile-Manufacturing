@@ -72,6 +72,7 @@ Yarn is issued automatically: when an order is created (if the store has it) and
 | POST | `/orders` | STORE, DISPATCH | `{ buyerId, materialId?, fabricType, colour?, qty, yarnRequired?, pricePerUnit?, deadline }` → includes `availability`. When the fabric has Config figures (saved or from history), the server sets `yarnRequired` = qty × yarnPerMetre × (1 + wastage %, plus size/deadline bands), defaults `materialId` to the usual yarn and `pricePerUnit` to the Config price, and stores `yarnPerMetre`, `wastagePct`, `listPrice` on the order |
 | GET | `/orders/:id` | | buyer, material, issues (with `material`), jobs, rolls (with `qcRecords`), dispatches (with `invoice.payments`), `availability` |
 | PATCH | `/orders/:id/status` | OWNER | `{ status }` manual override, e.g. `CANCELLED` |
+| POST | `/orders/:id/cancel` | OWNER | `{ reason }`; stops its running jobs, returns unspun yarn to the store, rolls made become unsold stock. 400 once anything is dispatched. Orders carry `priority`, `remakeOfId`, `note` |
 | GET | `/track/:token` | public | buyer page; token is `order.trackingToken` |
 
 `availability`: `{ required, issued, inStock, shortBy, enough, unit }`.
@@ -104,6 +105,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | GET | `/qc/rolls` | | `?status=PENDING_QC/PASSED/REWORK/REJECTED/DISPATCHED&orderId=&machineId=` |
 | GET | `/qc/rolls/:id` | | full trace: order, machine, job, worker, inspections |
 | POST | `/qc/rolls/:id/inspect` | QC | `{ result: PASS/REWORK/REJECT, defectType?, notes? }`; `defectType` needed unless PASS |
+| POST | `/qc/rolls/:id/reworked` | PRODUCTION | rework roll redone: back to `PENDING_QC`. Inspect only takes `PENDING_QC` rolls; REJECT also opens (or adds to) a priority remake order, returned as `remake`; REWORK puts the order back at DYEING with priority |
 | GET | `/qc/summary` | | `?from=&to=` → `{ counts, passRate, defectsByType[], defectsByMachine[] }` |
 
 ## Dispatch, invoices, payments
@@ -111,6 +113,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/dispatch/stock` | | finished rolls on the shelf, grouped by order |
+|  |  |  | also `unsold: { rolls, totalQty }`: undispatched rolls of cancelled orders (left out of the shelf) |
 | GET | `/dispatch` | | `?orderId=&buyerId=` + paging; each has `rolls`, `totalQty`, `invoice` |
 | GET | `/dispatch/:id` | | |
 | POST | `/dispatch` | DISPATCH | `{ orderId, rollIds[], vehicleNo? }` creates the invoice; 409 `ROLLS_NOT_AVAILABLE` on wrong or already-sent rolls |
@@ -122,6 +125,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/workers` | | |
+| GET | `/workers/roster` | OWNER | → `{ date, workers: [{ ...worker, machine: { code, name, stage } \| null, status, daysWorked }] }` (latest register day; days worked that month) |
 | POST | `/workers` | OWNER or `/config` | `{ name, shift, dailyWage, code? }`; the code is numbered on (W-073) when left out |
 | PATCH | `/workers/:id` | OWNER or `/config` | `{ name?, shift?, dailyWage?, isActive? }` |
 | DELETE | `/workers/:id` | OWNER or `/config` | Off the list; kept (marked removed) if the worker has attendance, wages or jobs |
@@ -192,6 +196,25 @@ Rules and assumptions: `accounts.md`. `?from=&to=` are IST dates (YYYY-MM-DD); d
 | GET | `/accounts/reports/:name` | `pnl`, `monthly`, `receivables`, `payables` (ageing), `purchases`, `inventory`, `expenses`, `payroll`, `gst`, `order-costs` |
 
 Also changed: `POST /materials` takes `sku, subcategory, department, taxCode, isSpare`; categories are `YARN, WEAVING, DYEING, FINISHING, QC, PACKAGING, MAINTENANCE`. `POST /materials/inwards` takes `batchNo, billNo` and returns the bill with GST. `POST /materials/issues` takes `jobId, department`. Invoices from `POST /dispatch` carry GST and `dueDate`; `/invoices` `balance` is against `totalAmount`. `/reports/pnl` adds `logistics`, `utilities`, `supplierPayments`.
+
+## Everest Lab (OWNER)
+
+What-if simulation on the real data. Nothing here writes to orders, stock, production, dispatch or accounts; only `LabScenario` rows and their `AuditLog` entries are stored. `planningService.plan(snapshot, changes, days)` is pure: baseline and scenario are planned from one snapshot. `/planning/schedule` output is unchanged.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/lab/intelligence?from=&to=` | Default last 90 days. `{ period, freshness, summary (4 figures: open orders, on-time delivery, net profit, shortages), recommendations (top 4) }`. Each recommendation: `title, problem, evidence[{label,value,link}], action, why, benefit, cost, risks, confidencePct (30-95, by a fixed rule per kind), confidence, assumptions, limitations, scenario{ name, changes } \| null` |
+| GET | `/lab/options` | Pickers for the builder: stages with average output, machines, yarns, fabrics, unit economics (last 12 months), reject rate |
+| POST | `/lab/simulate` | `{ changes, costs, days: 30\|90\|180\|365 }` → `{ metrics[{key,label,unit,better,base,alt,change,changePct,effect}], money, capacity, weekly, orders, rushOrder, yarn, limitations, snapshotAt }`. Read-only: call with `quiet: true` |
+| POST | `/lab/explain` | Same body as simulate; re-runs it and explains only those figures. `{ source: 'gemini'\|'rules', sections[{title, points}] }`; falls back to rules without `GEMINI_API_KEY` |
+| GET / POST | `/lab/scenarios` | List (light `headline`) / save `{ name, changes, costs, days }` (runs it and stores the result) |
+| GET / PATCH / DELETE | `/lab/scenarios/:id` | PATCH `{ name?, changes?, costs?, days?, decision?: NEEDS_REVIEW\|APPROVED\|REJECTED, note? }`; changing inputs re-runs it. Approving is a note only |
+| POST | `/lab/scenarios/:id/run` | Re-run on today's data; returns the row plus `previous { snapshotAt, metrics, money }` |
+| GET | `/lab/scenarios/:id/history` | Audit trail |
+
+`changes` (all optional, at least one): `addMachines[{stage, count 1-3, perShift?, fromDay 0-180, rampDays 0-60}]`, `breakdowns[{machineId, days 1-90}]`, `sundays: true`, `materials[{materialId (yarn only), stockChange, extraLeadDays 0-90}]`, `rushOrder{fabricType, qty, deadline, pricePerUnit?}`, `qc{rejectPct 0-50}`, `logistics{costPerMetreChangePct -50..200}`.
+`costs` (owner inputs; blanks are reported in `money.missing`, never guessed): `machineCost, powerKw, tariff, staffPerShift, maintenancePctYear (5), repairCost, sundayPayMultiplier (1)`.
+Money separates one-time spend, running costs, revenue timing (`pulledIntoPeriod`), the rush order (counted only if on time) and spare capacity (only if new orders fill it).
 
 ## Errors
 

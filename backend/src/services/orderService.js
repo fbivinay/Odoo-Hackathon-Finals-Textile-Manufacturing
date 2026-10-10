@@ -42,17 +42,86 @@ async function syncStatus(tx, orderId) {
   const byStatus = (status) => order.rolls.filter((r) => r.status === status);
   const dispatchedQty = sumQty(byStatus('DISPATCHED'));
   const passed = byStatus('PASSED');
-  const awaitingQc = byStatus('PENDING_QC').length + byStatus('REWORK').length;
-  const target = Number(order.qty);
+  const inRework = byStatus('REWORK').length;
+  const awaitingQc = byStatus('PENDING_QC').length;
+  // Rejected metres are owed by the remake order, not this one.
+  const target = Number(order.qty) - sumQty(byStatus('REJECTED'));
 
   let status = order.jobs[0]?.stage || 'PENDING';
   if (running) status = running.stage;
+  else if (inRework > 0) status = 'DYEING'; // back on the finishing line
   else if (awaitingQc > 0) status = 'QC';
   else if (passed.length === 0 && dispatchedQty >= target) status = 'DISPATCHED';
   else if (passed.length > 0 && dispatchedQty + sumQty(passed) >= target) status = 'READY';
 
-  if (status === order.status) return order;
-  return tx.order.update({ where: { id: orderId }, data: { status } });
+  // Rework puts an order at the front of the queue until its rolls are back; a remake stays first until shipped.
+  const priority = inRework > 0 || (!!order.remakeOfId && status !== 'DISPATCHED');
+  if (status === order.status && priority === order.priority) return order;
+  return tx.order.update({ where: { id: orderId }, data: { status, priority, ...(order.priority && !priority && !order.remakeOfId ? { note: null } : {}) } });
+}
+
+// A rejected roll is owed again: a new priority order for the same buyer, fabric and price, due on the
+// original deadline. Metres rejected before the remake starts are added to it rather than opening another.
+async function remake(tx, roll, defectType) {
+  const order = await tx.order.findUnique({ where: { id: roll.orderId } });
+  if (order.status === 'CANCELLED') return null;
+  const rootId = order.remakeOfId || order.id;
+  const qty = Number(roll.qty);
+  const yarn = Number(order.qty) > 0 ? Math.round((Number(order.yarnRequired) * qty / Number(order.qty)) * 100) / 100 : 0;
+  const reason = `${roll.rollNo} rejected${defectType ? ` (${defectType})` : ''}`;
+
+  const open = await tx.order.findFirst({ where: { remakeOfId: rootId, status: 'PENDING', jobs: { none: {} } } });
+  const made = open
+    ? await tx.order.update({ where: { id: open.id }, data: { qty: { increment: qty }, yarnRequired: { increment: yarn }, note: `${open.note}; ${reason}` } })
+    : await tx.order.create({
+        data: {
+          orderNo: await nextNumber(tx.order, 'ORD'),
+          buyerId: order.buyerId, materialId: order.materialId, fabricType: order.fabricType, colour: order.colour,
+          qty, yarnRequired: yarn, pricePerUnit: order.pricePerUnit, yarnPerMetre: order.yarnPerMetre, wastagePct: order.wastagePct, listPrice: order.listPrice,
+          deadline: order.deadline, priority: true, remakeOfId: rootId,
+          note: `Remake for ${(await tx.order.findUnique({ where: { id: rootId }, select: { orderNo: true } })).orderNo}: ${reason}`,
+        },
+      });
+  if (made.materialId) await allocateYarn(tx, made.materialId);
+  return made;
+}
+
+// Owner only. Stops its machines, returns yarn that was issued but never spun, and leaves the rolls
+// already made as unsold stock. An order with fabric already on a truck can't be cancelled.
+async function cancel(id, { reason }) {
+  return prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({ where: { id }, include: { dispatches: { select: { id: true } }, jobs: { where: { status: 'RUNNING' } } } });
+    if (!order) throw notFound('Order not found');
+    if (order.status === 'CANCELLED') throw badRequest('Order is already cancelled');
+    if (order.dispatches.length) throw badRequest('Fabric from this order has already been dispatched');
+
+    const now = new Date();
+    for (const job of order.jobs) {
+      await tx.productionJob.update({ where: { id: job.id }, data: { status: 'STOPPED', completedAt: now } });
+      await tx.machine.update({ where: { id: job.machineId }, data: { status: 'IDLE' } });
+    }
+
+    let yarnReturned = 0;
+    if (order.materialId) {
+      const [issued, spun] = await Promise.all([
+        tx.materialIssue.aggregate({ where: { orderId: id, materialId: order.materialId }, _sum: { qty: true, cost: true } }),
+        tx.productionJob.aggregate({ where: { orderId: id, stage: 'SPINNING' }, _sum: { qtyProduced: true } }),
+      ]);
+      const qty = Number(issued._sum.qty || 0);
+      yarnReturned = Math.round(Math.max(0, qty - Number(spun._sum.qtyProduced || 0)) * 100) / 100;
+      if (yarnReturned > 0) {
+        // A negative issue at the order's own cost per kg, so its material cost and the stock both come back.
+        const cost = Math.round((Number(issued._sum.cost || 0) / qty) * yarnReturned * 100) / 100;
+        await tx.materialIssue.create({ data: { materialId: order.materialId, orderId: id, qty: -yarnReturned, cost: -cost } });
+        await tx.rawMaterial.update({ where: { id: order.materialId }, data: { qtyInStock: { increment: yarnReturned } } });
+      }
+    }
+
+    const updated = await tx.order.update({ where: { id }, data: { status: 'CANCELLED', priority: false, note: `Cancelled: ${reason}` } });
+    // The yarn freed up goes to the next order waiting for it.
+    if (yarnReturned > 0) await allocateYarn(tx, order.materialId);
+    return { ...decorate(updated), stoppedJobs: order.jobs.length, yarnReturned };
+  });
 }
 
 const delayedWhere = () => ({ deadline: { lt: new Date() }, status: { notIn: CLOSED } });
@@ -76,7 +145,7 @@ async function list(query = {}) {
           : {},
       ],
     },
-    orderBy: [{ deadline: 'asc' }, { id: 'asc' }],
+    orderBy: [{ priority: 'desc' }, { deadline: 'asc' }, { id: 'asc' }],
     include: { buyer: { select: { id: true, name: true } } },
     ...pageArgs(query),
   });
@@ -188,4 +257,4 @@ async function track(token) {
   };
 }
 
-module.exports = { list, create, get, updateStatus, availability, syncStatus, track, sumQty, decorate, delayedWhere, CLOSED };
+module.exports = { list, create, get, updateStatus, availability, syncStatus, remake, cancel, track, sumQty, decorate, delayedWhere, CLOSED };

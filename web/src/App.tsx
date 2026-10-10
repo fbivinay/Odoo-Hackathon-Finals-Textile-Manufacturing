@@ -29,6 +29,8 @@ const Customer = page(() => import('@/pages/Customer'), 'Customer')
 const OrderDetail = page(() => import('@/pages/OrderDetail'), 'OrderDetail')
 const Config = page(() => import('@/pages/Config'), 'Config')
 const Accounts = page(() => import('@/pages/Accounts'), 'Accounts')
+const EmployeeRole = page(() => import('@/pages/Employees'), 'EmployeeRole')
+const Lab = page(() => import('@/pages/Lab'), 'Lab')
 const InvoiceDoc = page(() => import('@/pages/accounts/Documents'), 'InvoiceDoc')
 const BillDoc = page(() => import('@/pages/accounts/Documents'), 'BillDoc')
 const ExpenseDoc = page(() => import('@/pages/accounts/Documents'), 'ExpenseDoc')
@@ -47,6 +49,7 @@ const PAGES: Record<string, ReactNode> = {
   '/employees': <Employees />,
   '/config': <Config />,
   '/accounts': <Accounts />,
+  '/lab': <Lab />,
 }
 
 function RouteFallback() {
@@ -89,6 +92,9 @@ export default function App() {
                   <Route path="/accounts/bills/:id" element={<BillDoc />} />
                   <Route path="/accounts/expenses/:id" element={<ExpenseDoc />} />
                   <Route path="/accounts/payslip/:workerId/:month" element={<PayslipDoc />} />
+                </Route>
+                <Route element={<ProtectedRoute roles={[]} tab="/employees" />}>
+                  <Route path="/employees/:role" element={<EmployeeRole />} />
                 </Route>
                 <Route element={<ProtectedRoute roles={[]} tab="/clients" />}>
                   <Route path="/clients/:id" element={<Customer />} />

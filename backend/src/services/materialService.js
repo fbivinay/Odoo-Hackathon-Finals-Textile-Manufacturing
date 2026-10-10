@@ -36,7 +36,7 @@ async function allocateYarn(tx, materialId) {
 
   const orders = await tx.order.findMany({
     where: { materialId, yarnRequired: { gt: 0 }, status: { notIn: ['DISPATCHED', 'CANCELLED'] } },
-    orderBy: [{ deadline: 'asc' }, { id: 'asc' }],
+    orderBy: [{ priority: 'desc' }, { deadline: 'asc' }, { id: 'asc' }],
     select: { id: true, orderNo: true, yarnRequired: true },
   });
   if (orders.length === 0) return [];

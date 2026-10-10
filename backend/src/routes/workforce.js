@@ -11,6 +11,7 @@ const floor = requireRole('PRODUCTION');
 const owner = requireRole();
 
 router.get('/workers', handle(() => workforceService.listWorkers()));
+router.get('/workers/roster', owner, handle(() => workforceService.roster()));
 // The worker list is part of Mill Setup: the owner, or someone given that tab.
 const setup = requireTab('/config');
 router.post('/workers', setup, handle((req) => workforceService.createWorker(v.workerSchema.parse(req.body), req.user), 201));

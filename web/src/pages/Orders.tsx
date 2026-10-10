@@ -135,8 +135,17 @@ export function Orders() {
       header: 'Order',
       cell: ({ row: { original: o } }) => (
         <div className="leading-tight">
-          <p className="font-medium">{o.orderNo}</p>
-          <p className="text-xs text-muted-foreground">Ordered {formatDate(o.createdAt)}</p>
+          <p className="font-medium">
+            {o.orderNo}
+            {o.priority && (
+              <Pill tone="problem" className="ml-1.5 align-middle">
+                Priority
+              </Pill>
+            )}
+          </p>
+          <p className="max-w-64 truncate text-xs text-muted-foreground" title={o.note ?? undefined}>
+            {o.note && o.status !== 'DISPATCHED' ? o.note : `Ordered ${formatDate(o.createdAt)}`}
+          </p>
         </div>
       ),
     },

@@ -1,5 +1,6 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { ChevronRight, Search } from 'lucide-react'
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { selectClass } from '@/components/Field'
 import { Figure } from '@/components/Figure'
@@ -18,7 +19,6 @@ const Bills = lazy(() => import('@/pages/accounts/Registers').then((m) => ({ def
 const Expenses = lazy(() => import('@/pages/accounts/Registers').then((m) => ({ default: m.Expenses })))
 const Payroll = lazy(() => import('@/pages/accounts/Payroll').then((m) => ({ default: m.Payroll })))
 const Gst = lazy(() => import('@/pages/accounts/Gst').then((m) => ({ default: m.Gst })))
-const Reports = lazy(() => import('@/pages/accounts/Reports').then((m) => ({ default: m.Reports })))
 
 const TABS = [
   ['overview', 'Overview'],
@@ -27,7 +27,6 @@ const TABS = [
   ['expenses', 'Expenses'],
   ['payroll', 'Payroll'],
   ['gst', 'GST'],
-  ['reports', 'Reports'],
 ] as const
 
 export type PeriodProps = { from: string; to: string }
@@ -48,7 +47,9 @@ export function usePeriod() {
 
 function PeriodBar() {
   const { from, to, set, presets } = usePeriod()
-  const preset = presets.find((p) => p.from === from && p.to === to)?.key ?? 'custom'
+  const [custom, setCustom] = useState(false)
+  const fromRef = useRef<HTMLInputElement>(null)
+  const preset = custom ? 'custom' : (presets.find((p) => p.from === from && p.to === to)?.key ?? 'custom')
   return (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
       <select
@@ -57,7 +58,10 @@ function PeriodBar() {
         value={preset}
         onChange={(e) => {
           const p = presets.find((x) => x.key === e.target.value)
+          setCustom(!p)
           if (p) set({ from: p.from, to: p.to })
+          // Custom: keep the dates as they are and open the From picker.
+          else fromRef.current?.showPicker?.()
         }}
       >
         {presets.map((p) => (
@@ -65,13 +69,11 @@ function PeriodBar() {
             {p.label}
           </option>
         ))}
-        <option value="custom" disabled>
-          Custom range
-        </option>
+        <option value="custom">Custom range</option>
       </select>
-      <Input aria-label="From" type="date" className="h-9 w-40" value={from} max={to} onChange={(e) => e.target.value && set({ from: e.target.value })} />
+      <Input ref={fromRef} aria-label="From" type="date" className="h-9 w-40" value={from} max={to} onChange={(e) => e.target.value && (setCustom(true), set({ from: e.target.value }))} />
       <span className="text-sm text-muted-foreground">to</span>
-      <Input aria-label="To" type="date" className="h-9 w-40" value={to} min={from} max={todayIst()} onChange={(e) => e.target.value && set({ to: e.target.value })} />
+      <Input aria-label="To" type="date" className="h-9 w-40" value={to} min={from} max={todayIst()} onChange={(e) => e.target.value && (setCustom(true), set({ to: e.target.value }))} />
     </div>
   )
 }
@@ -83,10 +85,7 @@ export function Accounts() {
   const tab = params.get('tab') ?? 'overview'
   return (
     <div className="space-y-5">
-      <PageHead eyebrow="Owner only" title="Accounts" actions={<PeriodBar />} />
-      <p className="-mt-3 text-xs text-muted-foreground">
-        Synthetic demo data. Amounts before tax unless marked; GST is shown separately. Period {formatDate(from)} to {formatDate(to)}.
-      </p>
+      <PageHead eyebrow="Books" title="Accounts" actions={<PeriodBar />} />
       <Tabs value={tab} onValueChange={(v) => set({ tab: v === 'overview' ? '' : v, page: '' })}>
         <TabsList className="flex-wrap">
           {TABS.map(([k, label]) => (
@@ -102,7 +101,6 @@ export function Accounts() {
           <TabsContent value="expenses">{tab === 'expenses' && <Expenses from={from} to={to} />}</TabsContent>
           <TabsContent value="payroll">{tab === 'payroll' && <Payroll from={from} to={to} />}</TabsContent>
           <TabsContent value="gst">{tab === 'gst' && <Gst from={from} to={to} />}</TabsContent>
-          <TabsContent value="reports">{tab === 'reports' && <Reports from={from} to={to} />}</TabsContent>
         </Suspense>
       </Tabs>
     </div>
@@ -114,21 +112,51 @@ export function Accounts() {
 function Overview({ from, to }: PeriodProps) {
   const { data: o, loading, error } = useApi<OverviewData>(`/accounts/overview?from=${from}&to=${to}`)
   const { set } = usePeriod()
+  const breakdown = useRef<HTMLElement>(null)
   if (error) return <p className="mt-4 text-sm text-problem">{error}</p>
   const p = o?.pnl
   const pct = (v?: number) => (p?.revenue ? ` · ${((100 * (v ?? 0)) / p.revenue).toFixed(1)}% of revenue` : '')
+  const other = p ? p.logistics + p.utilities + p.maintenance : 0
+  // Each cost line opens the records behind it.
+  const costs: [string, number, () => void][] = p
+    ? [
+        ['Materials used', p.materials, () => set({ tab: 'bills', category: '' })],
+        ['Wages', p.wages, () => set({ tab: 'payroll' })],
+        ['Utilities', p.utilities, () => set({ tab: 'expenses', category: 'UTILITIES' })],
+        ['Logistics', p.logistics, () => set({ tab: 'expenses', category: 'LOGISTICS' })],
+        ['Maintenance stores', p.maintenance, () => set({ tab: 'bills', category: 'MAINTENANCE' })],
+      ]
+    : []
   return (
     <div className="mt-4 space-y-6">
       <section className="figures-panel">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Figure label="Revenue" value={formatMoney(p?.revenue ?? 0)} note="Invoiced in the period, before GST" loading={loading} />
-          <Figure label="Expenses" value={formatMoney(p?.expenses ?? 0)} note="Materials used, wages, logistics, utilities, maintenance" loading={loading} />
-          <Figure label="Gross profit" tone={(p?.grossProfit ?? 0) < 0 ? 'problem' : 'good'} value={formatMoney(p?.grossProfit ?? 0)} note={`After materials and wages${pct(p?.grossProfit)}`} loading={loading} />
-          <Figure label="Net profit" tone={(p?.netProfit ?? 0) < 0 ? 'problem' : 'good'} value={formatMoney(p?.netProfit ?? 0)} note={`After logistics, utilities, maintenance${pct(p?.netProfit)}`} loading={loading} />
-          <Figure label="Receivable today" tone={o?.receivable.overdue ? 'watch' : undefined} value={formatMoney(o?.receivable.total ?? 0)} note={`${o?.receivable.count ?? 0} open invoices · ${formatMoney(o?.receivable.overdue ?? 0)} overdue`} loading={loading} onClick={() => set({ tab: 'invoices', status: 'OVERDUE' })} />
-          <Figure label="Payable today" tone={o?.payable.billsOverdue ? 'watch' : undefined} value={formatMoney((o?.payable.bills ?? 0) + (o?.payable.expenses ?? 0))} note={`Bills ${formatMoney(o?.payable.bills ?? 0)} (${formatMoney(o?.payable.billsOverdue ?? 0)} overdue) · expenses ${formatMoney(o?.payable.expenses ?? 0)}`} loading={loading} onClick={() => set({ tab: 'bills', status: 'OVERDUE' })} />
-          <Figure label="GST payable" value={formatMoney(o?.gst.payable ?? 0)} note={`Output ${formatMoney(o?.gst.output ?? 0)} + RCM ${formatMoney(o?.gst.rcm ?? 0)} − input ${formatMoney(o?.gst.input ?? 0)}`} loading={loading} onClick={() => set({ tab: 'gst' })} />
-          <Figure label="Net cash movement" tone={(o?.cash.net ?? 0) < 0 ? 'watch' : undefined} value={formatMoney(o?.cash.net ?? 0)} note={`Received ${formatMoney(o?.cash.in ?? 0)} − paid ${formatMoney(o?.cash.out ?? 0)} (recorded payments only, no bank ledger)`} loading={loading} />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Figure label="Revenue" value={formatMoney(p?.revenue ?? 0)} note="Invoiced in the period, before GST" loading={loading} onClick={() => set({ tab: 'invoices', status: '' })} />
+          <Figure
+            label="Expenses"
+            value={formatMoney(p?.expenses ?? 0)}
+            note={`Materials ${formatMoney(p?.materials ?? 0)} · wages ${formatMoney(p?.wages ?? 0)} · other ${formatMoney(other)}`}
+            loading={loading}
+            onClick={() => breakdown.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+          />
+          <Figure label="Gross profit" tone={(p?.grossProfit ?? 0) < 0 ? 'problem' : 'good'} value={formatMoney(p?.grossProfit ?? 0)} note={`Revenue − materials − wages${pct(p?.grossProfit)}`} loading={loading} />
+          <Figure label="Net profit" tone={(p?.netProfit ?? 0) < 0 ? 'problem' : 'good'} value={formatMoney(p?.netProfit ?? 0)} note={`Revenue − all expenses${pct(p?.netProfit)}`} loading={loading} />
+          <Figure
+            label="Total receivable"
+            tone={o?.receivable.overdue ? 'watch' : undefined}
+            value={formatMoney(o?.receivable.total ?? 0)}
+            note={`Buyers owe us today · ${o?.receivable.count ?? 0} invoices, ${formatMoney(o?.receivable.overdue ?? 0)} overdue`}
+            loading={loading}
+            onClick={() => set({ tab: 'invoices', status: '' })}
+          />
+          <Figure
+            label="Total payable"
+            tone={o?.payable.billsOverdue ? 'watch' : undefined}
+            value={formatMoney((o?.payable.bills ?? 0) + (o?.payable.expenses ?? 0))}
+            note={`We owe today · supplier bills ${formatMoney(o?.payable.bills ?? 0)} + unpaid expenses ${formatMoney(o?.payable.expenses ?? 0)}`}
+            loading={loading}
+            onClick={() => set({ tab: 'bills', status: 'OPEN' })}
+          />
         </div>
       </section>
 
@@ -154,29 +182,23 @@ function Overview({ from, to }: PeriodProps) {
             </div>
           )}
         </section>
-        <section className="data-table-wrap space-y-2 p-4">
+        <section ref={breakdown} className="data-table-wrap scroll-mt-4 space-y-1 p-4">
           <h2 className="section-head">Where the money went</h2>
-          {p &&
-            [
-              ['Materials used', p.materials],
-              ['Wages', p.wages],
-              ['Utilities', p.utilities],
-              ['Logistics', p.logistics],
-              ['Maintenance stores', p.maintenance],
-            ].map(([label, v]) => (
-              <div key={label as string} className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>{label}</span>
-                  <span className="tabular-nums">{formatMoney(v as number)}</span>
-                </div>
-                <div className="h-1.5 rounded bg-zinc-100">
-                  <div className="h-1.5 rounded bg-brand" style={{ width: `${p.expenses ? (100 * (v as number)) / p.expenses : 0}%` }} />
-                </div>
+          <p className="text-xs text-muted-foreground">Click a line to see its records.</p>
+          {costs.map(([label, v, open]) => (
+            <button key={label} type="button" onClick={open} className="group block w-full space-y-1 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-zinc-50">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span>{label}</span>
+                <span className="flex items-center gap-1 tabular-nums">
+                  {formatMoney(v)}
+                  <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </span>
               </div>
-            ))}
-          <p className="pt-2 text-xs text-muted-foreground">
-            Materials are charged as orders are billed. Purchases in the period: {formatMoney(o?.purchases ?? 0)}. Materials on orders not billed yet (work in progress, today): {formatMoney(o?.workInProgress ?? 0)}.
-          </p>
+              <div className="h-1.5 rounded bg-zinc-100">
+                <div className="h-1.5 rounded bg-brand" style={{ width: `${p?.expenses ? (100 * v) / p.expenses : 0}%` }} />
+              </div>
+            </button>
+          ))}
         </section>
       </div>
 
@@ -188,18 +210,51 @@ function Overview({ from, to }: PeriodProps) {
   )
 }
 
+const DUE = { all: 'All open', late: 'Overdue', soon: 'Due in 15 days', later: 'Due later' } as const
+
 function OpenList({ title, rows, kind }: { title: string; rows?: OverviewData['topReceivables']; kind: 'invoices' | 'bills' }) {
+  const [q, setQ] = useState('')
+  const [due, setDue] = useState<keyof typeof DUE>('all')
+  const today = todayIst()
+  const soon = new Date(Date.parse(today) + 15 * 86400000).toISOString().slice(0, 10)
+  const words = q.trim().toLowerCase()
+  const shown = (rows ?? []).filter((r) => {
+    const date = r.dueDate?.slice(0, 10) ?? ''
+    const when = r.daysOverdue > 0 ? 'late' : date && date <= soon ? 'soon' : 'later'
+    return (due === 'all' || due === when) && (!words || [r.invoiceNo, r.billNo, r.buyer, r.supplier, r.material, r.orderNo].some((v) => v?.toLowerCase().includes(words)))
+  })
   return (
     <section className="data-table-wrap space-y-2 p-4">
-      <h2 className="section-head">{title}</h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="section-head">{title}</h2>
+        {rows && (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {shown.length} · {formatINR(shown.reduce((t, r) => t + r.balance, 0))}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <div className="relative min-w-40 flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input type="search" aria-label={`Search ${title.toLowerCase()}`} placeholder={kind === 'invoices' ? 'Invoice, buyer or order' : 'Bill, supplier or material'} className="h-9 pl-8" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <select aria-label="When due" className={cn(selectClass, 'h-9 w-40')} value={due} onChange={(e) => setDue(e.target.value as keyof typeof DUE)}>
+          {Object.entries(DUE).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v}
+            </option>
+          ))}
+        </select>
+      </div>
       {!rows ? (
         <Skeleton className="h-40 w-full" />
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing open.</p>
+      ) : shown.length === 0 ? (
+        <p className="py-4 text-sm text-muted-foreground">{rows.length ? 'Nothing matches these filters.' : 'Nothing open.'}</p>
       ) : (
+        <div className="max-h-80 overflow-y-auto">
         <table className="w-full text-sm">
           <tbody>
-            {rows.map((r) => (
+            {shown.map((r) => (
               <tr key={r.id} className="border-t border-border first:border-0">
                 <td className="py-1.5">
                   <Link to={`/accounts/${kind}/${r.id}`} className="font-medium hover:text-brand">
@@ -208,13 +263,14 @@ function OpenList({ title, rows, kind }: { title: string; rows?: OverviewData['t
                   <span className="ml-2 text-xs text-muted-foreground">{r.buyer ?? `${r.supplier} · ${r.material}`}</span>
                 </td>
                 <td className="py-1.5 text-right">
-                  {r.daysOverdue > 0 ? <Pill tone="problem">{r.daysOverdue} days late</Pill> : <span className="text-xs text-muted-foreground">due {r.dueDate ? formatDate(r.dueDate) : '—'}</span>}
+                  {r.daysOverdue > 0 ? <Pill tone="problem">{r.daysOverdue} day{r.daysOverdue === 1 ? '' : 's'} late</Pill> : <span className="text-xs text-muted-foreground">due {r.dueDate ? formatDate(r.dueDate) : '—'}</span>}
                 </td>
                 <td className="py-1.5 text-right tabular-nums">{formatINR(r.balance)}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </section>
   )

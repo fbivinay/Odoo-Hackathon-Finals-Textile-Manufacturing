@@ -284,6 +284,12 @@ model Order {
   deadline      DateTime
   status        OrderStatus @default(PENDING)
   createdAt     DateTime    @default(now())
+  // Jumps the production queue: a remake of rejected fabric, or an order with rolls in rework.
+  priority      Boolean     @default(false)
+  // Set on a remake: the order whose rejected rolls it replaces.
+  remakeOfId    String?
+  // Why it is a priority, or why it was cancelled, in words people read on the Orders page.
+  note          String?
 
   buyer      Buyer            @relation(fields: [buyerId], references: [id])
   material   RawMaterial?     @relation(fields: [materialId], references: [id])
@@ -293,6 +299,8 @@ model Order {
   rolls      Roll[]
   dispatches Dispatch[]
   expenses   Expense[]
+  remakeOf   Order?           @relation("Remake", fields: [remakeOfId], references: [id])
+  remakes    Order[]          @relation("Remake")
 
   @@index([status])
   @@index([deadline])
@@ -620,4 +628,29 @@ model AuditLog {
   at       DateTime @default(now())
 
   @@index([entity, entityId])
+}
+
+// ------------------------------------------------------------ Everest Lab --
+// What-if experiments. Kept apart from every operational table: saving or running one never
+// changes orders, stock, production, dispatch or accounts.
+enum LabDecision {
+  NEEDS_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model LabScenario {
+  id          String      @id @default(cuid())
+  name        String
+  changes     Json // what-if inputs (validators/labValidators.js)
+  costs       Json // owner's cost assumptions
+  days        Int
+  result      Json? // last run's output
+  snapshotAt  DateTime? // when the data that run used was read
+  evaluatedAt DateTime?
+  decision    LabDecision @default(NEEDS_REVIEW)
+  note        String?
+  createdBy   String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }
