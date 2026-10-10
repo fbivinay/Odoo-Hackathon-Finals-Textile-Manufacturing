@@ -61,7 +61,8 @@ backend/src/
 
 - Call the API only through `web/src/lib/api.ts` (unwraps the envelope, adds the JWT).
 - `VITE_USE_MOCKS=true` runs the UI on `web/src/lib/mock.ts` without a backend.
-- Screens are still the round-1 HRMS ones, to be reworked for the textile flow.
+- Colours, layout, copy and logo: `docs/design.md`. Use its palette; don't add new hues.
+- The sign-in page and the app shell (left sidebar + top bar) are settled. Don't restyle them without asking Gopal.
 
 ## Domain flow
 
