@@ -42,3 +42,6 @@ dist-ssr/
 
 # Backend uploads (local dev file storage)
 backend/uploads/
+
+# Local dev database
+backend/.pgdata/

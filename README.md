@@ -8,7 +8,7 @@ Textile Manufacturing System — Odoo Hackathon Finals. One platform for raw mat
 |---|---|
 | Frontend | React 19 + Vite + TypeScript + Tailwind CSS v4 + shadcn/ui |
 | Backend | Node.js + Express + Prisma ORM |
-| Database | PostgreSQL on [Neon](https://neon.tech) |
+| Database | PostgreSQL (local in dev, [Neon](https://neon.tech) when deployed) |
 | Hosting | Frontend → Vercel · Backend → Render |
 
 ## Local Setup
@@ -16,10 +16,11 @@ Textile Manufacturing System — Odoo Hackathon Finals. One platform for raw mat
 ### Backend
 ```bash
 cd backend
-cp .env.example .env   # Add DATABASE_URL (Neon) and JWT_SECRET
+cp .env.example .env
 npm install
-npx prisma migrate deploy && npm run seed
-npm run dev            # http://localhost:4000
+npm run db             # terminal 1: local Postgres, keep it running
+npm run setup          # once: migrate + load the full dataset
+npm run dev            # terminal 2: http://localhost:4000
 ```
 
 ### Frontend

@@ -15,24 +15,25 @@ One platform replacing the mill's notebooks and phone calls. Problem statement: 
 |---|---|
 | Frontend (`web/`) | React 19 + Vite + TypeScript + Tailwind v4 + shadcn/ui + TanStack Table + Recharts |
 | Backend (`backend/`) | Node + Express (CommonJS JS) + Prisma 5 + zod |
-| Database | PostgreSQL on Neon |
+| Database | Local Postgres in dev (`npm run db`); Neon only for the deployed app |
 | Auth | JWT + bcrypt, roles: `OWNER` `STORE` `PRODUCTION` `QC` `DISPATCH` |
 | Deploy | web → Vercel, backend → Render, DB → Neon |
 
 ## Commands
 
 ```bash
-# backend (http://localhost:4000)
+# backend (http://localhost:4000) — development is local-first, no Neon needed
 cd backend && npm i && cp .env.example .env
-npx prisma migrate deploy && npm run seed && npm run dev
-npm run seed -- --reset    # wipe and rebuild demo data
+npm run db       # terminal 1: local Postgres on :5433, keep it running
+npm run setup    # once: migrate + load data/everest (re-run to reset the data)
+npm run dev      # terminal 2
 
 # web (http://localhost:5173)
 cd web && npm i && cp .env.example .env && npm run dev
 npm test && npx tsc -b && npm run lint
 ```
 
-Seed logins: `owner@` `store@` `production@` `qc@` `dispatch@everest.dev` / `Password123`.
+Logins: `owner@` `store@` `production@` `qc@` `dispatch@everest.dev` / `Password123`.
 
 ## Backend conventions
 

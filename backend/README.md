@@ -7,13 +7,14 @@ Node.js + Express + Prisma + PostgreSQL. Endpoint shapes: `../docs/api.md`.
 ```bash
 cd backend
 npm install
-cp .env.example .env        # fill in DATABASE_URL and JWT_SECRET
-npx prisma migrate deploy   # apply migrations
-npm run seed                # logins, machines, demo data
-npm run dev                 # http://localhost:4000, health: GET /health
+cp .env.example .env        # defaults point at the local database
+npm run db                  # terminal 1: local Postgres on :5433 (no install needed)
+npm run setup               # once: migrate + load data/everest; re-run to reset
+npm run dev                 # terminal 2: http://localhost:4000, health: GET /health
 ```
 
-`npm run seed -- --reset` wipes every table and rebuilds the demo data.
+Development is local-first. Neon is used only by the deployed app on Render.
+`npm run seed -- --reset` loads the small six-order demo instead of the full dataset.
 
 Logins: `owner@`, `store@`, `production@`, `qc@`, `dispatch@everest.dev` / `Password123`.
 
