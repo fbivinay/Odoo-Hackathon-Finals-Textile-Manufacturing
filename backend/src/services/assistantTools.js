@@ -213,7 +213,7 @@ const TOOLS = [
         yarnIssuedKg: num(o.issues.reduce((n, i) => n + Number(i.qty), 0)), yarnAvailability: o.availability,
         stages: { SPINNING: stage('SPINNING'), WEAVING: stage('WEAVING'), DYEING: stage('DYEING') },
         rollsByStatus: rolls,
-        dispatches: o.dispatches.map((d) => ({ dispatchNo: d.dispatchNo, on: day(d.dispatchedAt), vehicle: d.vehicleNo, ...(money && d.invoice ? { invoiceNo: d.invoice.invoiceNo, invoiceAmount: num(d.invoice.amount), invoiceStatus: d.invoice.status } : {}) })),
+        dispatches: o.dispatches.map((d) => ({ dispatchNo: d.dispatchNo, on: day(d.dispatchedAt), vehicle: d.vehicleNo, ...(money && d.invoice ? { invoiceNo: d.invoice.invoiceNo, invoiceAmountBeforeGst: num(d.invoice.amount), invoiceTotalWithGst: num(d.invoice.totalAmount ?? d.invoice.amount), invoiceStatus: d.invoice.status } : {}) })),
       };
     },
   },
@@ -321,7 +321,7 @@ const TOOLS = [
       const orderId = orderNo ? await orderByNo(orderNo) : undefined;
       if (orderNo && !orderId) return { note: `No order with number ${orderNo}.` };
       const rows = rowsOf(await dispatchService.list({ orderId, from, to, limit: cap(limit) }));
-      return rows.map((d) => ({ dispatchNo: d.dispatchNo, on: day(d.dispatchedAt), orderNo: d.order.orderNo, buyer: d.buyer.name, vehicle: d.vehicleNo, rolls: d.rolls.length, metres: num(d.totalQty ?? d.rolls.reduce((n, r) => n + Number(r.qty), 0)), invoiceNo: d.invoice?.invoiceNo, invoiceAmount: num(d.invoice?.amount), invoiceStatus: d.invoice?.status }));
+      return rows.map((d) => ({ dispatchNo: d.dispatchNo, on: day(d.dispatchedAt), orderNo: d.order.orderNo, buyer: d.buyer.name, vehicle: d.vehicleNo, rolls: d.rolls.length, metres: num(d.totalQty ?? d.rolls.reduce((n, r) => n + Number(r.qty), 0)), invoiceNo: d.invoice?.invoiceNo, invoiceAmountBeforeGst: num(d.invoice?.amount), invoiceTotalWithGst: num(d.invoice?.totalAmount ?? d.invoice?.amount), invoiceStatus: d.invoice?.status }));
     },
   },
   {
@@ -331,7 +331,7 @@ const TOOLS = [
     input: { status: { type: 'string', enum: ['UNPAID', 'PARTIAL', 'PAID'] }, from: DATE, to: DATE, limit: { type: 'integer' } },
     async run({ status, from, to, limit }) {
       const rows = rowsOf(await dispatchService.listInvoices({ status, from, to, limit: cap(limit) }));
-      return rows.map((i) => ({ invoiceNo: i.invoiceNo, buyer: i.dispatch?.buyer?.name, orderNo: i.dispatch?.order?.orderNo, issuedOn: day(i.issuedAt), amount: num(i.amount), paid: num(i.paid), balance: num(i.balance), status: i.status }));
+      return rows.map((i) => ({ invoiceNo: i.invoiceNo, buyer: i.dispatch?.buyer?.name, orderNo: i.dispatch?.order?.orderNo, issuedOn: day(i.issuedAt), amountBeforeGst: num(i.amount), gst: num(Number(i.cgst || 0) + Number(i.sgst || 0) + Number(i.igst || 0)), totalWithGst: num(i.totalAmount ?? i.amount), paid: num(i.paid), balance: num(i.balance), status: i.status }));
     },
   },
   {
