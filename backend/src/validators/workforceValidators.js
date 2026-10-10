@@ -1,7 +1,7 @@
 const { z, id, money, text, SHIFTS } = require('./common');
 
 const workerSchema = z.object({
-  code: text,
+  code: text.optional(), // numbered on from the last one when left out
   name: text,
   shift: z.enum(SHIFTS),
   dailyWage: money,

@@ -150,12 +150,14 @@ async function machineOutput({ month } = {}) {
       const day = log.loggedAt.toISOString().slice(0, 10);
       daily.set(day, (daily.get(day) || 0) + Number(log.qty));
     }
-    return { id: machine.id, code: machine.code, name: machine.name, type: machine.type, status: machine.status, produced: round(sum(mine, 'qty')) };
+    return { id: machine.id, code: machine.code, name: machine.name, type: machine.type, status: machine.status, produced: round(sum(mine, 'qty')), removed: Boolean(machine.removedAt) };
   });
+  // A machine taken off the floor still shows for the months it produced in.
+  const shown = rows.filter((row) => !row.removed || row.produced > 0);
 
   return {
     month: range.month,
-    machines: rows,
+    machines: shown,
     daily: [...daily].sort().map(([date, qty]) => ({ date, qty: round(qty) })),
     total: round(sum(rows, 'produced')),
   };

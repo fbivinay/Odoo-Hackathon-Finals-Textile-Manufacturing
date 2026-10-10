@@ -3,12 +3,48 @@ const { monthRange, dateOnly } = require('../lib/dates');
 const { notFound } = require('../lib/errors');
 const { payslip } = require('../lib/payroll');
 
-const listWorkers = () => prisma.worker.findMany({ orderBy: { code: 'asc' } });
-const createWorker = (data) => prisma.worker.create({ data });
+// Everyone on the floor today. Removed workers stay in old registers only.
+const listWorkers = () => prisma.worker.findMany({ where: { removedAt: null }, orderBy: { code: 'asc' } });
 
-async function updateWorker(id, data) {
-  if (!(await prisma.worker.findUnique({ where: { id } }))) throw notFound('Worker not found');
-  return prisma.worker.update({ where: { id }, data });
+const changeLog = (what, field, oldValue, newValue, user) => ({ what, field, oldValue: oldValue == null ? null : String(oldValue), newValue: newValue == null ? null : String(newValue), changedBy: user?.name || 'System' });
+
+// A new worker takes the next code after the highest one (W-073 after W-072) unless one is given.
+async function createWorker({ code, ...data }, user) {
+  return prisma.$transaction(async (tx) => {
+    if (!code) {
+      const last = await tx.worker.findFirst({ where: { code: { startsWith: 'W-' } }, orderBy: { code: 'desc' }, select: { code: true } });
+      code = `W-${String((last ? Number(last.code.slice(2)) || 0 : 0) + 1).padStart(3, '0')}`;
+    }
+    const worker = await tx.worker.create({ data: { code, ...data } });
+    await tx.configChange.create({ data: changeLog(`Worker ${worker.name}`, 'worker', null, 'added', user) });
+    return worker;
+  });
+}
+
+async function updateWorker(id, data, user) {
+  const worker = await prisma.worker.findUnique({ where: { id } });
+  if (!worker || worker.removedAt) throw notFound('Worker not found');
+  const before = { name: worker.name, shift: worker.shift, dailyWage: Number(worker.dailyWage), isActive: worker.isActive };
+  const changed = Object.keys(data).filter((k) => String(before[k]) !== String(data[k]));
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.worker.update({ where: { id }, data });
+    if (changed.length) await tx.configChange.createMany({ data: changed.map((k) => changeLog(`Worker ${worker.name}`, k, before[k], data[k], user)) });
+    return updated;
+  });
+}
+
+// Takes a worker off the list. One with attendance, wages or jobs is kept, marked removed, so
+// the old registers and payslips stay whole; one with no records is deleted outright.
+async function removeWorker(id, user) {
+  const worker = await prisma.worker.findUnique({ where: { id }, include: { _count: { select: { attendance: true, wages: true, jobs: true } } } });
+  if (!worker || worker.removedAt) throw notFound('Worker not found');
+  const used = worker._count.attendance + worker._count.wages + worker._count.jobs > 0;
+  return prisma.$transaction(async (tx) => {
+    if (used) await tx.worker.update({ where: { id }, data: { removedAt: new Date(), isActive: false } });
+    else await tx.worker.delete({ where: { id } });
+    await tx.configChange.create({ data: changeLog(`Worker ${worker.name}`, 'worker', 'on', 'removed', user) });
+    return { id };
+  });
 }
 
 // The day's register: every active worker, marked or not.
@@ -103,4 +139,4 @@ async function payWages({ month } = {}) {
   return wages({ month });
 }
 
-module.exports = { listWorkers, createWorker, updateWorker, attendance, markAttendance, wages, payWages };
+module.exports = { listWorkers, createWorker, updateWorker, removeWorker, attendance, markAttendance, wages, payWages };

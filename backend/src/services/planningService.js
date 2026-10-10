@@ -27,7 +27,7 @@ function weekStart(date) {
 async function stageCapacity() {
   const since = new Date(Date.now() - RATE_WINDOW_DAYS * DAY);
   const [machines, rates] = await Promise.all([
-    prisma.machine.findMany(),
+    prisma.machine.findMany({ where: { removedAt: null } }),
     prisma.productionJob.groupBy({
       by: ['machineId'],
       where: { status: 'COMPLETED', startedAt: { gte: since } },

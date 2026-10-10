@@ -42,6 +42,11 @@ export function DataTable<T>({
     getSortedRowModel: getSortedRowModel(),
   })
 
+  // Columns may fix their share of the width with `meta: { width: '25%' }`, so tables stacked on
+  // one page line up. Without any, the browser sizes columns to their content as before.
+  const widthOf = (def: ColumnDef<T, any>) => (def.meta as { width?: string } | undefined)?.width
+  const fixed = columns.some(widthOf)
+
   // An empty table never shows bare headers: a short line says why there is nothing.
   if (!loading && data.length === 0) {
     return (
@@ -53,7 +58,7 @@ export function DataTable<T>({
 
   return (
     <div className="data-table-wrap">
-      <table className="data-table">
+      <table className={cn('data-table', fixed && 'table-fixed')}>
         <thead>
           {table.getHeaderGroups().map((group) => (
             <tr key={group.id}>
@@ -61,7 +66,7 @@ export function DataTable<T>({
                 const sortable = header.column.getCanSort()
                 const dir = header.column.getIsSorted()
                 return (
-                  <th key={header.id} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : undefined}>
+                  <th key={header.id} style={{ width: widthOf(header.column.columnDef) }} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : undefined}>
                     {header.isPlaceholder ? null : sortable ? (
                       <button
                         type="button"

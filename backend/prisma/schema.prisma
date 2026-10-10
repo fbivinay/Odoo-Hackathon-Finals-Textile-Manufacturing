@@ -306,6 +306,8 @@ model Machine {
   status    MachineStatus @default(IDLE)
   // What it can make in a day: kg for spinning, metres for weaving and dyeing. Optional on old machines.
   dailyCapacity Decimal?  @db.Decimal(12, 2)
+  // Set when a machine with past jobs is removed in Mill Setup: off the floor, kept for its records.
+  removedAt DateTime?
   createdAt DateTime      @default(now())
 
   jobs  ProductionJob[]
@@ -451,6 +453,9 @@ model Worker {
   // Crews rotate across spinning, weaving and dyeing, so floor workers sit in one department.
   department String   @default("Production floor")
   isActive   Boolean  @default(true)
+  // Set when a worker with past attendance or wages is removed in Mill Setup: off every list,
+  // but the old registers and payslips still point at them.
+  removedAt  DateTime?
   createdAt  DateTime @default(now())
 
   attendance Attendance[]

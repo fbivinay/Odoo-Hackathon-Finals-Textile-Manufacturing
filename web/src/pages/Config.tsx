@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
 import { PageHead } from '@/components/PageHead'
-import { label } from '@/components/StatusPill'
+import { Pill, label } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -14,7 +14,7 @@ import { api, ApiError } from '@/lib/api'
 import { formatDateTime, formatINR, formatQty, unitFor } from '@/lib/format'
 import { useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
-import type { Config as ConfigData, ConfigChange, Machine, Stage } from '@/types'
+import type { Config as ConfigData, ConfigChange, Machine, Shift, Stage } from '@/types'
 
 type Fabric = ConfigData['fabrics'][number]
 type Material = ConfigData['materials'][number]
@@ -54,6 +54,7 @@ export function Config() {
           <TabsList>
             <TabsTrigger value="fabrics">Fabrics</TabsTrigger>
             <TabsTrigger value="machines">Machines</TabsTrigger>
+            <TabsTrigger value="workers">Workers</TabsTrigger>
             <TabsTrigger value="rules">Order rules</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
@@ -62,6 +63,9 @@ export function Config() {
           </TabsContent>
           <TabsContent value="machines">
             <Machines />
+          </TabsContent>
+          <TabsContent value="workers">
+            <Workers />
           </TabsContent>
           <TabsContent value="rules">
             <Rules rules={c.rules} />
@@ -153,15 +157,15 @@ function Fabrics({ fabrics, yarns }: { fabrics: Fabric[]; yarns: Material[] }) {
         </Button>
       </div>
       <div className="data-table-wrap overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[44rem] table-fixed text-sm">
           <thead>
             <tr>
-              <th className={head}>Fabric</th>
-              <th className={head}>Yarn</th>
-              <th className={head}>Yarn / m</th>
-              <th className={head}>Wastage</th>
-              <th className={head}>Price / m</th>
-              <th className={head} />
+              <th className={cn(head, 'w-[16%]')}>Fabric</th>
+              <th className={cn(head, 'w-[34%]')}>Yarn</th>
+              <th className={cn(head, 'w-[13%]')}>Yarn / m</th>
+              <th className={cn(head, 'w-[12%]')}>Wastage</th>
+              <th className={cn(head, 'w-[13%]')}>Price / m</th>
+              <th className={cn(head, 'w-[12%]')} />
             </tr>
           </thead>
           <tbody>
@@ -181,7 +185,7 @@ function Fabrics({ fabrics, yarns }: { fabrics: Fabric[]; yarns: Material[] }) {
                 <td className={cn(cell, 'font-medium')}>
                   {f.fabricType}
                 </td>
-                <td className={cn(cell, 'text-ink-2')}>{yarnName(f.materialId)}</td>
+                <td className={cn(cell, 'truncate text-ink-2')} title={yarnName(f.materialId)}>{yarnName(f.materialId)}</td>
                 <td className={numCell}>{f.yarnPerMetre} kg</td>
                 <td className={numCell}>{f.wastagePct}%</td>
                 <td className={numCell}>{formatINR(f.pricePerMetre)}</td>
@@ -299,14 +303,14 @@ function Machines() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <div className="data-table-wrap overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[40rem] table-fixed text-sm">
             <thead>
               <tr>
-                <th className={head}>Machine</th>
-                <th className={head}>Name</th>
-                <th className={head}>Stage</th>
-                <th className={head}>Capacity / day</th>
-                <th className={head} />
+                <th className={cn(head, 'w-[18%]')}>Machine</th>
+                <th className={cn(head, 'w-[28%]')}>Name</th>
+                <th className={cn(head, 'w-[20%]')}>Stage</th>
+                <th className={cn(head, 'w-[22%]')}>Capacity / day</th>
+                <th className={cn(head, 'w-[12%]')} />
               </tr>
             </thead>
             <tbody>
@@ -403,6 +407,198 @@ function MachineDialog({ machine, all, onClose }: { machine: Machine | null; all
       <Field label={`Capacity per day (${unitFor(form.type)})`} htmlFor="machine-capacity">
         <Num id="machine-capacity" unit={unitFor(form.type)} required={!machine} min="1" step="1" value={form.dailyCapacity} onChange={set('dailyCapacity')} />
       </Field>
+    </Popup>
+  )
+}
+
+// ---------------------------------------------------------------- workers --
+
+// The floor workers picked as operators on the Machines screen, and paid from attendance.
+interface Worker {
+  id: string
+  code: string
+  name: string
+  shift: Shift
+  dailyWage: number | string
+  isActive: boolean
+  createdAt: string
+}
+const SHIFTS: Shift[] = ['MORNING', 'EVENING', 'NIGHT']
+const SHIFT_HOURS: Record<Shift, string> = { MORNING: '6 AM – 2 PM', EVENING: '2 PM – 10 PM', NIGHT: '10 PM – 6 AM' }
+const PAGE = 20
+// Wages are shown per month here; pay is still worked out per day attended, on 26 working days
+// a month (Sundays off), so the stored figure is the daily rate.
+const WORK_DAYS = 26
+const monthlyOf = (w: { dailyWage: number | string }) => Math.round(Number(w.dailyWage) * WORK_DAYS)
+
+function Workers() {
+  const workers = useApi<Worker[]>('/workers')
+  const [editing, setEditing] = useState<Worker | 'new' | null>(null)
+  const [search, setSearch] = useState('')
+  const [shift, setShift] = useState<Shift | 'ALL'>('ALL')
+  const [showAll, setShowAll] = useState(false)
+  const q = search.trim().toLowerCase()
+  // Active first, newest on top.
+  const all = [...(workers.data ?? [])].sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.createdAt.localeCompare(a.createdAt) || b.code.localeCompare(a.code))
+  const matches = all.filter((w) => (shift === 'ALL' || w.shift === shift) && (!q || [w.name, w.code, label(w.shift)].some((v) => v.toLowerCase().includes(q))))
+  const rows = showAll ? matches : matches.slice(0, PAGE)
+  const filtered = !!q || shift !== 'ALL'
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input type="search" aria-label="Search workers" placeholder="Search name or code" className="bg-white pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <select aria-label="Filter by shift" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={shift} onChange={(e) => setShift(e.target.value as Shift | 'ALL')}>
+            <option value="ALL">All shifts</option>
+            {SHIFTS.map((s) => (
+              <option key={s} value={s}>
+                {label(s)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button size="sm" className="gap-1" onClick={() => setEditing('new')}>
+          <Plus className="size-3.5" />
+          New worker
+        </Button>
+      </div>
+      {workers.error && <p className="text-sm text-problem">{workers.error}</p>}
+      {workers.loading && !workers.data ? (
+        <Skeleton className="h-64 w-full" />
+      ) : (
+        <div className="data-table-wrap overflow-x-auto">
+          <table className="w-full min-w-[40rem] table-fixed text-sm">
+            <thead>
+              <tr>
+                <th className={cn(head, 'w-[30%]')}>Worker</th>
+                <th className={cn(head, 'w-[22%]')}>Shift</th>
+                <th className={cn(head, 'w-[18%]')}>Monthly wage</th>
+                <th className={cn(head, 'w-[18%]')}>Status</th>
+                <th className={cn(head, 'w-[12%]')} />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={5}>
+                    {filtered ? (
+                      <EmptyState
+                        icon={Search}
+                        line="No worker matches."
+                        actionLabel="Clear filters"
+                        onAction={() => {
+                          setSearch('')
+                          setShift('ALL')
+                        }}
+                      />
+                    ) : (
+                      <EmptyState icon={Plus} line="No workers yet." actionLabel="New worker" onAction={() => setEditing('new')} />
+                    )}
+                  </td>
+                </tr>
+              )}
+              {rows.map((w) => (
+                <tr key={w.id} className="border-t border-border">
+                  <td className={cell}>
+                    <div className="leading-tight">
+                      <p className="truncate font-medium">{w.name}</p>
+                      <p className="text-xs text-muted-foreground">{w.code}</p>
+                    </div>
+                  </td>
+                  <td className={cell}>
+                    <div className="leading-tight">
+                      <p>{label(w.shift)}</p>
+                      <p className="text-xs whitespace-nowrap text-muted-foreground">{SHIFT_HOURS[w.shift]}</p>
+                    </div>
+                  </td>
+                  <td className={numCell}>{formatINR(monthlyOf(w))}</td>
+                  <td className={cell}>{w.isActive ? <Pill tone="good">Active</Pill> : <Pill>Inactive</Pill>}</td>
+                  <td className={cn(cell, 'text-right')}>
+                    <EditButton what={w.name} onClick={() => setEditing(w)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {matches.length > PAGE && (
+            <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
+              <span>
+                Showing {rows.length} of {matches.length}
+              </span>
+              <Button size="xs" variant="ghost" onClick={() => setShowAll(!showAll)}>
+                {showAll ? `Show first ${PAGE}` : 'Show all'}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+      {editing && <WorkerDialog worker={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+    </section>
+  )
+}
+
+function WorkerDialog({ worker, onClose }: { worker: Worker | null; onClose: () => void }) {
+  const before = {
+    name: worker?.name ?? '',
+    shift: worker?.shift ?? ('MORNING' as Shift),
+    monthlyWage: worker ? String(monthlyOf(worker)) : '',
+    status: worker && !worker.isActive ? 'INACTIVE' : 'ACTIVE',
+  }
+  const [form, setForm] = useState(before)
+  const [removing, setRemoving] = useState(false)
+  const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }))
+  const name = form.name.trim()
+  const body = { name, shift: form.shift, dailyWage: Math.round((Number(form.monthlyWage) / WORK_DAYS) * 100) / 100 }
+
+  async function remove() {
+    setRemoving(true)
+    if (await save(`/workers/${worker!.id}`, 'DELETE', undefined, `${worker!.name} removed`)) onClose()
+    else setRemoving(false)
+  }
+
+  return (
+    <Popup
+      title={worker ? worker.name : 'New worker'}
+      hint={worker ? worker.code : undefined}
+      saveLabel={worker ? 'Save' : 'Add worker'}
+      canSave={!removing && (!worker || JSON.stringify(form) !== JSON.stringify(before))}
+      onClose={onClose}
+      onSave={() => (worker ? save(`/workers/${worker.id}`, 'PATCH', { ...body, isActive: form.status === 'ACTIVE' }, `${name} saved`) : save('/workers', 'POST', body, `${name} added`))}
+      extra={
+        worker ? (
+          <Button variant="ghost" className="-ml-2 text-problem hover:text-problem" disabled={removing} onClick={remove}>
+            Remove
+          </Button>
+        ) : undefined
+      }
+    >
+      <Field label="Name" htmlFor="worker-name">
+        <Input id="worker-name" required autoFocus={!worker} maxLength={60} value={form.name} onChange={(e) => set('name')(e.target.value)} />
+      </Field>
+      <Field label="Shift" htmlFor="worker-shift">
+        <select id="worker-shift" className={selectClass} value={form.shift} onChange={(e) => set('shift')(e.target.value)}>
+          {SHIFTS.map((s) => (
+            <option key={s} value={s}>
+              {label(s)} · {SHIFT_HOURS[s]}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Monthly wage (₹)" htmlFor="worker-wage" hint={`For a full month of ${WORK_DAYS} working days.`}>
+        <Num id="worker-wage" unit="₹" required min="1" step="1" value={form.monthlyWage} onChange={set('monthlyWage')} />
+      </Field>
+      {worker && (
+        <Field label="Status" htmlFor="worker-status" hint={form.status === 'INACTIVE' ? 'Not offered as an operator and left off the attendance register.' : undefined}>
+          <select id="worker-status" className={selectClass} value={form.status} onChange={(e) => set('status')(e.target.value)}>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </select>
+        </Field>
+      )}
     </Popup>
   )
 }
@@ -527,6 +723,10 @@ const FIELD: Record<string, string> = {
   leadDays: 'delivery days',
   rule: 'rule',
   machine: 'machine',
+  worker: 'worker',
+  shift: 'shift',
+  dailyWage: 'wage per day',
+  isActive: 'active',
   dailyCapacity: 'capacity per day',
   code: 'code',
   name: 'name',

@@ -85,13 +85,14 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | GET | `/machines` | | |
 | POST | `/machines` | OWNER or `/config` | `{ code, name, type, dailyCapacity? }` type = `SPINNING/WEAVING/DYEING` |
 | PATCH | `/machines/:id` | OWNER or `/config` | `{ code?, name?, dailyCapacity? }` (capacity per day: kg for spinning, metres otherwise; `null` clears it) |
-| DELETE | `/machines/:id` | OWNER or `/config` | 409 `MACHINE_IN_USE` if it has any job, roll or output |
+| DELETE | `/machines/:id` | OWNER or `/config` | Off the floor; kept (marked removed) if it has any job, roll or output. 409 `MACHINE_BUSY` while it is running |
 | PATCH | `/machines/:id/status` | PRODUCTION | `{ status }` = `IDLE/BREAKDOWN/MAINTENANCE`; stops the running job |
 | GET | `/production/board` | | `{ machines[], summary }`; each machine has `currentJob` (with `percent`) and `producedToday` |
 | GET | `/production/queue` | | `?stage=SPINNING/WEAVING/DYEING` → orders with work left in that stage: `{ id, orderNo, fabricType, buyer, deadline, status, target, done, remaining, available, running }`; `available` is how much can start now: the whole `remaining` once the stage before has finished the order, otherwise 0 (so the order is not listed) |
 | GET | `/production/jobs` | | `?orderId=&machineId=&workerId=&status=&stage=` + paging |
 | POST | `/production/jobs` | PRODUCTION | `{ orderId, machineId, workerId?, shift, qtyPlanned }` → 409 `MACHINE_BUSY` unless idle |
 | POST | `/production/jobs/:id/progress` | PRODUCTION | `{ qty }` quantity produced since last report; 400 `OVER_PLAN` if it would exceed the job's planned quantity |
+| | | `progress` answers 400 `CAPACITY_REACHED` when the quantity would take the machine past its `dailyCapacity` for today (when one is set) |
 | POST | `/production/jobs/:id/complete` | PRODUCTION | marks the whole job made (quantity not logged yet is recorded now) and frees the machine; on a dyeing job, output not yet rolled is cut into rolls (~1,100 m) and sent to QC, returned as `rollsSent` |
 | POST | `/production/jobs/:id/stop` | PRODUCTION | frees the machine |
 | POST | `/production/rolls` | PRODUCTION | `{ jobId, qty }` → roll in `PENDING_QC`, linked to order + machine; 400 `OVER_OUTPUT` if rolls would exceed what the job has made |
@@ -121,8 +122,9 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/workers` | | |
-| POST | `/workers` | OWNER | `{ code, name, shift, dailyWage }` |
-| PATCH | `/workers/:id` | OWNER | `{ name?, shift?, dailyWage?, isActive? }` |
+| POST | `/workers` | OWNER or `/config` | `{ name, shift, dailyWage, code? }`; the code is numbered on (W-073) when left out |
+| PATCH | `/workers/:id` | OWNER or `/config` | `{ name?, shift?, dailyWage?, isActive? }` |
+| DELETE | `/workers/:id` | OWNER or `/config` | Off the list; kept (marked removed) if the worker has attendance, wages or jobs |
 | GET | `/attendance` | PRODUCTION | `?date=YYYY-MM-DD` (default today); read needs PRODUCTION too |
 | POST | `/attendance` | PRODUCTION | `{ date?, entries: [{ workerId, status }] }` status = `PRESENT/ABSENT/HALF_DAY` |
 | GET | `/wages` | OWNER | `?month=YYYY-MM` → `{ rows[], totals: { earned, paid, due } }` |

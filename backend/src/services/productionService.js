@@ -73,7 +73,8 @@ async function queue({ stage } = {}) {
     .filter((row) => row.remaining > 0 && row.available > 0);
 }
 
-const listMachines = () => prisma.machine.findMany({ orderBy: { code: 'asc' } });
+// Machines on the floor. Removed ones stay only in old jobs, rolls and reports.
+const listMachines = () => prisma.machine.findMany({ where: { removedAt: null }, orderBy: { code: 'asc' } });
 const createMachine = (data) => prisma.machine.create({ data });
 
 // Code, name and daily capacity. Each change is kept in the Mill Setup history.
@@ -99,15 +100,16 @@ async function updateMachine(id, data, user) {
   });
 }
 
-// A machine that has ever run a job stays: its jobs, rolls and output point at it.
+// Takes a machine off the floor. One that has run jobs is kept, marked removed, so its jobs,
+// rolls and output still point at it; one with no records is deleted outright.
 async function deleteMachine(id, user) {
   const machine = await prisma.machine.findUnique({ where: { id }, include: { _count: { select: { jobs: true, rolls: true, logs: true } } } });
-  if (!machine) throw notFound('Machine not found');
-  if (machine._count.jobs + machine._count.rolls + machine._count.logs > 0) {
-    throw conflict(`${machine.code} has production records, so it can't be removed`, 'MACHINE_IN_USE');
-  }
+  if (!machine || machine.removedAt) throw notFound('Machine not found');
+  if (machine.status === 'RUNNING') throw conflict(`${machine.code} is running an order. Finish or stop it first.`, 'MACHINE_BUSY');
+  const used = machine._count.jobs + machine._count.rolls + machine._count.logs > 0;
   return prisma.$transaction(async (tx) => {
-    await tx.machine.delete({ where: { id } });
+    if (used) await tx.machine.update({ where: { id }, data: { removedAt: new Date(), status: 'IDLE' } });
+    else await tx.machine.delete({ where: { id } });
     await tx.configChange.create({ data: { what: `Machine ${machine.code}`, field: 'machine', oldValue: 'on', newValue: 'removed', changedBy: user.name } });
     return { id };
   });
@@ -117,6 +119,7 @@ async function deleteMachine(id, user) {
 async function board() {
   const [machines, today] = await Promise.all([
     prisma.machine.findMany({
+      where: { removedAt: null },
       orderBy: { code: 'asc' },
       include: { jobs: { where: { status: 'RUNNING' }, include: jobInclude, take: 1 } },
     }),
@@ -174,7 +177,7 @@ async function startJob({ orderId, machineId, workerId, shift, qtyPlanned }) {
       tx.machine.findUnique({ where: { id: machineId } }),
     ]);
     if (!order) throw notFound('Order not found');
-    if (!machine) throw notFound('Machine not found');
+    if (!machine || machine.removedAt) throw notFound('Machine not found');
     if (['DISPATCHED', 'CANCELLED'].includes(order.status)) throw badRequest(`Order is ${order.status}`);
     if (workerId && !(await tx.worker.findUnique({ where: { id: workerId } }))) throw notFound('Worker not found');
 
@@ -203,6 +206,15 @@ async function logProgress(jobId, { qty }) {
     const left = Math.round((Number(job.qtyPlanned) - Number(job.qtyProduced)) * 100) / 100;
     if (qty > left + 0.005) {
       throw badRequest(left > 0 ? `Only ${left} left on this job` : 'This job has already made its planned quantity', 'OVER_PLAN');
+    }
+    // Nor can a machine make more in a day than its capacity (Mill Setup), when one is set.
+    const machine = await tx.machine.findUnique({ where: { id: job.machineId } });
+    if (machine.dailyCapacity !== null) {
+      const today = await tx.productionLog.aggregate({ where: { machineId: job.machineId, loggedAt: { gte: startOfToday() } }, _sum: { qty: true } });
+      const room = Math.round((Number(machine.dailyCapacity) - Number(today._sum.qty || 0)) * 100) / 100;
+      if (qty > room + 0.005) {
+        throw badRequest(room > 0 ? `Only ${room} left of ${machine.code}'s capacity for today` : `${machine.code} has reached its capacity for the day`, 'CAPACITY_REACHED');
+      }
     }
 
     await tx.productionLog.create({ data: { jobId, machineId: job.machineId, qty } });

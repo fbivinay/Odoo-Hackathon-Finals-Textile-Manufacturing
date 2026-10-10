@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/DataTable'
 import { Factory, Plus } from 'lucide-react'
@@ -47,11 +47,10 @@ const FILTERS = [
   { label: 'Down', dot: 'bg-problem', match: isDown },
 ]
 
-// The shift running right now: 06:00, 14:00 and 22:00 starts.
-function currentShift(): Shift {
-  const hour = new Date().getHours()
-  return hour >= 6 && hour < 14 ? 'MORNING' : hour >= 14 && hour < 22 ? 'EVENING' : 'NIGHT'
-}
+// A machine's capacity per day (Mill Setup); 0 when none is set.
+const capacityOf = (m: BoardMachine) => Number(m.dailyCapacity ?? 0)
+// How much more it can make today. Infinity when it has no capacity set.
+const roomToday = (m: BoardMachine) => (capacityOf(m) > 0 ? Math.max(0, Math.round((capacityOf(m) - m.producedToday) * 100) / 100) : Infinity)
 
 export function Production() {
   const { user } = useSession()
@@ -65,22 +64,36 @@ export function Production() {
   const machines = board.data?.machines ?? []
   const selected = machines.find((m) => m.id === openId) ?? null
 
+  // No column sorting: machines stay in code order.
+  // Four things per machine: what it is, what is on it, how far along, and today's output.
   const columns: ColumnDef<BoardMachine>[] = [
     {
       accessorKey: 'code',
       header: 'Machine',
-      cell: ({ row: { original: m } }) => <span className="font-medium">{m.code}</span>,
+      meta: { width: '22%' },
+      enableSorting: false,
+      cell: ({ row: { original: m } }) => (
+        <div className="flex items-center gap-2.5">
+          <span className="w-12 font-medium">{m.code}</span>
+          <StatusPill status={m.status} />
+        </div>
+      ),
     },
-    { accessorKey: 'status', header: 'Status', cell: ({ row: { original: m } }) => <StatusPill status={m.status} /> },
     {
       id: 'order',
       header: 'Order',
+      meta: { width: '29%' },
+      enableSorting: false,
       accessorFn: (m) => m.currentJob?.order.orderNo ?? '',
       cell: ({ row: { original: m } }) =>
         m.currentJob ? (
           <div className="leading-tight">
-            <p className="font-medium">{m.currentJob.order.orderNo}</p>
-            <p className="text-xs text-muted-foreground">{m.currentJob.order.fabricType}</p>
+            <p>
+              <span className="font-medium">{m.currentJob.order.orderNo}</span> <span className="text-ink-2">· {m.currentJob.order.fabricType}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {m.currentJob.worker?.name ?? 'No operator'} · {label(m.currentJob.shift)}
+            </p>
           </div>
         ) : (
           <span className="text-muted-foreground">—</span>
@@ -89,38 +102,39 @@ export function Production() {
     {
       id: 'progress',
       header: 'Progress',
+      meta: { width: '22%' },
+      enableSorting: false,
       accessorFn: (m) => m.currentJob?.percent ?? -1,
       cell: ({ row: { original: m } }) =>
         m.currentJob ? <Progress m={m} /> : <span className="text-muted-foreground">—</span>,
     },
     {
-      id: 'operator',
-      header: 'Operator',
-      accessorFn: (m) => m.currentJob?.worker?.name ?? '',
-      cell: ({ row: { original: m } }) =>
-        m.currentJob ? (
-          <div className="leading-tight">
-            <p>{m.currentJob.worker?.name ?? 'Not assigned'}</p>
-            <p className="text-xs text-muted-foreground">{label(m.currentJob.shift)} shift</p>
-          </div>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
-    },
-    {
       accessorKey: 'producedToday',
       header: 'Today',
-      cell: ({ row: { original: m } }) =>
-        m.producedToday > 0 ? <span className="tabular-nums">{formatQty(m.producedToday, unitFor(m.type))}</span> : <span className="text-muted-foreground">—</span>,
+      meta: { width: '14%' },
+      enableSorting: false,
+      cell: ({ row: { original: m } }) => {
+        const cap = capacityOf(m)
+        if (!cap && !(m.producedToday > 0)) return <span className="text-muted-foreground">—</span>
+        return (
+          <div className="leading-tight tabular-nums">
+            <p>{formatQty(m.producedToday, unitFor(m.type))}</p>
+            {cap > 0 && (roomToday(m) <= 0 ? <p className="text-xs font-medium whitespace-nowrap text-watch">Capacity reached</p> : <p className="text-xs whitespace-nowrap text-muted-foreground">of {formatQty(cap, unitFor(m.type))}</p>)}
+          </div>
+        )
+      },
     },
     {
       id: 'action',
       header: '',
+      meta: { width: '13%' },
       enableSorting: false,
       cell: ({ row: { original: m } }) => (
-        <Button size="xs" variant={m.status === 'IDLE' ? 'default' : 'outline'} onClick={() => setOpenId(m.id)}>
-          {m.status === 'RUNNING' ? 'Update' : m.status === 'IDLE' ? 'Assign order' : 'Back in service'}
-        </Button>
+        <div className="flex justify-end">
+          <Button size="xs" variant={m.status === 'IDLE' ? 'default' : 'outline'} onClick={() => setOpenId(m.id)}>
+            {m.status === 'RUNNING' ? 'Update' : m.status === 'IDLE' ? 'Assign order' : 'Back in service'}
+          </Button>
+        </div>
       ),
     },
   ]
@@ -164,7 +178,7 @@ export function Production() {
                 {all.filter((m) => m.status === 'RUNNING').length} of {all.length} running · {formatQty(all.reduce((sum, m) => sum + m.producedToday, 0), unitFor(stage))} made today
               </span>
             </h2>
-            <DataTable columns={columns} data={rows} loading={board.loading} initialSorting={[{ id: 'code', desc: false }]} />
+            <DataTable columns={columns} data={rows} loading={board.loading} />
           </section>
         )
       })}
@@ -175,7 +189,7 @@ export function Production() {
         </div>
       )}
 
-      {selected && <MachineDialog m={selected} machines={machines} onClose={() => setOpenId(null)} onChange={board.reload} />}
+      {selected && <MachineDialog m={selected} onClose={() => setOpenId(null)} onChange={board.reload} />}
       {adding && <AddMachineDialog machines={machines} onClose={() => setAdding(false)} />}
     </div>
   )
@@ -258,11 +272,12 @@ function AddMachineDialog({ machines, onClose }: { machines: BoardMachine[]; onC
   )
 }
 
-function Progress({ m }: { m: BoardMachine }) {
+// `wide` fills its container (the popup); the table keeps the bar short.
+function Progress({ m, wide = false }: { m: BoardMachine; wide?: boolean }) {
   const job = m.currentJob!
   const unit = unitFor(m.type)
   return (
-    <div className="min-w-36 space-y-1">
+    <div className={cn('space-y-1', !wide && 'w-40')}>
       <div className="h-1.5 overflow-hidden rounded-full bg-brand/10">
         <div className="h-full rounded-full bg-brand transition-[width] duration-700 ease-out" style={{ width: `${job.percent}%` }} />
       </div>
@@ -273,39 +288,11 @@ function Progress({ m }: { m: BoardMachine }) {
   )
 }
 
-const FLOW = ['SPINNING', 'WEAVING', 'DYEING', 'QC'] as const
 const NEXT_STAGE: Partial<Record<Stage, Stage>> = { SPINNING: 'WEAVING', WEAVING: 'DYEING' }
-type JobOrder = NonNullable<BoardMachine['currentJob']>['order']
-
-// Where the order is on its way through the mill.
-function StageSteps({ current, done = false }: { current: Stage; done?: boolean }) {
-  const at = FLOW.indexOf(current) + (done ? 1 : 0)
-  return (
-    <ol className="flex items-center gap-1 text-[0.68rem]">
-      {FLOW.map((stage, i) => (
-        <li key={stage} className="flex items-center gap-1">
-          <span
-            className={cn(
-              'rounded-full px-2 py-0.5 font-medium',
-              i < at && 'bg-brand-tint text-brand',
-              i === at && 'bg-brand text-white',
-              i > at && 'bg-zinc-100 text-muted-foreground',
-            )}
-          >
-            {stage === 'QC' ? 'Quality check' : label(stage)}
-          </span>
-          {i < FLOW.length - 1 && <span className="text-muted-foreground">›</span>}
-        </li>
-      ))}
-    </ol>
-  )
-}
 
 // One popup per machine; what it offers depends on what the machine is doing.
-function MachineDialog({ m, machines, onClose, onChange }: { m: BoardMachine; machines: BoardMachine[]; onClose: () => void; onChange: () => void }) {
+function MachineDialog({ m, onClose, onChange }: { m: BoardMachine; onClose: () => void; onChange: () => void }) {
   const [busy, setBusy] = useState(false)
-  // Set when a stage has just been finished here, to offer the next machine straight away.
-  const [finished, setFinished] = useState<{ order: JobOrder; stage: Stage; left: number } | null>(null)
   const job = m.currentJob
 
   async function run(path: string, method: string, body: unknown, msg: string, close = false) {
@@ -320,68 +307,47 @@ function MachineDialog({ m, machines, onClose, onChange }: { m: BoardMachine; ma
   }
   const setStatus = (status: string, msg: string) => run(`/machines/${m.id}/status`, 'PATCH', { status }, msg, true)
 
-  async function finish() {
+  // Finishing closes the popup; the order then waits in the next stage's list.
+  function finish() {
     if (!job) return
     const next = NEXT_STAGE[m.type]
-    const ok = await run(
+    void run(
       `/production/jobs/${job.id}/complete`,
       'POST',
       undefined,
-      next ? `${label(m.type)} finished for ${job.order.orderNo}` : `${job.order.orderNo} dyed and sent to quality check`,
-      !next,
+      next ? `${job.order.orderNo}: ${label(m.type).toLowerCase()} done, ready for ${label(next).toLowerCase()}` : `${job.order.orderNo}: dyeing done, sent to quality check`,
+      true,
     )
-    if (ok && next) setFinished({ order: job.order, stage: m.type, left: 0 })
   }
+
+  const title = job ? `${m.code} · ${job.order.orderNo}` : m.code
+  const about = job
+    ? [job.order.fabricType, job.worker?.name].filter(Boolean).join(' · ')
+    : m.status === 'IDLE'
+      ? null
+      : `${m.name} · ${m.status === 'BREAKDOWN' ? 'broken down' : 'under maintenance'}`
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>{finished ? `${finished.order.orderNo} · next step` : m.currentJob ? `${m.code} · ${m.currentJob.order.orderNo}` : `${m.code} · ${m.name}`}</DialogTitle>
-          <DialogDescription>
-            {finished
-              ? `${label(finished.stage)} done. Pick a ${label(NEXT_STAGE[finished.stage]!).toLowerCase()} machine.`
-              : m.currentJob
-                ? m.currentJob.order.fabricType
-                : m.status === 'IDLE'
-                  ? 'Free for an order'
-                  : m.status === 'BREAKDOWN'
-                    ? 'Broken down'
-                    : 'Under maintenance'}
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          {about && <DialogDescription>{about}</DialogDescription>}
         </DialogHeader>
 
-        {finished ? (
-          <NextStage order={finished.order} from={finished.stage} left={finished.left} machines={machines} busy={busy} run={run} onLater={onClose} />
-        ) : m.currentJob ? (
-          <RunningJob m={m} busy={busy} run={run} onFinish={finish} />
+        {job ? (
+          <RunningJob m={m} busy={busy} run={run} onFinish={finish} onClose={onClose} stop={<StopMachine m={m} busy={busy} setStatus={setStatus} />} />
         ) : m.status === 'IDLE' ? (
-          <AssignOrder m={m} busy={busy} run={run} />
+          <AssignOrder m={m} busy={busy} run={run} onClose={onClose} stop={<StopMachine m={m} busy={busy} setStatus={setStatus} />} />
         ) : (
-          <Button disabled={busy} onClick={() => setStatus('IDLE', `${m.code} is back in service`)}>
-            Back in service
-          </Button>
-        )}
-
-        {!finished && !isDown(m) && (
-          <div className="flex gap-4 border-t border-border pt-3 text-xs">
-            <button
-              type="button"
-              className="text-problem hover:underline disabled:opacity-50"
-              disabled={busy}
-              onClick={() => setStatus('BREAKDOWN', m.currentJob ? `${m.code} broke down, job stopped` : `${m.code} marked as broken down`)}
-            >
-              Report breakdown
-            </button>
-            <button
-              type="button"
-              className="text-muted-foreground hover:underline disabled:opacity-50"
-              disabled={busy}
-              onClick={() => setStatus('MAINTENANCE', m.currentJob ? `${m.code} on maintenance, job stopped` : `${m.code} on maintenance`)}
-            >
-              Start maintenance
-            </button>
-          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button disabled={busy} onClick={() => setStatus('IDLE', `${m.code} is back in service`)}>
+              Back in service
+            </Button>
+          </DialogFooter>
         )}
       </DialogContent>
     </Dialog>
@@ -390,124 +356,148 @@ function MachineDialog({ m, machines, onClose, onChange }: { m: BoardMachine; ma
 
 type Run = (path: string, method: string, body: unknown, msg: string, close?: boolean) => Promise<boolean>
 
-function RunningJob({ m, busy, run, onFinish }: { m: BoardMachine; busy: boolean; run: Run; onFinish: () => void }) {
+// The quiet way out for a machine that can't work: either one stops whatever is running on it.
+function StopMachine({ m, busy, setStatus }: { m: BoardMachine; busy: boolean; setStatus: (status: string, msg: string) => void }) {
+  const stops = m.currentJob ? ', job stopped' : ''
+  const link = 'font-medium underline-offset-2 hover:underline disabled:opacity-50'
+  return (
+    <p className="text-xs text-muted-foreground">
+      Machine stopped?{' '}
+      <button type="button" className={cn(link, 'text-problem')} disabled={busy} onClick={() => setStatus('BREAKDOWN', `${m.code} broke down${stops}`)}>
+        Breakdown
+      </button>
+      {' · '}
+      <button type="button" className={cn(link, 'text-ink-2')} disabled={busy} onClick={() => setStatus('MAINTENANCE', `${m.code} on maintenance${stops}`)}>
+        Maintenance
+      </button>
+    </p>
+  )
+}
+
+function RunningJob({ m, busy, run, onFinish, onClose, stop }: { m: BoardMachine; busy: boolean; run: Run; onFinish: () => void; onClose: () => void; stop: ReactNode }) {
   const job = m.currentJob!
   const unit = unitFor(m.type)
   const next = NEXT_STAGE[m.type]
   const [output, setOutput] = useState('')
-  // A job can't make more than its plan.
+  // A job can't make more than its plan, nor a machine more in a day than its capacity.
   const left = Math.max(0, Math.round((job.qtyPlanned - job.qtyProduced) * 100) / 100)
+  const room = roomToday(m)
+  const canAdd = Math.min(left, room)
+  const hint =
+    room <= 0 ? (
+      <span className="font-medium text-watch">Capacity reached for the day.</span>
+    ) : left <= 0 ? (
+      'Planned quantity reached.'
+    ) : room < left ? (
+      `${formatQty(room, unit)} of today's capacity left.`
+    ) : undefined
 
   return (
-    <div className="grid gap-4">
-      <StageSteps current={m.type} />
-      <Progress m={m} />
-
-      <form
-        onSubmit={async (e: FormEvent) => {
-          e.preventDefault()
-          if (await run(`/production/jobs/${job.id}/progress`, 'POST', { qty: Number(output) }, `${formatQty(Number(output), unit)} added on ${m.code}`, true)) setOutput('')
-        }}
-      >
-        <Field label={`Output made (${unit})`} htmlFor="output" hint={left > 0 ? `${formatQty(left, unit)} left to make` : 'Planned quantity reached'}>
-          <div className="flex gap-2">
-            <Input id="output" type="number" min="0.01" max={left} step="0.01" inputMode="decimal" required disabled={left <= 0} value={output} onChange={(e) => setOutput(e.target.value)} />
-            <Button type="submit" variant="outline" disabled={busy || left <= 0}>
-              Add
-            </Button>
+    <>
+      <div className="grid gap-4">
+        <div className="rounded-lg bg-zinc-50 p-3">
+          <div className="flex items-baseline justify-between">
+            <span className="text-2xl font-semibold tabular-nums">{Math.round(job.percent)}%</span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {formatQty(job.qtyProduced, unit)} of {formatQty(job.qtyPlanned, unit)}
+            </span>
           </div>
-        </Field>
-      </form>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-brand/10">
+            <div className="h-full rounded-full bg-brand transition-[width] duration-700 ease-out" style={{ width: `${job.percent}%` }} />
+          </div>
+        </div>
 
-      <Button disabled={busy} onClick={onFinish}>
-        {next ? `Finish → send to ${label(next).toLowerCase()}` : 'Finish → send to QC'}
-      </Button>
-      {left > 0 && <p className="-mt-2 text-center text-xs text-muted-foreground">Finishing marks the remaining {formatQty(left, unit)} as made.</p>}
-    </div>
-  )
-}
-
-// Straight after a stage is finished: put the order on a free machine of the next stage.
-function NextStage({ order, from, left, machines, busy, run, onLater }: { order: JobOrder; from: Stage; left: number; machines: BoardMachine[]; busy: boolean; run: Run; onLater: () => void }) {
-  const stage = NEXT_STAGE[from]!
-  const free = machines.filter((x) => x.type === stage && x.status === 'IDLE')
-  const workers = useApi<Worker[]>('/workers')
-  const queue = useApi<QueueRow[]>(`/production/queue?stage=${stage}`)
-  const shift = currentShift()
-  const operators = workers.data?.filter((w) => w.isActive && w.shift === shift) ?? []
-  const [machineId, setMachineId] = useState('')
-  const [workerId, setWorkerId] = useState('')
-  const chosen = free.find((x) => x.id === machineId)
-  // Only what the finished stage has handed over can start now.
-  const ready = queue.data?.find((q) => q.id === order.id)?.available ?? 0
-
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    void run('/production/jobs', 'POST', { orderId: order.id, machineId, shift, workerId, qtyPlanned: ready }, `${order.orderNo} started ${label(stage).toLowerCase()} on ${chosen?.code}`, true)
-  }
-
-  return (
-    <form onSubmit={submit} className="grid gap-4">
-      <StageSteps current={from} done />
-      <p className="text-xs text-muted-foreground">
-        {queue.loading
-          ? 'Checking…'
-          : left > 0
-            ? `${formatQty(left, unitFor(from))} of ${label(from).toLowerCase()} is still left. The order moves to ${label(stage).toLowerCase()} once all of it is done.`
-            : `${formatQty(ready, unitFor(stage))} ready for ${label(stage).toLowerCase()}.`}
-      </p>
-      {free.length === 0 || (!queue.loading && ready <= 0) ? (
-        <p className="text-sm text-muted-foreground">
-          {free.length === 0 ? `No ${label(stage).toLowerCase()} machine is free. Assign it later from an idle one.` : `Finish ${label(from).toLowerCase()} on another machine first.`}
-        </p>
-      ) : (
-        <>
-          <Field label={`${label(stage)} machine`} htmlFor="nextMachine">
-            <select id="nextMachine" required className={selectClass} value={machineId} onChange={(e) => setMachineId(e.target.value)}>
-              <option value="">Select a free machine…</option>
-              {free.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.code} · {x.name}
-                </option>
-              ))}
-            </select>
+        <form
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault()
+            void run(`/production/jobs/${job.id}/progress`, 'POST', { qty: Number(output) }, `${formatQty(Number(output), unit)} added on ${m.code}`, true)
+          }}
+        >
+          <Field label={`Add output (${unit})`} htmlFor="output" hint={hint}>
+            <div className="flex gap-2">
+              <Input id="output" type="number" min="0.01" max={canAdd} step="0.01" inputMode="decimal" required autoFocus disabled={canAdd <= 0} placeholder={canAdd > 0 ? `Up to ${formatQty(canAdd, unit)}` : undefined} className="tabular-nums" value={output} onChange={(e) => setOutput(e.target.value)} />
+              <Button type="submit" variant="outline" disabled={busy || canAdd <= 0}>
+                Add
+              </Button>
+            </div>
           </Field>
-          <Field label="Operator" htmlFor="nextWorker" hint={!workers.loading && !operators.length && `No operators on the ${label(shift).toLowerCase()} shift.`}>
-            <select id="nextWorker" required className={selectClass} value={workerId} onChange={(e) => setWorkerId(e.target.value)}>
-              <option value="">Select operator…</option>
-              {operators.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name} · {w.code}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </>
-      )}
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onLater}>
-          {free.length === 0 || ready <= 0 ? 'Close' : 'Later'}
-        </Button>
-        {free.length > 0 && ready > 0 && (
-          <Button type="submit" disabled={busy}>
-            Start {label(stage).toLowerCase()}
-          </Button>
-        )}
+        </form>
+        {stop}
       </div>
-    </form>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button disabled={busy} onClick={onFinish} title={left > 0 ? `Marks the remaining ${formatQty(left, unit)} as made` : undefined}>
+          Finish → {next ? label(next) : 'Quality check'}
+        </Button>
+      </DialogFooter>
+    </>
   )
 }
 
-function AssignOrder({ m, busy, run }: { m: BoardMachine; busy: boolean; run: Run }) {
-  // Orders with work left in this machine's stage, earliest deadline first.
-  const orders = useApi<QueueRow[]>(`/production/queue?stage=${m.type}`)
+const SHIFTS: Shift[] = ['MORNING', 'EVENING', 'NIGHT']
+const SHIFT_HOURS: Record<Shift, string> = { MORNING: '6 AM – 2 PM', EVENING: '2 PM – 10 PM', NIGHT: '10 PM – 6 AM' }
+
+// The active workers from Mill Setup. Until a shift is picked the list shows everyone; picking a
+// worker first fills in their shift.
+function ShiftOperator({ shift, onShift, workerId, onWorker }: { shift: Shift | ''; onShift: (s: Shift | '') => void; workerId: string; onWorker: (id: string) => void }) {
   const workers = useApi<Worker[]>('/workers')
-  const shift = currentShift()
+  const operators = (workers.data?.filter((w) => w.isActive && (!shift || w.shift === shift)) ?? []).sort((a, b) => a.name.localeCompare(b.name))
+  return (
+    <>
+      <Field label="Shift" htmlFor="shift">
+        <select
+          id="shift"
+          required
+          className={selectClass}
+          value={shift}
+          onChange={(e) => {
+            onShift(e.target.value as Shift | '')
+            onWorker('')
+          }}
+        >
+          <option value="">Select shift</option>
+          {SHIFTS.map((s) => (
+            <option key={s} value={s}>
+              {label(s)} · {SHIFT_HOURS[s]}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Operator" htmlFor="operator" hint={!workers.loading && !operators.length ? `No workers${shift ? ` on the ${label(shift).toLowerCase()} shift` : ''}. Add one in Mill Setup.` : undefined}>
+        <select
+          id="operator"
+          required
+          className={selectClass}
+          value={workerId}
+          onChange={(e) => {
+            const picked = operators.find((w) => w.id === e.target.value)
+            if (picked && !shift) onShift(picked.shift)
+            onWorker(e.target.value)
+          }}
+        >
+          <option value="">Select operator</option>
+          {operators.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name} · {shift ? w.code : label(w.shift)}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </>
+  )
+}
+
+function AssignOrder({ m, busy, run, onClose, stop }: { m: BoardMachine; busy: boolean; run: Run; onClose: () => void; stop: ReactNode }) {
+  // Orders ready for this machine's stage, earliest deadline first.
+  const orders = useApi<QueueRow[]>(`/production/queue?stage=${m.type}`)
   const [orderId, setOrderId] = useState('')
   const [workerId, setWorkerId] = useState('')
+  const [shift, setShift] = useState<Shift | ''>('')
   const eligible = orders.data ?? []
-  const operators = workers.data?.filter((w) => w.isActive && w.shift === shift) ?? []
   const order = eligible.find((o) => o.id === orderId)
+  const none = !orders.loading && !eligible.length
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -516,30 +506,38 @@ function AssignOrder({ m, busy, run }: { m: BoardMachine; busy: boolean; run: Ru
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-4">
-      <Field label="Order" htmlFor="orderId" hint={!orders.loading && !eligible.length && `No orders waiting for ${label(m.type).toLowerCase()}.`}>
-        <select id="orderId" required className={selectClass} value={orderId} onChange={(e) => setOrderId(e.target.value)}>
-          <option value="">Select order…</option>
-          {eligible.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.orderNo} · {o.fabricType} · {formatQty(o.available, unitFor(m.type))} left{o.running > 0 ? ' (also running)' : ''}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Operator" htmlFor="workerId" hint={!workers.loading && !operators.length && `No operators on the ${label(shift).toLowerCase()} shift.`}>
-        <select id="workerId" required className={selectClass} value={workerId} onChange={(e) => setWorkerId(e.target.value)}>
-          <option value="">Select operator…</option>
-          {operators.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name} · {w.code}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Button type="submit" disabled={busy}>
-        {busy ? 'Starting…' : `Start ${label(m.type).toLowerCase()}`}
-      </Button>
-    </form>
+    <>
+      <form id="assign-order" onSubmit={submit} className="grid gap-4">
+        {none ? (
+          <p className="text-sm text-muted-foreground">No order is waiting for {label(m.type).toLowerCase()}.</p>
+        ) : (
+          <>
+            <Field label="Order" htmlFor="orderId" hint={order ? `${formatQty(order.available, unitFor(m.type))} to make` : 'Earliest deadline first'}>
+              <select id="orderId" required className={selectClass} value={orderId} onChange={(e) => setOrderId(e.target.value)}>
+                <option value="">Select order</option>
+                {eligible.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.orderNo} · {o.fabricType}
+                    {o.running > 0 ? ' (also running)' : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <ShiftOperator shift={shift} onShift={setShift} workerId={workerId} onWorker={setWorkerId} />
+          </>
+        )}
+        {stop}
+      </form>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        {!none && (
+          <Button type="submit" form="assign-order" disabled={busy}>
+            Start {label(m.type).toLowerCase()}
+          </Button>
+        )}
+      </DialogFooter>
+    </>
   )
 }
