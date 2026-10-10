@@ -78,7 +78,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | GET | `/production/jobs` | | `?orderId=&machineId=&workerId=&status=&stage=` + paging |
 | POST | `/production/jobs` | PRODUCTION | `{ orderId, machineId, workerId?, shift, qtyPlanned }` → 409 `MACHINE_BUSY` unless idle |
 | POST | `/production/jobs/:id/progress` | PRODUCTION | `{ qty }` quantity produced since last report; 400 `OVER_PLAN` if it would exceed the job's planned quantity |
-| POST | `/production/jobs/:id/complete` | PRODUCTION | frees the machine |
+| POST | `/production/jobs/:id/complete` | PRODUCTION | frees the machine; on a dyeing job, output not yet rolled is cut into rolls (~1,100 m) and sent to QC, returned as `rollsSent` |
 | POST | `/production/jobs/:id/stop` | PRODUCTION | frees the machine |
 | POST | `/production/rolls` | PRODUCTION | `{ jobId, qty }` → roll in `PENDING_QC`, linked to order + machine; 400 `OVER_OUTPUT` if rolls would exceed what the job has made |
 

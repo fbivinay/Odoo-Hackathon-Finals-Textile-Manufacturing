@@ -178,11 +178,29 @@ async function logProgress(jobId, { qty }) {
   });
 }
 
+// Dyed fabric leaves the line wound into rolls of about this length (metres).
+const ROLL_LENGTH = 1100;
+
 async function finishJob(jobId, status) {
   return prisma.$transaction(async (tx) => {
-    const job = await tx.productionJob.findUnique({ where: { id: jobId } });
+    const job = await tx.productionJob.findUnique({ where: { id: jobId }, include: { rolls: true } });
     if (!job) throw notFound('Job not found');
     if (job.status !== 'RUNNING') throw badRequest(`Job is already ${job.status}`);
+
+    // Finishing dyeing sends the fabric on to quality check: whatever has been made and not
+    // yet rolled is cut into rolls here, so nothing dyed is left without a roll.
+    let rollsSent = 0;
+    if (status === 'COMPLETED' && job.stage === 'DYEING') {
+      let unrolled = Number(job.qtyProduced) - job.rolls.reduce((total, r) => total + Number(r.qty), 0);
+      while (unrolled > 1) {
+        const qty = Math.round(Math.min(ROLL_LENGTH, unrolled) * 100) / 100;
+        await tx.roll.create({
+          data: { rollNo: await nextNumber(tx.roll, 'ROLL'), orderId: job.orderId, machineId: job.machineId, jobId, qty },
+        });
+        unrolled -= qty;
+        rollsSent += 1;
+      }
+    }
 
     const updated = await tx.productionJob.update({
       where: { id: jobId },
@@ -191,7 +209,7 @@ async function finishJob(jobId, status) {
     });
     await tx.machine.updateMany({ where: { id: job.machineId, status: 'RUNNING' }, data: { status: 'IDLE' } });
     await syncStatus(tx, job.orderId);
-    return withPercent(updated);
+    return { ...withPercent(updated), rollsSent };
   });
 }
 

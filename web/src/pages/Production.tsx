@@ -206,7 +206,7 @@ function MachineDialog({ m, machines, onClose, onChange }: { m: BoardMachine; ma
       `/production/jobs/${job.id}/complete`,
       'POST',
       undefined,
-      next ? `${label(m.type)} finished for ${job.order.orderNo}` : `${job.order.orderNo} finished dyeing, rolls are with quality check`,
+      next ? `${label(m.type)} finished for ${job.order.orderNo}` : `${job.order.orderNo} dyed and sent to quality check`,
       !next,
     )
     if (ok && next) setFinished({ order: job.order, stage: m.type, left: short ? left : 0 })
@@ -238,7 +238,10 @@ function MachineDialog({ m, machines, onClose, onChange }: { m: BoardMachine; ma
               Only <b>{formatQty(job.qtyProduced, unitFor(m.type))}</b> of {formatQty(job.qtyPlanned, unitFor(m.type))} is made.{' '}
               <b>{formatQty(left, unitFor(m.type))}</b> is still left.
             </p>
-            <p className="text-xs text-muted-foreground">If you finish now, the rest stays in the {label(m.type).toLowerCase()} list to run later.</p>
+            <p className="text-xs text-muted-foreground">
+              If you finish now, the rest stays in the {label(m.type).toLowerCase()} list to run later.
+              {m.type === 'DYEING' && ' What is made goes to quality check.'}
+            </p>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setConfirmShort(false)}>
                 Keep running
@@ -290,7 +293,6 @@ function RunningJob({ m, busy, run, onFinish }: { m: BoardMachine; busy: boolean
   const unit = unitFor(m.type)
   const next = NEXT_STAGE[m.type]
   const [output, setOutput] = useState('')
-  const [roll, setRoll] = useState('')
   // A job can't make more than its plan.
   const left = Math.max(0, Math.round((job.qtyPlanned - job.qtyProduced) * 100) / 100)
 
@@ -315,27 +317,8 @@ function RunningJob({ m, busy, run, onFinish }: { m: BoardMachine; busy: boolean
         </Field>
       </form>
 
-      {/* Finished fabric comes off the dyeing line as rolls, which go to quality check. */}
-      {m.type === 'DYEING' && (
-        <form
-          onSubmit={async (e: FormEvent) => {
-            e.preventDefault()
-            if (await run('/production/rolls', 'POST', { jobId: job.id, qty: Number(roll) }, 'Roll sent to quality check')) setRoll('')
-          }}
-        >
-          <Field label="New roll (m)" htmlFor="roll">
-            <div className="flex gap-2">
-              <Input id="roll" type="number" min="0.01" step="0.01" inputMode="decimal" required value={roll} onChange={(e) => setRoll(e.target.value)} />
-              <Button type="submit" variant="outline" disabled={busy}>
-                Send to QC
-              </Button>
-            </div>
-          </Field>
-        </form>
-      )}
-
       <Button disabled={busy} onClick={onFinish}>
-        {next ? `Finish → send to ${label(next).toLowerCase()}` : 'Finish dyeing'}
+        {next ? `Finish → send to ${label(next).toLowerCase()}` : 'Finish → send to QC'}
       </Button>
     </div>
   )
