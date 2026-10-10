@@ -1,8 +1,8 @@
 const prisma = require('../lib/prisma');
 const { badRequest } = require('../lib/errors');
 const { CLOSED } = require('./orderService');
+const { STAGES, stageTarget, leftOf, stageOutput } = require('./productionService');
 
-const STAGES = ['SPINNING', 'WEAVING', 'DYEING'];
 const SHIFTS_PER_DAY = 3;
 const RATE_WINDOW_DAYS = 60;
 const QC_DAYS = 1;
@@ -61,11 +61,10 @@ async function schedule({ days = 90 } = {}) {
     prisma.rawMaterial.findMany(),
   ]);
   const ids = orders.map((o) => o.id);
-  const [produced, issued] = await Promise.all([
-    prisma.productionJob.groupBy({ by: ['orderId', 'stage'], where: { orderId: { in: ids } }, _sum: { qtyProduced: true } }),
+  const [output, issued] = await Promise.all([
+    stageOutput(ids),
     prisma.materialIssue.groupBy({ by: ['orderId'], where: { orderId: { in: ids } }, _sum: { qty: true } }),
   ]);
-  const doneOf = new Map(produced.map((r) => [`${r.orderId}|${r.stage}`, Number(r._sum.qtyProduced || 0)]));
   const issuedOf = new Map(issued.map((r) => [r.orderId, Number(r._sum.qty || 0)]));
 
   const today = new Date(`${dayKey(new Date())}T00:00:00.000Z`);
@@ -96,17 +95,14 @@ async function schedule({ days = 90 } = {}) {
   // Stock is handed out in the same order as the plan, so two orders never count the same yarn.
   const stockLeft = new Map(materials.map((m) => [m.id, Number(m.qtyInStock)]));
   const plan = orders.map((order) => {
-    const target = { SPINNING: Number(order.yarnRequired), WEAVING: Number(order.qty), DYEING: Number(order.qty) };
-    const done = STAGES.map((stage) => doneOf.get(`${order.id}|${stage}`) || 0);
     const finishing = ['QC', 'READY'].includes(order.status);
 
     let cursor = 0;
     let blocked = false;
-    const stages = STAGES.map((stage, i) => {
-      // A later stage having started means this one is behind the order already.
-      const passed = finishing || done.slice(i + 1).some((qty) => qty > 0);
-      const remaining = passed ? 0 : Math.max(0, target[stage] - done[i]);
-      if (remaining <= 0.005) return { stage, remaining: 0, start: null, end: null };
+    const stages = STAGES.map((stage) => {
+      // Whatever a stage still owes is planned, even if a later stage has already started on the first part.
+      const remaining = finishing ? 0 : leftOf(stageTarget(order, stage), output(order.id, stage).done);
+      if (remaining === 0) return { stage, remaining: 0, start: null, end: null };
 
       const slot = blocked ? null : allocate(stage, remaining, cursor);
       if (!slot) {

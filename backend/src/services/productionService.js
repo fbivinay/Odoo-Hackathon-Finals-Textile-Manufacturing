@@ -16,6 +16,63 @@ const withPercent = (job) => ({
   percent: Math.min(100, Math.round((Number(job.qtyProduced) / Number(job.qtyPlanned)) * 100)),
 });
 
+const STAGES = ['SPINNING', 'WEAVING', 'DYEING'];
+const OPEN = { status: { notIn: ['DISPATCHED', 'CANCELLED'] } };
+
+// What a stage has to make for an order: spinning in kg of yarn, weaving and dyeing in metres of fabric.
+const stageTarget = (order, stage) => Number(stage === 'SPINNING' ? order.yarnRequired : order.qty);
+// Anything under 1% of the target counts as finished, so rounding never leaves a phantom job.
+const leftOf = (target, done) => (target - done > target * 0.01 ? Math.round((target - done) * 100) / 100 : 0);
+
+// Output so far per order and stage, across every job whatever its status.
+async function stageOutput(orderIds) {
+  const rows = await prisma.productionJob.groupBy({
+    by: ['orderId', 'stage', 'status'],
+    where: { orderId: { in: orderIds } },
+    _sum: { qtyProduced: true },
+    _count: true,
+  });
+  const out = new Map();
+  for (const row of rows) {
+    const key = `${row.orderId}|${row.stage}`;
+    const entry = out.get(key) || { done: 0, running: 0 };
+    entry.done += Number(row._sum.qtyProduced || 0);
+    if (row.status === 'RUNNING') entry.running += row._count;
+    out.set(key, entry);
+  }
+  return (orderId, stage) => out.get(`${orderId}|${stage}`) || { done: 0, running: 0 };
+}
+
+// Orders with work still left in a stage, earliest deadline first. A job closed short of
+// its plan leaves the rest here, so the remainder is never forgotten.
+async function queue({ stage } = {}) {
+  if (!STAGES.includes(stage)) throw badRequest('stage must be SPINNING, WEAVING or DYEING');
+  const orders = await prisma.order.findMany({
+    where: OPEN,
+    orderBy: [{ deadline: 'asc' }, { id: 'asc' }],
+    include: { buyer: { select: { id: true, name: true } } },
+  });
+  const output = await stageOutput(orders.map((o) => o.id));
+  const before = STAGES[STAGES.indexOf(stage) - 1];
+
+  return orders
+    .map((order) => {
+      const target = stageTarget(order, stage);
+      const { done, running } = output(order.id, stage);
+      const remaining = leftOf(target, done);
+      // A stage can only work on what the stage before has handed over: half the yarn spun
+      // means half the fabric can be woven now. `available` is that share, less what is already made.
+      const beforeTarget = before ? stageTarget(order, before) : 0;
+      const share = beforeTarget > 0 ? Math.min(1, output(order.id, before).done / beforeTarget) : 1;
+      const available = Math.min(remaining, Math.max(0, Math.round((target * share - done) * 100) / 100));
+      return {
+        id: order.id, orderNo: order.orderNo, fabricType: order.fabricType, buyer: order.buyer, deadline: order.deadline,
+        status: order.status, target, done: Math.round(done * 100) / 100, remaining, available, running,
+      };
+    })
+    .filter((row) => row.remaining > 0 && row.available > 0);
+}
+
 const listMachines = () => prisma.machine.findMany({ orderBy: { code: 'asc' } });
 const createMachine = (data) => prisma.machine.create({ data });
 
@@ -170,6 +227,11 @@ async function createRoll({ jobId, qty }) {
 }
 
 module.exports = {
+  STAGES,
+  stageTarget,
+  leftOf,
+  stageOutput,
+  queue,
   listMachines,
   createMachine,
   board,

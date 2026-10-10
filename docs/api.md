@@ -74,6 +74,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | POST | `/machines` | OWNER | `{ code, name, type }` type = `SPINNING/WEAVING/DYEING` |
 | PATCH | `/machines/:id/status` | PRODUCTION | `{ status }` = `IDLE/BREAKDOWN/MAINTENANCE`; stops the running job |
 | GET | `/production/board` | | `{ machines[], summary }`; each machine has `currentJob` (with `percent`) and `producedToday` |
+| GET | `/production/queue` | | `?stage=SPINNING/WEAVING/DYEING` → orders with work left in that stage: `{ id, orderNo, fabricType, buyer, deadline, status, target, done, remaining, available, running }`; `available` is how much can start now, given what the stage before has made |
 | GET | `/production/jobs` | | `?orderId=&machineId=&workerId=&status=&stage=` + paging |
 | POST | `/production/jobs` | PRODUCTION | `{ orderId, machineId, workerId?, shift, qtyPlanned }` → 409 `MACHINE_BUSY` unless idle |
 | POST | `/production/jobs/:id/progress` | PRODUCTION | `{ qty }` quantity produced since last report |

@@ -14,6 +14,7 @@ router.post('/machines', requireRole(), handle((req) => productionService.create
 router.patch('/machines/:id/status', floor, handle((req) => productionService.setMachineStatus(req.params.id, v.machineStatusSchema.parse(req.body).status)));
 
 router.get('/production/board', handle(() => productionService.board()));
+router.get('/production/queue', handle((req) => productionService.queue(req.query)));
 router.get('/production/jobs', handle((req) => productionService.listJobs(req.query)));
 router.post('/production/jobs', floor, handle((req) => productionService.startJob(v.startJobSchema.parse(req.body)), 201));
 router.post('/production/jobs/:id/progress', floor, handle((req) => productionService.logProgress(req.params.id, v.progressSchema.parse(req.body))));
