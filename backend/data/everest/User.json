@@ -1,10 +1,10 @@
 [
-{"id":"usr_000001","name":"Mill Owner","email":"owner@everest.dev","password":"Password123","role":"OWNER","isActive":true,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"usr_000002","name":"Store Keeper","email":"store@everest.dev","password":"Password123","role":"STORE","isActive":true,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"usr_000003","name":"Floor Supervisor","email":"production@everest.dev","password":"Password123","role":"PRODUCTION","isActive":true,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"usr_000004","name":"QC Inspector","email":"qc@everest.dev","password":"Password123","role":"QC","isActive":true,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"usr_000005","name":"Dispatch Clerk","email":"dispatch@everest.dev","password":"Password123","role":"DISPATCH","isActive":true,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"usr_000006","name":"Farida Khan","email":"qc2@everest.dev","password":"Password123","role":"QC","isActive":true,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"usr_000007","name":"Harish Bhatt","email":"qc3@everest.dev","password":"Password123","role":"QC","isActive":true,"createdAt":"2022-12-31T18:30:00.000Z"},
-{"id":"usr_000008","name":"Naresh Parmar","email":"store2@everest.dev","password":"Password123","role":"STORE","isActive":true,"createdAt":"2022-12-31T18:30:00.000Z"}
+{"id":"usr_000001","name":"Mill Owner","email":"owner@everest.dev","password":"Password123","role":"OWNER","isActive":true,"createdAt":"2022-10-31T18:30:00.000Z"},
+{"id":"usr_000002","name":"Store Keeper","email":"store@everest.dev","password":"Password123","role":"STORE","isActive":true,"createdAt":"2022-10-31T18:30:00.000Z"},
+{"id":"usr_000003","name":"Floor Supervisor","email":"production@everest.dev","password":"Password123","role":"PRODUCTION","isActive":true,"createdAt":"2022-10-31T18:30:00.000Z"},
+{"id":"usr_000004","name":"QC Inspector","email":"qc@everest.dev","password":"Password123","role":"QC","isActive":true,"createdAt":"2022-10-31T18:30:00.000Z"},
+{"id":"usr_000005","name":"Dispatch Clerk","email":"dispatch@everest.dev","password":"Password123","role":"DISPATCH","isActive":true,"createdAt":"2022-10-31T18:30:00.000Z"},
+{"id":"usr_000006","name":"Farida Khan","email":"qc2@everest.dev","password":"Password123","role":"QC","isActive":true,"createdAt":"2022-10-31T18:30:00.000Z"},
+{"id":"usr_000007","name":"Harish Bhatt","email":"qc3@everest.dev","password":"Password123","role":"QC","isActive":true,"createdAt":"2022-10-31T18:30:00.000Z"},
+{"id":"usr_000008","name":"Naresh Parmar","email":"store2@everest.dev","password":"Password123","role":"STORE","isActive":true,"createdAt":"2022-10-31T18:30:00.000Z"}
 ]

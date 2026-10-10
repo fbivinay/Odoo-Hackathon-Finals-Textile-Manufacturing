@@ -403,6 +403,70 @@ body::before {
 .slab .stat-card--good .stat-card__value { color: #6fd3a3; }
 .slab .stat-card--problem .stat-card__value { color: #ff8f80; }
 
+/* ---------------------------------------------------------- figures panel -- */
+/* The overview's opening numbers: a frosted panel with an ink rim, holding raised white cards. */
+.figures-panel {
+  border-radius: var(--radius-slab);
+  border: 2px solid color-mix(in srgb, var(--ink) 45%, transparent);
+  background: linear-gradient(180deg, #e9e9eb, #dededf);
+  box-shadow: var(--glass-edge), var(--glass-shadow);
+  padding: clamp(1rem, 2.4vw, 1.6rem);
+}
+.figure {
+  position: relative;
+  container-type: inline-size;
+  text-align: center;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-card);
+  padding: 1.05rem 1rem 1.1rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 2px 4px rgba(11, 11, 12, 0.06),
+    0 14px 28px -14px rgba(11, 11, 12, 0.28);
+  transition:
+    scale var(--t-lift) var(--ease-out),
+    translate var(--t-lift) var(--ease-out),
+    box-shadow var(--t-lift) var(--ease-out);
+  animation: card-in 960ms var(--ease) var(--enter-at) both;
+}
+.grid > .figure:nth-child(2) { animation-delay: calc(var(--enter-at) + 80ms); }
+.grid > .figure:nth-child(3) { animation-delay: calc(var(--enter-at) + 160ms); }
+.grid > .figure:nth-child(4) { animation-delay: calc(var(--enter-at) + 240ms); }
+.grid > .figure:nth-child(5) { animation-delay: calc(var(--enter-at) + 320ms); }
+.grid > .figure:nth-child(6) { animation-delay: calc(var(--enter-at) + 390ms); }
+.figure__label { font-size: 0.8rem; color: var(--ink-2); }
+.figure__value {
+  margin-top: 0.2rem;
+  font-size: clamp(1.6rem, 3.4vw, 2.2rem);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink);
+}
+@container (max-width: 14rem) { .figure__value { font-size: 1.45rem; } }
+.figure__note { margin-top: 0.35rem; font-size: 0.7rem; color: var(--ink-3); }
+.figure--good .figure__value { color: var(--good); }
+.figure--watch .figure__value { color: var(--watch); }
+.figure--problem .figure__value { color: var(--problem); }
+@media (hover: hover) and (pointer: fine) {
+  .figure:hover {
+    scale: 1.03;
+    translate: 0 -3px;
+    z-index: 1;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.95),
+      0 2px 4px rgba(11, 11, 12, 0.1),
+      0 16px 26px -8px rgba(11, 11, 12, 0.26),
+      0 36px 56px -26px rgba(11, 11, 12, 0.4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .figure:hover { scale: 1; translate: none; }
+}
+
 /* ------------------------------------------------------------ status pill -- */
 
 .pill {

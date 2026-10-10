@@ -42,3 +42,12 @@ export const dayFromToday = (days: number) => toISODate(new Date(Date.now() + da
 export function formatDayMonth(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
 }
+
+// Rupees the way the mill reads them: crore and lakh above a lakh.
+export function formatMoney(amount: number): string {
+  const sign = amount < 0 ? '-' : ''
+  const a = Math.abs(amount)
+  if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(2)} Cr`
+  if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(1)} L`
+  return `${sign}${formatINR(a)}`
+}

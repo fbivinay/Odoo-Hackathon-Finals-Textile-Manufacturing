@@ -12,8 +12,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { formatDate, formatINR, formatQty, toISODate } from '@/lib/format'
 import { yarnNeed } from '@/lib/textile'
-import { mutate, useApi } from '@/lib/useApi'
-import { recentOrdersPath } from '@/lib/queries'
+import { mutate, useApi, usePaged } from '@/lib/useApi'
+import { LoadMore } from '@/components/LoadMore'
 import { dayFromToday } from '@/lib/format'
 import type { MaterialIssue, Order, OrderStatus, RawMaterial, Ref } from '@/types'
 
@@ -51,7 +51,12 @@ const FILTERS: { label: string; match: (s: OrderStatus) => boolean }[] = [
 
 export function Orders() {
   const { user } = useSession()
-  const orders = useApi<Order[]>(recentOrdersPath())
+  // "Recent" is the working order book (due from 90 days ago on); a year shows everything placed that year.
+  const [period, setPeriod] = useState('recent')
+  const orders = usePaged<Order>(
+    period === 'recent' ? `/orders?dueFrom=${dayFromToday(-90)}` : `/orders?from=${period}-01-01&to=${period}-12-31`,
+    period === 'recent' ? 500 : 250,
+  )
   const materials = useApi<RawMaterial[]>('/materials')
   const issues = useApi<MaterialIssue[]>(`/materials/issues?from=${dayFromToday(-180)}&limit=500`)
   const [filter, setFilter] = useState(0)
@@ -99,17 +104,31 @@ export function Orders() {
     },
   ]
 
-  const rows = (orders.data ?? []).filter((o) => FILTERS[filter].match(o.status))
+  const rows = orders.rows.filter((o) => FILTERS[filter].match(o.status))
 
   return (
     <div className="space-y-4">
-      <PageHead eyebrow="Order book" title="Orders" lede="Orders due from 90 days ago onward: deadline, where each one is on the floor, and whether there is yarn to start it." />
+      <PageHead
+        eyebrow="Order book"
+        title="Orders"
+        lede="Each buyer's order with its deadline, where it is on the floor, and whether there is yarn to start it."
+        actions={
+          <select aria-label="Period" className={`${selectClass} w-40 bg-surface`} value={period} onChange={(e) => setPeriod(e.target.value)}>
+            <option value="recent">Current book</option>
+            {Array.from({ length: new Date().getFullYear() - 2022 }, (_, i) => String(new Date().getFullYear() - i)).map((y) => (
+              <option key={y} value={y}>
+                Placed in {y}
+              </option>
+            ))}
+          </select>
+        }
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1">
           {FILTERS.map((f, i) => (
             <Button key={f.label} size="sm" variant={i === filter ? 'secondary' : 'ghost'} onClick={() => setFilter(i)}>
               {f.label}
-              <span className="ml-1 text-xs text-muted-foreground">{orders.data?.filter((o) => f.match(o.status)).length ?? ''}</span>
+              <span className="ml-1 text-xs text-muted-foreground">{orders.rows.filter((o) => f.match(o.status)).length}</span>
             </Button>
           ))}
         </div>
@@ -121,7 +140,8 @@ export function Orders() {
         )}
       </div>
       {orders.error && <p className="text-sm text-problem">{orders.error}</p>}
-      <DataTable columns={columns} data={rows} loading={orders.loading} initialSorting={[{ id: 'deadline', desc: false }]} />
+      <DataTable columns={columns} data={rows} loading={orders.loading} initialSorting={[{ id: 'deadline', desc: period !== 'recent' }]} />
+      <LoadMore hasMore={orders.hasMore} more={orders.more} />
       {canCreate && <OrderDialog open={open} onOpenChange={setOpen} onSaved={orders.reload} />}
     </div>
   )

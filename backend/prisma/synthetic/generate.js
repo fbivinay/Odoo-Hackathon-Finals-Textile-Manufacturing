@@ -11,7 +11,9 @@
 const H = 3600 * 1000;
 const D = 24 * H;
 const IST = 5.5 * H;
-const START = Date.UTC(2023, 0, 1) - IST; // 2023-01-01 00:00 IST
+// The mill is simulated from 1 Nov 2022 so that January 2023 opens with orders already on the floor
+// and yarn already in the store; the two warm-up months carry over as opening work in progress.
+const START = Date.UTC(2022, 10, 1) - IST; // 2022-11-01 00:00 IST
 const SHIFT_HOURS = 8;
 const SEED = 20230101;
 
@@ -71,6 +73,16 @@ const shiftStart = (t) => {
 const nextShiftStart = (t) => shiftStart(t) + SHIFT_HOURS * H;
 // Attendance date of the shift running at t (a night shift belongs to the day it starts).
 const rosterDay = (t) => istDay(shiftStart(t));
+const isClosedDay = (t) => new Date(`${istDay(t)}T00:00:00Z`).getUTCDay() === 0 || HOLIDAYS.has(istDay(t));
+// Move t forward into working hours (IST) on a working day: QC and the dispatch desk keep office hours.
+function workingHours(t, from, to) {
+  for (let i = 0; i < 30; i += 1) {
+    const h = (((t + IST) / H) % 24 + 24) % 24;
+    if (!isClosedDay(t) && h >= from && h < to) return t;
+    t = h < from && !isClosedDay(t) ? t + (from - h) * H : t + (24 - h + from) * H;
+  }
+  return t;
+}
 
 // ---------- catalogue ----------
 
@@ -103,10 +115,12 @@ const FABRIC_NAMES = Object.keys(FABRICS);
 const PER_SHIFT = { SPINNING: 190, WEAVING: 300, DYEING: 900 };
 const MACHINES = [
   ['SP-01', 'Ring Frame 1', 'SPINNING'], ['SP-02', 'Ring Frame 2', 'SPINNING'], ['SP-03', 'Ring Frame 3', 'SPINNING'],
+  ['SP-04', 'Ring Frame 4', 'SPINNING'],
   ['WV-01', 'Air-jet Loom 1', 'WEAVING'], ['WV-02', 'Air-jet Loom 2', 'WEAVING'], ['WV-03', 'Air-jet Loom 3', 'WEAVING'],
   ['WV-04', 'Rapier Loom 4', 'WEAVING'], ['WV-05', 'Rapier Loom 5', 'WEAVING'], ['WV-06', 'Rapier Loom 6', 'WEAVING'],
-  ['WV-07', 'Water-jet Loom 7', 'WEAVING'],
+  ['WV-07', 'Water-jet Loom 7', 'WEAVING'], ['WV-08', 'Water-jet Loom 8', 'WEAVING'], ['WV-09', 'Air-jet Loom 9', 'WEAVING'],
   ['DY-01', 'Jet Dyeing 1', 'DYEING'], ['DY-02', 'Jet Dyeing 2', 'DYEING'], ['DY-03', 'Jigger 3', 'DYEING'],
+  ['DY-04', 'Soft-flow 4', 'DYEING'],
 ];
 
 const SUPPLIERS = [
@@ -134,19 +148,23 @@ const HOLIDAYS = new Set([
 const METHODS = [['NEFT', 55], ['RTGS', 25], ['Cheque', 15], ['UPI', 5]];
 
 // Yarn price index: seasonal swing, slow inflation, and the mid-2024 cotton spike.
-function priceIndex(t, r) {
+function priceTrend(t) {
   const months = (t - START) / (30.44 * D);
   const season = 0.06 * Math.sin((2 * Math.PI * (months - 2)) / 12);
-  const spike = t > Date.UTC(2024, 3, 1) && t < Date.UTC(2024, 8, 1) ? 0.12 : 0;
-  return 1 + season + 0.045 * (months / 12) + spike + r.normal(0, 0.02);
+  // The 2024 cotton spike rises and falls over April–September rather than landing overnight.
+  const a = Date.UTC(2024, 3, 1);
+  const b = Date.UTC(2024, 8, 1);
+  const spike = t > a && t < b ? 0.12 * Math.sin((Math.PI * (t - a)) / (b - a)) : 0;
+  return 1 + season + 0.045 * (months / 12) + spike;
 }
+const priceIndex = (t, r) => priceTrend(t) + r.normal(0, 0.02);
 
 // Orders per day: festive build-up Aug–Oct, monsoon dip, slow growth, plus the confirmed
 // order book for the next quarter booked over the last three weeks.
 function intakeRate(t, T) {
-  const season = [1.0, 1.1, 1.1, 1.0, 0.95, 0.85, 0.8, 1.2, 1.25, 1.2, 0.95, 0.9][new Date(t + IST).getUTCMonth()];
+  const season = [1.0, 1.05, 1.05, 1.0, 0.97, 0.93, 0.92, 1.08, 1.12, 1.1, 0.98, 0.96][new Date(t + IST).getUTCMonth()];
   const growth = 1 + 0.07 * ((t - START) / (365 * D));
-  return 1.05 * season * growth * (t > T - 21 * D ? 3.4 : 1);
+  return 1.6 * season * growth * (t > T - 21 * D ? 2.8 : 1);
 }
 
 // ---------- generator ----------
@@ -192,8 +210,8 @@ function generate({ asOfDate }) {
   }
 
   const workers = [];
-  for (let i = 0; i < 48; i += 1) {
-    const joined = i < 40 ? START : START + r.int(200, 1000) * D;
+  for (let i = 0; i < 72; i += 1) {
+    const joined = i < 62 ? START : START + r.int(200, 1100) * D;
     const left = i % 13 === 5 ? joined + r.int(300, 700) * D : null;
     workers.push({
       id: id('wrk'), code: `W-${pad(i + 1, 3)}`, name: `${FIRST[(i * 7) % FIRST.length]} ${LAST[(i * 5 + 3) % LAST.length]}`,
@@ -232,15 +250,15 @@ function generate({ asOfDate }) {
   // ---------- orders ----------
   const orders = [];
   for (let day = START; day <= T; day += D) {
-    const n = r.poisson(intakeRate(day, T));
+    if (isClosedDay(day + 12 * H)) continue; // the sales office is shut on Sundays and holidays
+    const n = r.poisson(intakeRate(day, T) * 7 / 6);
     for (let k = 0; k < n; k += 1) {
       const createdAt = Math.round(day + r.between(9, 17.5) * H); // office hours IST
       if (createdAt > T) continue;
       const fabric = r.weighted(FABRIC_NAMES, (f) => FABRICS[f][4]);
       const [factor, kgPerM, mats, colours] = FABRICS[fabric];
       const buyer = r.weighted(buyers, (b) => b.weight);
-      const qty = Math.min(8000, Math.max(500, roundTo(Math.exp(r.normal(Math.log(2200), 0.5)), 100)));
-      const inflation = 1 + 0.05 * ((createdAt - START) / (365 * D));
+      const qty = Math.min(8000, Math.max(500, roundTo(Math.exp(r.normal(Math.log(2300), 0.33)), 100)));
       const material = materials[r.pick(mats)];
       const booked = createdAt > T - 21 * D && r.chance(0.7); // the extra order book for the coming quarter
       const rush = !booked && r.chance(0.18);
@@ -248,7 +266,7 @@ function generate({ asOfDate }) {
       orders.push({
         id: id('ord'), buyer, material, fabricType: fabric, colour: r.pick(colours), qty,
         yarnRequired: roundTo(qty * kgPerM * 1.04, 5),
-        pricePerUnit: round2(kgPerM * 1.04 * material.base * 1.45 * factor * inflation * (1 - buyer.discount) * r.between(0.96, 1.04)),
+        pricePerUnit: round2(kgPerM * 1.04 * material.base * priceTrend(createdAt) * 1.75 * factor * (1 - buyer.discount) * r.between(0.96, 1.04)),
         deadline: createdAt + Math.round(lead * D),
         createdAt, booked, cancelled: r.chance(0.02), badBatch: r.chance(0.05),
       });
@@ -365,7 +383,7 @@ function generate({ asOfDate }) {
     const bad = (order.badBatch ? 0.2 : 0) + monsoon;
     const reject = force ? 0 : (0.03 + bad / 3) * roll.machine.defect;
     const rework = force ? 0 : (0.05 + bad / 2) * roll.machine.defect;
-    let t = roll.createdAt + Math.round(r.between(3, 30) * H); // inspection queue
+    let t = workingHours(roll.createdAt + Math.round(r.between(2, 20) * H), 7, 21); // inspection queue
     const record = (result) => {
       const q = {
         id: id('qc'), roll, inspectorId: r.pick(inspectors).id, result,
@@ -381,7 +399,7 @@ function generate({ asOfDate }) {
     const first = x < reject ? 'REJECT' : x < reject + rework ? 'REWORK' : 'PASS';
     record(first);
     if (first === 'REWORK') {
-      t += Math.round(r.between(24, 60) * H);
+      t = workingHours(t + Math.round(r.between(24, 48) * H), 7, 21);
       record(r.chance(0.85) ? 'PASS' : 'REJECT');
     }
   }
@@ -417,21 +435,20 @@ function generate({ asOfDate }) {
     const resolved = Math.max(...mine.map((x) => x.inspections.at(-1).checkedAt));
     if (good.length >= 4 && r.chance(0.28)) {
       const half = good.slice(0, Math.floor(good.length / 2));
-      const firstAt = half.at(-1).inspections.at(-1).checkedAt + Math.round(r.between(6, 30) * H);
+      const firstAt = workingHours(half.at(-1).inspections.at(-1).checkedAt + Math.round(r.between(4, 24) * H), 9, 18);
       if (firstAt < resolved) {
         trips.push({ order, at: firstAt, rolls: half });
-        trips.push({ order, at: resolved + Math.round(r.between(12, 72) * H), rolls: good.slice(half.length) });
+        trips.push({ order, at: workingHours(resolved + Math.round(r.between(4, 40) * H), 9, 18), rolls: good.slice(half.length) });
         continue;
       }
     }
-    trips.push({ order, at: resolved + Math.round(r.between(12, 72) * H), rolls: good });
+    trips.push({ order, at: workingHours(resolved + Math.round(r.between(4, 40) * H), 9, 18), rolls: good });
   }
 
   // ---------- yarn ledger: purchases and issues in time order ----------
   const inwards = [];
   const issues = [];
-  const pending = [];
-  const stock = new Map(materials.map((m) => [m, { qty: 0, cost: 0 }]));
+    const stock = new Map(materials.map((m) => [m, { qty: 0, cost: 0 }]));
   const receive = (m, qty, at, order, premium = 1) => {
     const rate = round2(m.base * priceIndex(at, r) * premium);
     const s = stock.get(m);
@@ -442,27 +459,80 @@ function generate({ asOfDate }) {
       receivedById: r.pick(storeKeepers).id, qty, rate, billAmount: round2(qty * rate), receivedAt: Math.round(at),
     });
   };
-  for (const m of materials) receive(m, m.reorderLevel * 4, START + Math.round(r.between(30, 40) * H), null);
-  const draws = orders.filter((o) => o.issueAt && o.issueAt <= T).sort((a, b) => a.issueAt - b.issueAt);
-  for (const o of draws) {
+  // Opening stock: four weeks of use, delivered before the first order is issued.
+  for (const m of materials) receive(m, roundTo(m.reorderLevel * 2.7, 50), START + Math.round(r.between(30, 40) * H), null);
+  const planned = orders.filter((o) => o.issueAt).sort((a, b) => a.issueAt - b.issueAt); // the store sees the plan
+  const draws = planned.filter((o) => o.issueAt <= T);
+
+  // Purchasing: every Monday the store tops each yarn up to what the next two weeks of issues
+  // need plus a safety stock, so bills follow consumption instead of landing in lumps. An
+  // urgent truck (at a premium) covers the rare order that still finds the shelf short.
+  const reviews = [];
+  for (let t = START + 7 * D; t <= T; t += D) {
+    if (new Date(t + IST).getUTCDay() === 1) reviews.push(t + 10 * H);
+  }
+  const events = [
+    ...draws.map((o) => ({ at: o.issueAt, order: o })),
+    ...reviews.map((at) => ({ at, review: true })),
+  ].sort((a, b) => a.at - b.at || (a.review ? -1 : 1));
+  // The week's order arrives as two or three trucks spread over its working days.
+  const pending = [];
+  const workdays = (monday) =>
+    [0, 1, 2, 3, 4, 5].map((d) => monday + d * D).filter((t) => !HOLIDAYS.has(istDay(t)));
+  const flush = (until) => {
     pending.sort((a, b) => a.at - b.at);
-    while (pending.length && pending[0].at <= o.issueAt) {
+    while (pending.length && pending[0].at <= until) {
       const p = pending.shift();
       receive(p.m, p.qty, p.at, null);
     }
+  };
+  for (const e of events) {
+    flush(e.at);
+    if (e.review) {
+      for (const m of materials) {
+        const needIn = (days) =>
+          planned.filter((o) => o.material === m && o.issueAt > e.at && o.issueAt <= e.at + days * D).reduce((t, o) => t + o.yarnRequired, 0);
+        const used = issues.filter((x) => x.materialId === m.id && x.issuedAt > e.at - 28 * D).reduce((t, x) => t + x.qty, 0);
+        const weekly = used / 4;
+        const have = stock.get(m).qty;
+        // Replenish what the floor has been using, steered a quarter of the way toward the
+        // stock the next two weeks of the plan need. Bills then follow consumption smoothly.
+        const target = needIn(14) + m.reorderLevel;
+        let buy = weekly > 0 ? weekly + 0.15 * (target - have) : target - have;
+        if (weekly > 0) buy = Math.min(Math.max(buy, 0.7 * weekly), 1.3 * weekly);
+        buy = roundTo(buy, 50);
+        if (buy < 100) continue;
+        const days = workdays(e.at - 2 * H);
+        const trucks = Math.min(days.length, buy >= 1500 ? 3 : buy >= 600 ? 2 : 1);
+        const picks = [...days].sort(() => r.next() - 0.5).slice(0, trucks).sort((a, b) => a - b);
+        let left = buy;
+        picks.forEach((day, i) => {
+          const qty = i === picks.length - 1 ? left : roundTo(buy / trucks, 50);
+          left -= qty;
+          if (qty > 0) pending.push({ m, qty, at: day - Math.round(r.between(10, 90) * 60 * 1000) });
+        });
+      }
+      continue;
+    }
+    const o = e.order;
     const m = o.material;
     const s = stock.get(m);
+    // A truck already booked for later this week is pulled forward before paying for an urgent one.
     if (s.qty < o.yarnRequired) {
-      // Shortage: an urgent truck for this order, bought at a premium.
-      receive(m, roundTo(o.yarnRequired - s.qty + m.reorderLevel, 50), o.issueAt - Math.round(r.between(3, 10) * H), o, 1.06);
+      const due = pending.filter((p) => p.m === m).sort((a, b) => a.at - b.at);
+      for (const p of due) {
+        if (s.qty >= o.yarnRequired) break;
+        pending.splice(pending.indexOf(p), 1);
+        receive(m, p.qty, o.issueAt - Math.round(r.between(2, 6) * H), null);
+      }
+    }
+    if (s.qty < o.yarnRequired) {
+      receive(m, roundTo(o.yarnRequired - s.qty + 50, 50), o.issueAt - Math.round(r.between(3, 10) * H), o, 1.06);
     }
     s.qty = round2(s.qty - o.yarnRequired);
     issues.push({ id: id('iss'), materialId: m.id, orderId: o.id, qty: o.yarnRequired, cost: round2(o.yarnRequired * s.cost), issuedAt: o.issueAt });
-    if (s.qty < m.reorderLevel && !pending.some((p) => p.m === m)) {
-      pending.push({ m, qty: roundTo(Math.max(m.reorderLevel * 3, 500), 50), at: o.issueAt + Math.round(r.between(4, 12) * D) });
-    }
   }
-  for (const p of pending) if (p.at <= T) receive(p.m, p.qty, p.at, null);
+  flush(T);
   inwards.sort((a, b) => a.receivedAt - b.receivedAt);
 
   // ---------- cut at T ----------

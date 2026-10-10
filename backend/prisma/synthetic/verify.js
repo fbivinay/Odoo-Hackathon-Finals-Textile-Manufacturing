@@ -22,4 +22,20 @@ function verifyFloor(data, label) {
   if (problems.length) throw new Error(`${label}: ${problems.length} floor problem(s)\n${problems.slice(0, 10).join('\n')}`);
 }
 
-module.exports = { verifyFloor };
+// No month from January 2023 to the as-of month may lose money on the owner's P&L
+// (invoiced − yarn bills − wages earned, the same sum /reports/pnl makes).
+function verifyMonths(data, label, asOf) {
+  const wage = new Map(data.Worker.map((w) => [w.id, w.dailyWage]));
+  const sum = (rows, f) => rows.reduce((t, x) => t + f(x), 0);
+  const problems = [];
+  for (let d = new Date('2023-01-01T00:00:00Z'); d.toISOString().slice(0, 7) <= asOf.slice(0, 7); d.setUTCMonth(d.getUTCMonth() + 1)) {
+    const m = d.toISOString().slice(0, 7);
+    const invoiced = sum(data.Invoice.filter((i) => i.issuedAt.startsWith(m)), (i) => i.amount);
+    const bills = sum(data.MaterialInward.filter((i) => i.receivedAt.startsWith(m)), (i) => i.billAmount);
+    const wages = sum(data.Attendance.filter((a) => a.date.startsWith(m)), (a) => (a.status === 'PRESENT' ? 1 : a.status === 'HALF_DAY' ? 0.5 : 0) * wage.get(a.workerId));
+    if (invoiced <= 0 || invoiced - bills - wages <= 0) problems.push(`${m}: invoiced ${Math.round(invoiced)}, bills ${Math.round(bills)}, wages ${Math.round(wages)}`);
+  }
+  if (problems.length) throw new Error(`${label}: ${problems.length} loss month(s)\n${problems.join('\n')}`);
+}
+
+module.exports = { verifyFloor, verifyMonths };
