@@ -30,7 +30,7 @@ export function Track() {
               <p className="text-xs text-muted-foreground">{t.buyer}</p>
               <h1 className="text-xl font-semibold tracking-tight">{t.orderNo}</h1>
               <p className="text-sm text-muted-foreground">
-                {formatQty(t.qty)} {t.fabricType} · {t.colour} · due {formatDate(t.deadline)}
+                {formatQty(t.qty)} {[t.fabricType, t.colour].filter(Boolean).join(' · ')} · due {formatDate(t.deadline)}
               </p>
               <p className={cn('mt-2 text-sm font-medium', t.isDelayed ? 'text-problem' : 'text-ink')}>
                 {t.statusLabel}

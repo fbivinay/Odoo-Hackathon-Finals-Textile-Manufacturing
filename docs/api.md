@@ -57,7 +57,7 @@ They answer `{ ok, data: [...], meta: { count, nextCursor } }`. Pass `nextCursor
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/orders` | | `?status=&buyerId=&q=&delayed=true` + paging; each row has `isDelayed` |
-| POST | `/orders` | STORE, DISPATCH | `{ buyerId, materialId?, fabricType, colour, qty, yarnRequired?, pricePerUnit?, deadline }` → includes `availability` |
+| POST | `/orders` | STORE, DISPATCH | `{ buyerId, materialId?, fabricType, colour?, qty, yarnRequired?, pricePerUnit?, deadline }` → includes `availability` |
 | GET | `/orders/:id` | | buyer, material, issues, jobs, rolls, dispatches, `availability` |
 | PATCH | `/orders/:id/status` | OWNER | `{ status }` manual override, e.g. `CANCELLED` |
 | GET | `/track/:token` | public | buyer page; token is `order.trackingToken` |

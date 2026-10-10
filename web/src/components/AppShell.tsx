@@ -17,8 +17,8 @@ interface NavItem {
 
 export const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Overview', icon: LayoutDashboard, roles: [] },
-  { to: '/materials', label: 'Raw material', icon: Package, roles: ['STORE'] },
-  { to: '/orders', label: 'Orders', icon: ShoppingCart, roles: ['STORE', 'PRODUCTION', 'DISPATCH'] },
+  { to: '/materials', label: 'Yarn Received', icon: Package, roles: ['STORE'] },
+  { to: '/orders', label: 'Customer Orders', icon: ShoppingCart, roles: ['STORE', 'PRODUCTION', 'DISPATCH'] },
   { to: '/production', label: 'Production', icon: Factory, roles: ['PRODUCTION'] },
   { to: '/planning', label: 'Planning', icon: CalendarRange, roles: ['PRODUCTION', 'STORE'] },
   { to: '/qc', label: 'Quality check', icon: ClipboardCheck, roles: ['QC'] },

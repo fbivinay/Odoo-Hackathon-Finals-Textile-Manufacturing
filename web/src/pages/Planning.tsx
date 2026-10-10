@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useSession } from '@/auth/session'
 import { DataTable } from '@/components/DataTable'
 import { PageHead } from '@/components/PageHead'
 import { Pill, StatusPill } from '@/components/StatusPill'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDate, formatQty } from '@/lib/format'
 import { useApi } from '@/lib/useApi'
@@ -13,6 +15,14 @@ type YarnNeed = Plan['yarnNeeds'][number]
 
 // Late orders first, then those waiting for yarn, then the rest.
 const risk = (o: PlanOrder) => (o.lateByDays ?? 0) * 10 + (o.yarnShortBy > 0 ? 1 : 0)
+
+// The three outlooks, in the same colours as their pills.
+const OUTLOOKS = [
+  { label: 'All', dot: '', match: () => true },
+  { label: 'Late', dot: 'bg-problem', match: (o: PlanOrder) => Boolean(o.lateByDays) },
+  { label: 'Needs yarn', dot: 'bg-watch', match: (o: PlanOrder) => !o.lateByDays && o.yarnShortBy > 0 },
+  { label: 'On time', dot: 'bg-good', match: (o: PlanOrder) => !o.lateByDays && o.yarnShortBy <= 0 },
+]
 
 const orderCols: ColumnDef<PlanOrder>[] = [
   {
@@ -64,6 +74,8 @@ export function Planning() {
   const { user } = useSession()
   const { data: p, loading, error } = useApi<Plan>('/planning/schedule?days=90')
   const s = p?.summary
+  const [outlook, setOutlook] = useState(0)
+  const orders = p?.orders ?? []
 
   return (
     <div className="space-y-5">
@@ -76,8 +88,17 @@ export function Planning() {
           <TabsTrigger value="schedule">Schedule{s && s.late > 0 ? ` · ${s.late} late` : ''}</TabsTrigger>
           <TabsTrigger value="yarn">Yarn to buy{s && s.yarnsShort > 0 ? ` · ${s.yarnsShort}` : ''}</TabsTrigger>
         </TabsList>
-        <TabsContent value="schedule">
-          <DataTable columns={orderCols} data={p?.orders ?? []} loading={loading} initialSorting={[{ id: 'risk', desc: true }]} />
+        <TabsContent value="schedule" className="space-y-3">
+          <div className="flex flex-wrap gap-1">
+            {OUTLOOKS.map((f, i) => (
+              <Button key={f.label} size="sm" variant={i === outlook ? 'secondary' : 'ghost'} className="gap-1.5" onClick={() => setOutlook(i)}>
+                {f.dot && <span className={`size-2 rounded-full ${f.dot}`} />}
+                {f.label}
+                <span className="text-xs text-muted-foreground">{orders.filter(f.match).length}</span>
+              </Button>
+            ))}
+          </div>
+          <DataTable columns={orderCols} data={orders.filter(OUTLOOKS[outlook].match)} loading={loading} initialSorting={[{ id: 'risk', desc: true }]} />
         </TabsContent>
         <TabsContent value="yarn">
           <DataTable columns={yarnCols} data={p?.yarnNeeds ?? []} loading={loading} initialSorting={[{ id: 'shortBy', desc: true }]} />

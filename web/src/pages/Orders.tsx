@@ -82,7 +82,7 @@ export function Orders() {
         </div>
       ),
     },
-    { id: 'fabric', header: 'Fabric', accessorFn: (o) => `${o.fabricType} · ${o.colour}` },
+    { id: 'fabric', header: 'Fabric', accessorFn: (o) => [o.fabricType, o.colour].filter(Boolean).join(' · ') },
     { id: 'qty', header: 'Qty', accessorFn: (o) => o.qty, cell: ({ row: { original: o } }) => formatQty(o.qty) },
     {
       id: 'deadline',
@@ -123,13 +123,13 @@ export function Orders() {
   return (
     <div className="space-y-4">
       <PageHead
-        eyebrow="Order book"
-        title="Orders"
+        eyebrow="From buyers"
+        title="Customer Orders"
         actions={
           canCreate && (
             <Button className="gap-1.5" onClick={() => setOpen(true)}>
               <Plus className="size-4" />
-              New order
+              New customer order
             </Button>
           )
         }
@@ -167,7 +167,7 @@ const YARN_PER_METRE: Record<string, number> = {
   chambray: 0.15, satin: 0.13, georgette: 0.08, 'linen suiting': 0.22, 'rayon print': 0.12,
 }
 const FABRIC_TYPES = ['Poplin', 'Cambric', 'Lawn', 'Twill', 'Denim', 'Canvas', 'Oxford', 'Chambray', 'Satin', 'Georgette', 'Linen Suiting', 'Rayon Print']
-const EMPTY = { buyerId: '', buyerName: '', materialId: '', fabricType: '', colour: '', qty: '', yarnRequired: '', pricePerUnit: '', deadline: '' }
+const EMPTY = { buyerId: '', buyerName: '', materialId: '', fabricType: '', qty: '', yarnRequired: '', pricePerUnit: '', deadline: '' }
 
 function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; onSaved: () => void }) {
   const buyers = useApi<Ref[]>(open ? '/buyers' : null)
@@ -208,7 +208,6 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
           buyerId,
           materialId: form.materialId,
           fabricType: form.fabricType,
-          colour: form.colour,
           deadline: form.deadline,
           qty: Number(form.qty),
           yarnRequired: Number(form.yarnRequired),
@@ -232,7 +231,7 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New order</DialogTitle>
+          <DialogTitle>New customer order</DialogTitle>
         </DialogHeader>
         <form id="order" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
           <Field label="Buyer" htmlFor="buyerId">
@@ -256,17 +255,16 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
               </Field>
             </div>
           )}
-          <Field label="Fabric type" htmlFor="fabricType">
-            <Input id="fabricType" required list="fabric-types" placeholder="Poplin" value={form.fabricType} onChange={set('fabricType')} />
-            <datalist id="fabric-types">
-              {FABRIC_TYPES.map((f) => (
-                <option key={f} value={f} />
-              ))}
-            </datalist>
-          </Field>
-          <Field label="Colour" htmlFor="colour">
-            <Input id="colour" required placeholder="Navy" value={form.colour} onChange={set('colour')} />
-          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Fabric type" htmlFor="fabricType">
+              <Input id="fabricType" required list="fabric-types" placeholder="Poplin" value={form.fabricType} onChange={set('fabricType')} />
+              <datalist id="fabric-types">
+                {FABRIC_TYPES.map((f) => (
+                  <option key={f} value={f} />
+                ))}
+              </datalist>
+            </Field>
+          </div>
           <Field label="Quantity (m)" htmlFor="qty">
             <Input id="qty" type="number" min="1" step="1" inputMode="numeric" required value={form.qty} onChange={set('qty')} />
           </Field>

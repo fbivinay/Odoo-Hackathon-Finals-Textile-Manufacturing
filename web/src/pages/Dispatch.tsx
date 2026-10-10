@@ -132,7 +132,7 @@ function LoadCard({ group, onDone }: { group: ShelfGroup; onDone: () => void }) 
           {o.orderNo} · {o.buyer.name}
         </p>
         <p className="text-xs text-muted-foreground">
-          {o.fabricType} · {o.colour}
+          {[o.fabricType, o.colour].filter(Boolean).join(' · ')}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">

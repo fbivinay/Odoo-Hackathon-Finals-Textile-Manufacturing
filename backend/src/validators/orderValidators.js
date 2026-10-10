@@ -6,7 +6,7 @@ const createOrderSchema = z.object({
   buyerId: id,
   materialId: id.optional(),
   fabricType: text,
-  colour: text,
+  colour: z.string().trim().default(''), // optional: not every order names a colour
   qty,
   yarnRequired: money.default(0),
   pricePerUnit: money.default(0),

@@ -57,12 +57,12 @@ export function Materials() {
   return (
     <div className="space-y-5">
       <PageHead
-        eyebrow="Store"
-        title="Raw material"
+        eyebrow="From suppliers"
+        title="Yarn Received"
         actions={
           <Button className="gap-1.5" onClick={() => setOpen(true)}>
             <PackagePlus className="size-4" />
-            Record delivery
+            Receive yarn
           </Button>
         }
       />
@@ -70,7 +70,7 @@ export function Materials() {
       <Tabs defaultValue="stock">
         <TabsList>
           <TabsTrigger value="stock">Stock{low > 0 && ` · ${low} low`}</TabsTrigger>
-          <TabsTrigger value="deliveries">Deliveries</TabsTrigger>
+          <TabsTrigger value="deliveries">Received</TabsTrigger>
         </TabsList>
         <TabsContent value="stock" className="space-y-3">
           {stock.error && <p className="text-sm text-problem">{stock.error}</p>}
@@ -145,7 +145,7 @@ function InwardDialog({
         method: 'POST',
         body: { materialId, supplierId, qty: Number(form.qty), rate: Number(form.rate) },
       })
-      toast.success('Delivery recorded')
+      toast.success('Yarn received, stock updated')
       onSaved()
       onOpenChange(false)
       setForm(emptyForm)
@@ -161,7 +161,7 @@ function InwardDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Record delivery</DialogTitle>
+          <DialogTitle>Receive yarn</DialogTitle>
         </DialogHeader>
         <form id="inward" onSubmit={submit} className="grid gap-4">
           <Field label="Yarn" htmlFor="materialId">
