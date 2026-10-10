@@ -48,7 +48,7 @@ const materials: MaterialRow[] = (
     ['Linen 25s', 'Natural', 420, 100, 520],
     ['Poly-Cotton 2/40', 'Grey', 640, 200, 190],
   ] as const
-).map(([yarnType, colour, qtyInStock, reorderLevel, avgCost], i) => ({ id: `mat_${i + 1}`, yarnType, colour, unit: 'kg', qtyInStock, reorderLevel, avgCost }))
+).map(([yarnType, colour, qtyInStock, reorderLevel, avgCost], i) => ({ id: `mat_${i + 1}`, category: 'YARN' as const, yarnType, colour, unit: 'kg', qtyInStock, reorderLevel, avgCost }))
 
 const machines: Machine[] = (
   [

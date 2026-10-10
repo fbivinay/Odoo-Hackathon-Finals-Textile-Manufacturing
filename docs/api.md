@@ -44,12 +44,12 @@ They answer `{ ok, data: [...], meta: { count, nextCursor } }`. Pass `nextCursor
 
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
-| GET | `/materials` | | each row has `lowStock`; `?lowStock=true` filters |
-| POST | `/materials` | STORE | `{ yarnType, colour, unit?, reorderLevel? }` |
+| GET | `/materials` | | each row has `category` and `lowStock`; `?lowStock=true`, `?category=YARN/DYE/CHEMICAL/PACKAGING/OTHER`, `?kind=other` (everything except yarn) |
+| POST | `/materials` | STORE | `{ category?, yarnType, colour, unit?, reorderLevel? }`; `category` defaults to `YARN`; for other materials `yarnType` is the name and `colour` the shade, grade or size |
 | PATCH | `/materials/:id` | STORE | `{ unit?, reorderLevel? }` |
-| GET | `/materials/inwards` | | `?materialId=&orderId=` |
+| GET | `/materials/inwards` | | `?materialId=&orderId=&supplierId=`, plus `?category=` or `?kind=other` |
 | POST | `/materials/inwards` | STORE | `{ materialId, supplierId, orderId?, qty, rate }` adds stock, re-averages cost |
-| GET | `/materials/issues` | | `?materialId=&orderId=` |
+| GET | `/materials/issues` | | `?materialId=&orderId=`, plus `?category=` or `?kind=other` |
 | POST | `/materials/issues` | STORE | `{ materialId, orderId, qty }` → 409 `INSUFFICIENT_STOCK` if short |
 
 ## Orders

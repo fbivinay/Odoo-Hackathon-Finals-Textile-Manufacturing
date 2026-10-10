@@ -4,8 +4,14 @@ const { pageArgs, toPage, dateRange } = require('../lib/paging');
 
 const withLowStock = (m) => ({ ...m, lowStock: Number(m.qtyInStock) <= Number(m.reorderLevel) });
 
-async function list({ lowStock } = {}) {
-  const materials = await prisma.rawMaterial.findMany({ orderBy: [{ yarnType: 'asc' }, { colour: 'asc' }] });
+// ?category=YARN|DYE|… picks one kind; ?kind=other is everything that is not yarn.
+const ofKind = ({ category, kind } = {}) => (kind === 'other' ? { category: { not: 'YARN' } } : category ? { category } : undefined);
+
+async function list({ lowStock, category, kind } = {}) {
+  const materials = await prisma.rawMaterial.findMany({
+    where: ofKind({ category, kind }),
+    orderBy: [{ yarnType: 'asc' }, { colour: 'asc' }],
+  });
   const rows = materials.map(withLowStock);
   return lowStock === 'true' ? rows.filter((m) => m.lowStock) : rows;
 }
@@ -49,11 +55,11 @@ async function inward({ materialId, supplierId, orderId, qty, rate }, userId) {
 async function listInwards(query = {}) {
   const { materialId, orderId, supplierId, from, to } = query;
   const rows = await prisma.materialInward.findMany({
-    where: { materialId, orderId, supplierId, receivedAt: dateRange(from, to) },
+    where: { materialId, orderId, supplierId, receivedAt: dateRange(from, to), material: ofKind(query) },
     orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
     ...pageArgs(query),
     include: {
-      material: { select: { id: true, yarnType: true, colour: true, unit: true } },
+      material: { select: { id: true, category: true, yarnType: true, colour: true, unit: true } },
       supplier: { select: { id: true, name: true } },
       order: { select: { id: true, orderNo: true } },
       receivedBy: { select: { id: true, name: true } },
@@ -91,11 +97,11 @@ async function issue({ materialId, orderId, qty }) {
 async function listIssues(query = {}) {
   const { materialId, orderId, from, to } = query;
   const rows = await prisma.materialIssue.findMany({
-    where: { materialId, orderId, issuedAt: dateRange(from, to) },
+    where: { materialId, orderId, issuedAt: dateRange(from, to), material: ofKind(query) },
     orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
     ...pageArgs(query),
     include: {
-      material: { select: { id: true, yarnType: true, colour: true, unit: true } },
+      material: { select: { id: true, category: true, yarnType: true, colour: true, unit: true } },
       order: { select: { id: true, orderNo: true } },
     },
   });

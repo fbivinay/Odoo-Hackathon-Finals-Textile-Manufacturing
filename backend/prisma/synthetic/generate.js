@@ -131,6 +131,23 @@ const SUPPLIERS = [
   'Vardhman Yarns', 'Nahar Spinning Mills', 'Sutlej Textiles', 'Trident Yarns', 'Ambika Cotton Mills',
   'Nitin Spinners', 'Filatex Polyester', 'Grasim Viscose', 'Jaya Shree Linen', 'Surat Yarn Agency',
 ];
+// Suppliers of everything that is not yarn.
+const OTHER_SUPPLIERS = ['Colourtex Dyes', 'Atul Chemicals', 'Surat Packaging Co'];
+// [category, name, grade/shade/size, unit, rate, reorder level, supplier index, deliveries [date, qty]].
+// Bills are small next to yarn, and none land in the current month.
+const OTHER_MATERIALS = [
+  ['DYE', 'Reactive Red ME4BL', 'Red', 'kg', 620, 60, 0, [['2022-12-05', 150], ['2024-03-11', 120], ['2025-08-18', 140], ['2026-08-10', 90]]],
+  ['DYE', 'Reactive Navy Blue', 'Navy', 'kg', 680, 60, 0, [['2022-12-05', 160], ['2024-06-17', 110], ['2025-11-10', 130], ['2026-09-07', 80]]],
+  ['DYE', 'Indigo Granules', 'Indigo', 'kg', 540, 120, 0, [['2022-12-06', 300], ['2024-02-12', 260], ['2025-05-19', 280]]],
+  ['DYE', 'Sulphur Black BR', 'Black', 'kg', 210, 100, 0, [['2022-12-06', 250], ['2024-09-09', 220], ['2026-02-16', 240]]],
+  ['CHEMICAL', 'Caustic Soda Flakes', '98% purity', 'kg', 48, 400, 1, [['2022-12-08', 1200], ['2024-01-22', 900], ['2025-04-14', 1000], ['2026-07-13', 800]]],
+  ['CHEMICAL', 'Hydrogen Peroxide', '50% solution', 'L', 42, 300, 1, [['2022-12-08', 800], ['2024-05-20', 600], ['2025-10-13', 700]]],
+  ['CHEMICAL', 'Soda Ash', 'Light', 'kg', 36, 500, 1, [['2022-12-09', 1500], ['2024-08-12', 1100], ['2026-03-09', 1200]]],
+  ['CHEMICAL', 'Softener', 'Cationic', 'L', 95, 800, 1, [['2022-12-09', 400], ['2025-01-20', 320]]],
+  ['PACKAGING', 'Paper Tubes', '60 inch core', 'pcs', 38, 500, 2, [['2022-12-12', 2000], ['2024-04-15', 1500], ['2025-09-15', 1800], ['2026-06-15', 1200]]],
+  ['PACKAGING', 'Poly Wrap', '200 gauge', 'rolls', 780, 250, 2, [['2022-12-12', 90], ['2024-10-14', 70], ['2026-01-19', 60]]],
+];
+
 // Ten buyers to start with; more are added from the New order form.
 const BUYERS = [
   'Arvind Garments', 'Raymond Apparel', 'Welspun Home', 'Aditya Birla Fashion', 'Page Industries',
@@ -638,12 +655,36 @@ function generate({ asOfDate }) {
     if (paidAt <= T && amount > 0) wagePayments.push({ id: id('wage'), workerId, month, amount: round2(amount), paidAt: iso(paidAt) });
   }
 
+  // ---------- other raw materials ----------
+  // Dyes, chemicals and packaging the mill uses besides yarn. A fixed starter set with a few
+  // deliveries each, built without the random stream so every other row stays as it was.
+  const otherSuppliers = OTHER_SUPPLIERS.map((name, i) => ({ id: `sup_o_${pad(i + 1, 3)}`, name, phone: `98790${pad(20000 + i * 613, 5)}`, createdAt: iso(START) }));
+  const otherMaterials = [];
+  const otherInwards = [];
+  OTHER_MATERIALS.forEach(([category, name, spec, unit, rate, reorderLevel, supplier, deliveries], i) => {
+    const mid = `mat_o_${pad(i + 1, 3)}`;
+    let qty = 0;
+    let cost = 0;
+    deliveries.forEach(([date, amount], k) => {
+      const at = new Date(`${date}T05:30:00.000Z`).getTime();
+      if (at > T) return;
+      const price = round2(rate * (1 + k * 0.04));
+      cost = (qty * cost + amount * price) / (qty + amount);
+      qty += amount;
+      otherInwards.push({
+        id: `inw_o_${pad(i + 1, 3)}_${k + 1}`, materialId: mid, supplierId: otherSuppliers[supplier].id, orderId: null,
+        receivedById: storeKeepers[0].id, qty: amount, rate: price, billAmount: round2(amount * price), receivedAt: iso(at),
+      });
+    });
+    otherMaterials.push({ id: mid, category, yarnType: name, colour: spec, unit, qtyInStock: round2(qty), reorderLevel, avgCost: round2(cost), createdAt: iso(START) });
+  });
+
   // ---------- flat rows ----------
   const data = {
     User: users,
-    Supplier: suppliers,
+    Supplier: [...suppliers, ...otherSuppliers],
     Buyer: buyers.map(({ id: bid, name, phone, email, createdAt }) => ({ id: bid, name, phone, email, createdAt })),
-    RawMaterial: materials.map((m) => ({ id: m.id, yarnType: m.yarnType, colour: m.colour, unit: m.unit, qtyInStock: round2(stock.get(m).qty), reorderLevel: m.reorderLevel, avgCost: round2(stock.get(m).cost), createdAt: iso(START) })),
+    RawMaterial: [...materials.map((m) => ({ id: m.id, category: 'YARN', yarnType: m.yarnType, colour: m.colour, unit: m.unit, qtyInStock: round2(stock.get(m).qty), reorderLevel: m.reorderLevel, avgCost: round2(stock.get(m).cost), createdAt: iso(START) })), ...otherMaterials],
     Worker: workers.map(({ id: wid, code, name, shift, dailyWage, isActive, createdAt }) => ({ id: wid, code, name, shift, dailyWage, isActive, createdAt })),
     Machine: machines.map((m) => ({ id: m.id, code: m.code, name: m.name, type: m.type, status: m.now, createdAt: m.createdAt })),
     Order: orders.map((o) => ({
@@ -651,7 +692,7 @@ function generate({ asOfDate }) {
       colour: o.colour, qty: o.qty, yarnRequired: o.yarnRequired, pricePerUnit: o.pricePerUnit, deadline: iso(o.deadline), status: 'PENDING',
       createdAt: iso(o.createdAt), cancelled: Boolean(o.cancelled && o.cancelledAt <= T),
     })),
-    MaterialInward: inwards.map((i) => ({ ...i, receivedAt: iso(i.receivedAt) })),
+    MaterialInward: [...inwards.map((i) => ({ ...i, receivedAt: iso(i.receivedAt) })), ...otherInwards],
     MaterialIssue: issues.map((i) => ({ ...i, issuedAt: iso(i.issuedAt) })),
     ProductionJob: keptJobs.map((j) => ({
       id: j.id, orderId: j.order.id, machineId: j.machine.id, workerId: j.workerId, stage: j.stage, shift: j.shift, status: j.status,

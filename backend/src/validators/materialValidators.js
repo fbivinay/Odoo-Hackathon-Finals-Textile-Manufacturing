@@ -1,6 +1,9 @@
 const { z, id, qty, money, text } = require('./common');
 
+const CATEGORIES = ['YARN', 'DYE', 'CHEMICAL', 'PACKAGING', 'OTHER'];
+
 const createMaterialSchema = z.object({
+  category: z.enum(CATEGORIES).default('YARN'),
   yarnType: text,
   colour: text,
   unit: text.default('kg'),
@@ -22,4 +25,4 @@ const inwardSchema = z.object({
 
 const issueSchema = z.object({ materialId: id, orderId: id, qty });
 
-module.exports = { createMaterialSchema, updateMaterialSchema, inwardSchema, issueSchema };
+module.exports = { CATEGORIES, createMaterialSchema, updateMaterialSchema, inwardSchema, issueSchema };

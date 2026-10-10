@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, PackageSearch, SlidersHorizontal } from 'lucide-react'
+import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, PackageSearch } from 'lucide-react'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
-import { Adjust, Issue, Receive, STATUS, useMaterialRows } from '@/components/materials'
+import { Issue, Receive, STATUS, useMaterialRows } from '@/components/materials'
 import { PageHead } from '@/components/PageHead'
 import { Pill } from '@/components/StatusPill'
 import { KpiCard } from '@/components/tremor/KpiCard'
@@ -33,7 +33,7 @@ export function RawMaterial() {
   const ins = useApi<MaterialInward[]>(`/materials/inwards?materialId=${id}&limit=500`)
   const outs = useApi<(MaterialIssue & { order?: { orderNo: string } })[]>(`/materials/issues?materialId=${id}&limit=500`)
   const orders = useApi<Order[]>(`/orders?dueFrom=${dayFromToday(-120)}&limit=500`)
-  const [action, setAction] = useState<'receive' | 'issue' | 'adjust' | null>(null)
+  const [action, setAction] = useState<'receive' | 'issue' | null>(null)
   const refresh = () => {
     reload()
     ins.reload()
@@ -138,9 +138,9 @@ export function RawMaterial() {
 
   return (
     <div className="space-y-6">
-      <Link to="/raw-materials" className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline">
+      <Link to={m.category === 'YARN' ? '/materials' : '/raw-materials'} className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline">
         <ArrowLeft className="size-3" />
-        Raw materials
+        {m.category === 'YARN' ? 'Yarn Received' : 'Raw Materials'}
       </Link>
       <PageHead
         eyebrow={`Raw material · ${m.unit}`}
@@ -156,10 +156,6 @@ export function RawMaterial() {
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setAction('issue')}>
               <ArrowUpFromLine className="size-4" />
               Issue
-            </Button>
-            <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setAction('adjust')}>
-              <SlidersHorizontal className="size-4" />
-              Adjust
             </Button>
           </div>
         }
@@ -286,7 +282,6 @@ export function RawMaterial() {
 
       {action === 'receive' && <Receive m={m} onClose={() => setAction(null)} onSaved={refresh} />}
       {action === 'issue' && <Issue m={m} onClose={() => setAction(null)} onSaved={refresh} />}
-      {action === 'adjust' && <Adjust m={m} onClose={() => setAction(null)} />}
     </div>
   )
 }

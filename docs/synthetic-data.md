@@ -57,7 +57,7 @@ The stream writes only through the API, so the backend's own rules keep data con
 | Payment | 73 | 675 | 775 | 756 | 634 | 2913 |
 | Attendance | 4898 | 18916 | 19714 | 20141 | 15730 | 79399 |
 
-Masters: 8 users, 10 suppliers, 10 buyers, 10 yarns, 72 workers and 17 machines. Suppliers, buyers and yarns are a starter set of 10 each; more are added from the app's forms. Seed is 20230104 (the first seed where the 10-buyer book passes the no-loss-month check).
+Masters: 8 users, 13 suppliers (10 yarn, 3 for dyes, chemicals and packaging), 10 buyers, 20 materials (10 yarns plus 10 other raw materials: 4 dyes, 4 chemicals, 2 packaging), 72 workers and 17 machines. More are added from the app's forms. Seed is 20230104.
 
 Invoiced per year: ₹10.98 Cr in 2023, ₹11.71 Cr in 2024, ₹14.05 Cr in 2025 and ₹11.27 Cr in 2026 to 10 Oct. Every month makes a profit after yarn and wages, from about 4% in the leanest month to 35–40% in the best; 15–30% is typical. Energy, dyes and overheads aren't in the schema, so this is a gross figure.
 

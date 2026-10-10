@@ -47,8 +47,8 @@ const inwardCols: ColumnDef<MaterialInward>[] = [
 ]
 
 export function Materials() {
-  const stock = useApi<RawMaterial[]>('/materials')
-  const inwards = usePaged<MaterialInward>('/materials/inwards')
+  const stock = useApi<RawMaterial[]>('/materials?category=YARN')
+  const inwards = usePaged<MaterialInward>('/materials/inwards?category=YARN')
   const [open, setOpen] = useState(false)
   // Yarns that need reordering come first.
   const rows = [...(stock.data ?? [])].sort((a, b) => Number(b.lowStock) - Number(a.lowStock))
@@ -126,7 +126,7 @@ function InwardDialog({
       if (newYarn) {
         const made = await api<RawMaterial>('/materials', {
           method: 'POST',
-          body: { yarnType: form.yarnType, colour: form.colour },
+          body: { category: 'YARN', yarnType: form.yarnType, colour: form.colour },
         })
         materialId = made.id
         setForm((f) => ({ ...f, materialId }))

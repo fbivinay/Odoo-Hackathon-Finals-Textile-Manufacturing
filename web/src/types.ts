@@ -29,9 +29,13 @@ export interface Ref {
 }
 
 // GET /materials
+export type MaterialCategory = 'YARN' | 'DYE' | 'CHEMICAL' | 'PACKAGING' | 'OTHER'
+
 export interface RawMaterial {
   id: string
-  yarnType: string
+  category: MaterialCategory
+  yarnType: string // the material's name; for yarn, the yarn type
+
   colour: string
   unit: string
   qtyInStock: number

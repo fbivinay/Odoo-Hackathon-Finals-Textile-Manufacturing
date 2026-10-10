@@ -29,6 +29,7 @@ const PAGES: Record<string, ReactNode> = {
   '/orders': <Orders />,
   '/production': <Production />,
   '/planning': <Planning />,
+  '/materials': <Materials />,
   '/raw-materials': <RawMaterials />,
   '/waste': <Waste />,
   '/qc': <QC />,
@@ -65,9 +66,6 @@ export default function App() {
                 {/* Pages reached from inside another page rather than the sidebar. */}
                 <Route element={<ProtectedRoute roles={['STORE', 'PRODUCTION']} />}>
                   <Route path="/raw-materials/:id" element={<RawMaterial />} />
-                </Route>
-                <Route element={<ProtectedRoute roles={['STORE']} />}>
-                  <Route path="/materials" element={<Materials />} />
                 </Route>
                 <Route path="/inventory" element={<Navigate to="/raw-materials" replace />} />
                 <Route path="/new-order" element={<Navigate to="/orders" replace />} />

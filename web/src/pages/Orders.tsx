@@ -162,7 +162,7 @@ const EMPTY = { buyerId: '', buyerName: '', materialId: '', fabricType: '', qty:
 
 function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; onSaved: () => void }) {
   const buyers = useApi<Ref[]>(open ? '/buyers' : null)
-  const materials = useApi<RawMaterial[]>(open ? '/materials' : null)
+  const materials = useApi<RawMaterial[]>(open ? '/materials?category=YARN' : null)
   const [form, setForm] = useState(EMPTY)
   const [busy, setBusy] = useState(false)
   // Until the user types their own figure, "Yarn needed" follows fabric type × quantity.

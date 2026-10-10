@@ -71,6 +71,15 @@ enum AttendanceStatus {
   HALF_DAY
 }
 
+// Yarn is what orders are made from; the rest is what the mill uses up along the way.
+enum MaterialCategory {
+  YARN
+  DYE
+  CHEMICAL
+  PACKAGING
+  OTHER
+}
+
 enum InvoiceStatus {
   UNPAID
   PARTIAL
@@ -111,7 +120,8 @@ model Buyer {
 }
 
 model RawMaterial {
-  id           String   @id @default(cuid())
+  id           String           @id @default(cuid())
+  category     MaterialCategory @default(YARN)
   yarnType     String
   colour       String
   unit         String   @default("kg")

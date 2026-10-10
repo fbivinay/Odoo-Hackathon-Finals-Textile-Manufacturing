@@ -41,6 +41,7 @@ npm run data:export -- data/<dataset>           # dump the current database
 | QCResult | `PASS` `REWORK` `REJECT` |
 | AttendanceStatus | `PRESENT` `ABSENT` `HALF_DAY` |
 | InvoiceStatus | `UNPAID` `PARTIAL` `PAID` |
+| MaterialCategory | `YARN` `DYE` `CHEMICAL` `PACKAGING` `OTHER` |
 
 ## Models
 
@@ -51,7 +52,7 @@ npm run data:export -- data/<dataset>           # dump the current database
 | User | `id*` `name*` `email*`U `password*` `role*` `isActive=true` `createdAt=now` |
 | Supplier | `id*` `name*`U `phone?` `createdAt` |
 | Buyer | `id*` `name*`U `phone?` `email?` `createdAt` |
-| RawMaterial | `id*` `yarnType*` `colour*` (pair U) `unit=kg` `qtyInStock*` `reorderLevel*` `avgCost*` `createdAt` |
+| RawMaterial | `id*` `category=YARN` `yarnType*` (the name) `colour*` (shade, grade or size) (pair U) `unit=kg` `qtyInStock*` `reorderLevel*` `avgCost*` `createdAt` |
 | Worker | `id*` `code*`U `name*` `shift*` `dailyWage*` `isActive=true` `createdAt` |
 | Machine | `id*` `code*`U `name*` `type*` (Stage) `status=IDLE` `createdAt` |
 | Order | `id*` `orderNo*`U `trackingToken*`U `buyerId*`→Buyer `materialId?`→RawMaterial `fabricType*` `colour*` `qty*` `yarnRequired=0` `pricePerUnit=0` `deadline*` `status*` `createdAt*` |
