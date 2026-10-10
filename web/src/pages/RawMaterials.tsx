@@ -3,6 +3,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { AlertTriangle, Bell, BellOff, PackagePlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
+import { actsAs } from '@/components/AppShell'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
@@ -48,7 +49,7 @@ export function RawMaterials() {
   const [using, setUsing] = useState<RawMaterial | null>(null)
   const [warning, setWarning] = useState<RawMaterial | null>(null)
   // Only the store moves stock; production can look.
-  const canEdit = user?.role === 'OWNER' || user?.role === 'STORE'
+  const canEdit = actsAs(user, 'STORE')
 
   const all = stock.data ?? []
   // Materials that need reordering come first.

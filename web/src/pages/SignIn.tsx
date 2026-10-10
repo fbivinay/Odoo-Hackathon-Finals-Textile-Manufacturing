@@ -51,7 +51,7 @@ export function SignIn() {
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
 
-  if (!loading && user) return <Navigate to={homeFor(user.role)} replace />
+  if (!loading && user) return <Navigate to={homeFor(user)} replace />
 
   async function submit(emailValue: string, passwordValue: string) {
     const cleanEmail = emailValue.trim().toLowerCase()
@@ -64,7 +64,7 @@ export function SignIn() {
     setBusy(true)
     try {
       const u = await signIn(cleanEmail, passwordValue)
-      navigate(homeFor(u.role), { replace: true })
+      navigate(homeFor(u), { replace: true })
     } catch (err) {
       setError(messageFor(err))
       setBusy(false)

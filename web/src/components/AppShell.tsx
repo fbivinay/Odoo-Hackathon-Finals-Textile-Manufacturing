@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { CalendarRange, ClipboardCheck, Factory, FlaskConical, LayoutDashboard, LogOut, Menu, Package, Recycle, ShoppingCart, Truck, Users } from 'lucide-react'
+import { CalendarRange, ClipboardCheck, Factory, FlaskConical, LayoutDashboard, LogOut, Menu, Package, Recycle, ShoppingCart, Truck, UserCog, Users } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 import { Logo } from '@/components/Logo'
 import { useSession } from '@/auth/session'
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import type { Role } from '@/types'
+import type { Role, User } from '@/types'
 
 interface NavItem {
   to: string
@@ -27,10 +27,22 @@ export const NAV: NavItem[] = [
   { to: '/qc', label: 'Quality check', icon: ClipboardCheck, roles: ['QC'] },
   { to: '/waste', label: 'Waste', icon: Recycle, roles: ['PRODUCTION', 'QC'] },
   { to: '/dispatch', label: 'Dispatch', icon: Truck, roles: ['DISPATCH'] },
+  { to: '/employees', label: 'Employees', icon: UserCog, roles: [] },
 ]
 
-export const navFor = (role: Role) => NAV.filter((n) => role === 'OWNER' || n.roles.includes(role))
-export const homeFor = (role: Role) => navFor(role)[0].to
+type Access = Pick<User, 'role' | 'extraTabs'>
+
+// Owner-only tabs can't be handed out; the rest can be granted to one employee on top of their role.
+export const GRANTABLE = NAV.filter((n) => n.roles.length > 0)
+// The role whose rights a granted tab carries, mirroring backend/src/lib/tabs.js.
+const TAB_ROLE: Record<string, Role> = { '/materials': 'STORE', '/raw-materials': 'STORE', '/orders': 'STORE', '/production': 'PRODUCTION', '/qc': 'QC', '/dispatch': 'DISPATCH' }
+
+export const canOpen = (u: Access, tab: string, roles: Role[]) => u.role === 'OWNER' || roles.includes(u.role) || (u.extraTabs ?? []).includes(tab)
+export const navFor = (u: Access) => NAV.filter((n) => canOpen(u, n.to, n.roles))
+export const homeFor = (u: Access) => navFor(u)[0].to
+// True when the user acts as one of these roles, by their own role or through a granted tab.
+export const actsAs = (u: Access | null, ...roles: Role[]) =>
+  !!u && (u.role === 'OWNER' || roles.includes(u.role) || (u.extraTabs ?? []).some((t) => roles.includes(TAB_ROLE[t])))
 
 export const ROLE_LABEL: Record<Role, string> = { OWNER: 'Owner', STORE: 'Store', PRODUCTION: 'Production', QC: 'Quality Control', DISPATCH: 'Dispatch' }
 
@@ -48,7 +60,7 @@ export function Wordmark() {
   )
 }
 
-function SidebarNav({ role, onNavigate, onSignOut }: { role: Role; onNavigate?: () => void; onSignOut: () => void }) {
+function SidebarNav({ user, onNavigate, onSignOut }: { user: Access; onNavigate?: () => void; onSignOut: () => void }) {
   return (
     <>
       <div className="flex h-14 items-center gap-2 border-b border-border px-5">
@@ -62,7 +74,7 @@ function SidebarNav({ role, onNavigate, onSignOut }: { role: Role; onNavigate?: 
       </div>
 
       <nav className="flex-1 space-y-0.5 p-3" aria-label="Sections">
-        {navFor(role).map(({ to, label, icon: Icon }) => (
+        {navFor(user).map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -117,12 +129,12 @@ export function AppShell() {
   return (
     <div className="flex min-h-screen">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 flex-col border-r border-border bg-white md:flex print:hidden">
-        <SidebarNav role={user.role} onSignOut={askSignOut} />
+        <SidebarNav user={user} onSignOut={askSignOut} />
       </aside>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-60 md:hidden">
-          <SidebarNav role={user.role} onNavigate={() => setMobileNavOpen(false)} onSignOut={askSignOut} />
+          <SidebarNav user={user} onNavigate={() => setMobileNavOpen(false)} onSignOut={askSignOut} />
         </SheetContent>
       </Sheet>
 

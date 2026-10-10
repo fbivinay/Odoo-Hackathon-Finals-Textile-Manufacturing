@@ -24,6 +24,8 @@ const RawMaterials = page(() => import('@/pages/RawMaterials'), 'RawMaterials')
 const RawMaterial = page(() => import('@/pages/RawMaterial'), 'RawMaterial')
 const Waste = page(() => import('@/pages/Waste'), 'Waste')
 const Customers = page(() => import('@/pages/Customers'), 'Customers')
+const Employees = page(() => import('@/pages/Employees'), 'Employees')
+const SetPassword = page(() => import('@/pages/SetPassword'), 'SetPassword')
 const Customer = page(() => import('@/pages/Customer'), 'Customer')
 
 const PAGES: Record<string, ReactNode> = {
@@ -37,6 +39,7 @@ const PAGES: Record<string, ReactNode> = {
   '/waste': <Waste />,
   '/qc': <QC />,
   '/dispatch': <Dispatch />,
+  '/employees': <Employees />,
 }
 
 function RouteFallback() {
@@ -51,7 +54,7 @@ function RouteFallback() {
 function Home() {
   const { user, loading } = useSession()
   if (loading) return null
-  return <Navigate to={user ? homeFor(user.role) : '/sign-in'} replace />
+  return <Navigate to={user ? homeFor(user) : '/sign-in'} replace />
 }
 
 export default function App() {
@@ -63,11 +66,12 @@ export default function App() {
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/sign-in" element={<SignIn />} />
+            <Route path="/set-password" element={<SetPassword />} />
             <Route path="/track/:token" element={<Track />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<AppShell />}>
                 {/* Pages reached from inside another page rather than the sidebar. */}
-                <Route element={<ProtectedRoute roles={['STORE', 'PRODUCTION']} />}>
+                <Route element={<ProtectedRoute roles={['STORE', 'PRODUCTION']} tab="/raw-materials" />}>
                   <Route path="/raw-materials/:id" element={<RawMaterial />} />
                 </Route>
                 <Route element={<ProtectedRoute roles={[]} />}>
@@ -76,7 +80,7 @@ export default function App() {
                 <Route path="/inventory" element={<Navigate to="/raw-materials" replace />} />
                 <Route path="/new-order" element={<Navigate to="/orders" replace />} />
                 {NAV.map((n) => (
-                  <Route key={n.to} element={<ProtectedRoute roles={n.roles} />}>
+                  <Route key={n.to} element={<ProtectedRoute roles={n.roles} tab={n.to} />}>
                     <Route path={n.to} element={PAGES[n.to]} />
                   </Route>
                 ))}

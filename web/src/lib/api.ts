@@ -1,5 +1,5 @@
 import { mockRequest } from './mock'
-import { getToken } from './token'
+import { clearToken, getToken } from './token'
 
 // List endpoints add `meta` when paged: pass `nextCursor` back as `cursor`; null means the end.
 export interface PageMeta {
@@ -22,6 +22,9 @@ export class ApiError extends Error {
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api'
 export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== 'false'
+
+// Fired when a signed-in request is refused because the account changed underneath it.
+export const SESSION_STALE = 'everest:session-stale'
 
 type Init = Omit<RequestInit, 'body'> & { body?: unknown }
 
@@ -61,6 +64,11 @@ export async function apiPage<T>(path: string, init: Init = {}): Promise<{ data:
     throw new ApiError('BAD_RESPONSE', 'The server sent a response we could not read.', res.status)
   }
 
-  if (!payload.ok) throw new ApiError(payload.error, payload.message, res.status)
+  if (!payload.ok) {
+    // The login was deactivated or expired, or the owner reset the password: let the session catch up.
+    if (token && res.status === 401) clearToken()
+    if (token && (res.status === 401 || payload.error === 'PASSWORD_CHANGE_REQUIRED')) window.dispatchEvent(new Event(SESSION_STALE))
+    throw new ApiError(payload.error, payload.message, res.status)
+  }
   return { data: payload.data, meta: payload.meta }
 }

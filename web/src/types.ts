@@ -16,6 +16,15 @@ export interface User {
   name: string
   email: string
   role: Role
+  extraTabs?: string[] // sidebar tabs granted on top of the role, e.g. ['/waste']
+  mustChangePassword?: boolean // owner-issued password: must be changed before anything else
+}
+
+// A login as the owner sees it on the Employees screen.
+export interface Employee extends User {
+  isActive: boolean
+  mustChangePassword: boolean
+  createdAt: string
 }
 
 export interface AuthResponse {

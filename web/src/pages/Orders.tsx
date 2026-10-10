@@ -3,6 +3,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { PackageSearch, Plus, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
+import { actsAs } from '@/components/AppShell'
 import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
@@ -45,7 +46,7 @@ export function Orders() {
   const issues = useApi<MaterialIssue[]>(`/materials/issues?from=${dayFromToday(-180)}&limit=500`)
   const [filter, setFilter] = useState(0)
   const [open, setOpen] = useState(false)
-  const canCreate = ['OWNER', 'STORE', 'DISPATCH'].includes(user?.role ?? '')
+  const canCreate = actsAs(user, 'STORE', 'DISPATCH')
   const issuedTo = (oid: string) => (issues.data ?? []).filter((i) => i.orderId === oid).reduce((a, i) => a + i.qty, 0)
 
   // Yarn still to be issued for an open order.

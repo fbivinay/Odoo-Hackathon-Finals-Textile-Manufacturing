@@ -2,7 +2,8 @@ const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
 const asyncHandler = require('../middleware/asyncHandler');
 const authService = require('../services/authService');
-const { signinSchema } = require('../validators/authValidators');
+const { requireAuth } = require('../middleware/auth');
+const { signinSchema, changePasswordSchema } = require('../validators/authValidators');
 const { unauthorized } = require('../lib/errors');
 
 const router = Router();
@@ -25,6 +26,15 @@ router.post(
     if (!parsed.success) throw unauthorized('Invalid email or password');
 
     const data = await authService.signin(parsed.data);
+    res.json({ ok: true, data });
+  })
+);
+
+router.post(
+  '/change-password',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const data = await authService.changePassword(req.user.id, changePasswordSchema.parse(req.body));
     res.json({ ok: true, data });
   })
 );

@@ -2,7 +2,7 @@ const { Router } = require('express');
 const asyncHandler = require('../middleware/asyncHandler');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const userService = require('../services/userService');
-const { createUserSchema } = require('../validators/authValidators');
+const { createUserSchema, updateUserSchema } = require('../validators/authValidators');
 
 const router = Router();
 
@@ -32,6 +32,16 @@ router.post(
   asyncHandler(async (req, res) => {
     const data = await userService.create(createUserSchema.parse(req.body));
     res.status(201).json({ ok: true, data });
+  })
+);
+
+router.patch(
+  '/users/:id',
+  requireAuth,
+  requireRole(),
+  asyncHandler(async (req, res) => {
+    const data = await userService.update(req.params.id, req.user.id, updateUserSchema.parse(req.body));
+    res.json({ ok: true, data });
   })
 );
 

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, SESSION_STALE } from '@/lib/api'
 import { clearToken, decodeToken, getToken, setToken } from '@/lib/token'
 import type { AuthResponse, User } from '@/types'
 
@@ -8,6 +8,7 @@ interface SessionValue {
   loading: boolean
   signIn: (email: string, password: string) => Promise<User>
   signOut: () => void
+  changePassword: (newPassword: string) => Promise<void>
 }
 
 const SessionContext = createContext<SessionValue | null>(null)
@@ -34,6 +35,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false))
   }, [])
 
+  // Keep the session in step with what the owner changes on the Employees screen (role, extra tabs,
+  // password reset, deactivation): re-read it when the tab is looked at again or a request is refused.
+  useEffect(() => {
+    const sync = () => {
+      if (!getToken()) return setUser(null)
+      api<User>('/me')
+        .then(setUser)
+        .catch(() => !getToken() && setUser(null))
+    }
+    const onVisible = () => !document.hidden && sync()
+    window.addEventListener(SESSION_STALE, sync)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener(SESSION_STALE, sync)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
+
   const value = useMemo<SessionValue>(
     () => ({
       user,
@@ -47,6 +66,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       signOut() {
         clearToken()
         setUser(null)
+      },
+      async changePassword(newPassword) {
+        await api('/auth/change-password', { method: 'POST', body: { newPassword } })
+        setUser((u) => (u ? { ...u, mustChangePassword: false } : u))
       },
     }),
     [user, loading],

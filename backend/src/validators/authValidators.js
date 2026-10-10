@@ -1,13 +1,12 @@
 const { z } = require('zod');
+const { EXTRA_TABS } = require('../lib/tabs');
 
 const ROLES = ['OWNER', 'STORE', 'PRODUCTION', 'QC', 'DISPATCH'];
 
-const passwordRule = z
-  .string()
-  .min(8, 'Password must be at least 8 characters')
-  .regex(/[A-Z]/, 'Password must contain an uppercase letter')
-  .regex(/[a-z]/, 'Password must contain a lowercase letter')
-  .regex(/[0-9]/, 'Password must contain a number');
+// Six or more letters or digits.
+const passwordRule = z.string().regex(/^[A-Za-z0-9]{6,}$/, 'Password must be at least 6 letters or digits');
+
+const extraTabsRule = z.array(z.enum(Object.keys(EXTRA_TABS)));
 
 const signinSchema = z.object({
   email: z.string().email(),
@@ -19,6 +18,22 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: passwordRule,
   role: z.enum(ROLES),
+  extraTabs: extraTabsRule.optional(),
 });
 
-module.exports = { ROLES, passwordRule, signinSchema, createUserSchema };
+const updateUserSchema = z
+  .object({
+    name: z.string().trim().min(1),
+    role: z.enum(ROLES),
+    isActive: z.boolean(),
+    extraTabs: extraTabsRule,
+    password: passwordRule, // owner reset: the employee must change it at next sign-in
+  })
+  .partial();
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).optional(),
+  newPassword: passwordRule,
+});
+
+module.exports = { ROLES, passwordRule, signinSchema, createUserSchema, updateUserSchema, changePasswordSchema };

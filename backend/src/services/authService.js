@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
-const { unauthorized } = require('../lib/errors');
+const { unauthorized, badRequest } = require('../lib/errors');
 
 async function signin({ email, password }) {
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
@@ -16,8 +16,27 @@ async function signin({ email, password }) {
 
   return {
     token,
-    user: { id: user.id, email: user.email, role: user.role, name: user.name },
+    user: { id: user.id, email: user.email, role: user.role, name: user.name, mustChangePassword: user.mustChangePassword, extraTabs: user.extraTabs },
   };
 }
 
-module.exports = { signin };
+// A forced first-time change skips the current password: the session was just opened with it.
+async function changePassword(userId, { currentPassword, newPassword }) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+
+  if (!user.mustChangePassword) {
+    const valid = currentPassword && (await bcrypt.compare(currentPassword, user.passwordHash));
+    if (!valid) throw badRequest('Current password is wrong', 'WRONG_PASSWORD');
+  }
+  if (await bcrypt.compare(newPassword, user.passwordHash)) {
+    throw badRequest('Pick a password different from the current one', 'SAME_PASSWORD');
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: await bcrypt.hash(newPassword, 10), mustChangePassword: false },
+  });
+  return { changed: true };
+}
+
+module.exports = { signin, changePassword };

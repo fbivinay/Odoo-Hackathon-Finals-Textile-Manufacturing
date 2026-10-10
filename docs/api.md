@@ -29,7 +29,13 @@ They answer `{ ok, data: [...], meta: { count, nextCursor } }`. Pass `nextCursor
 | POST | `/auth/signin` | public | `{ email, password }` → `{ token, user }` |
 | GET | `/me` | | current user |
 | GET | `/users` | OWNER | read is owner-only too |
-| POST | `/users` | OWNER | `{ name, email, password, role }` |
+| POST | `/users` | OWNER | `{ name, email, password, role }` — password is temporary (6+ letters or digits); sets `mustChangePassword` |
+| PATCH | `/users/:id` | OWNER | any of `{ name, role, isActive, password, extraTabs }`; a new password forces a change at next sign-in |
+| POST | `/auth/change-password` | | `{ newPassword, currentPassword? }` — current one not needed while `mustChangePassword` |
+
+`extraTabs` (also accepted by `POST /users`) is a list of sidebar paths granted to that one person on top of their role: `/materials`, `/raw-materials`, `/orders`, `/production`, `/planning`, `/qc`, `/waste`, `/dispatch`. A tab brings the write access it needs (e.g. `/qc` lets them inspect rolls).
+
+While `mustChangePassword` is true every other endpoint answers 403 `PASSWORD_CHANGE_REQUIRED`; only `/me` and `/auth/change-password` work.
 
 ## Suppliers and buyers
 

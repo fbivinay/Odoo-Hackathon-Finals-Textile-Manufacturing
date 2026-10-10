@@ -4,6 +4,7 @@
 import { decodeToken, getToken } from './token.ts'
 import { deriveStatus } from './textile.ts'
 import type {
+  Employee,
   Board, Dispatch, Machine, MachineOutput, MaterialInward, MaterialIssue, Order, OrderCost, Payment,
   Pnl, ProductionJob, QCRecord, QCResult, RawMaterial, Ref, Role, Roll, RollStatus, Shift, ShelfStock, Stage, Tracking, User,
 } from '@/types'
@@ -28,12 +29,17 @@ function fail(code: string, message: string): never {
 // ---------- seed ----------
 
 const ROLES: Role[] = ['OWNER', 'STORE', 'PRODUCTION', 'QC', 'DISPATCH']
-const users: User[] = ROLES.map((role, i) => ({
+const users: Employee[] = ROLES.map((role, i) => ({
   id: `usr_${i + 1}`,
   name: ['Ramesh Agarwal', 'Sunita Patil', 'Imran Shaikh', 'Kavya Nair', 'Deepak Yadav'][i],
   email: `${role.toLowerCase()}@everest.dev`,
   role,
+  extraTabs: [],
+  isActive: true,
+  mustChangePassword: false,
+  createdAt: new Date(now).toISOString(),
 }))
+const passwords: Record<string, string> = {} // set on the Employees screen; demo logins use Password123
 
 const suppliers: Ref[] = ['Vardhman Yarns', 'Nahar Spinning', 'Sutlej Textiles'].map((name, i) => ({ id: `sup_${i + 1}`, name }))
 const buyers: Ref[] = ['Arvind Garments', 'Raymond Apparel', 'Welspun Home', 'Trident Exports'].map((name, i) => ({ id: `buy_${i + 1}`, name }))
@@ -203,7 +209,7 @@ function sync(orderId: string) {
   o.status = deriveStatus(o.status, o.qty, jobs.filter((j) => j.orderId === o.id), rolls.filter((r) => r.orderId === o.id))
 }
 
-function currentUser(): User {
+function currentUser(): Employee {
   return byId(users, decodeToken(getToken() ?? '')?.sub) ?? fail('UNAUTHORIZED', 'Please sign in again.')
 }
 
@@ -237,7 +243,7 @@ function handle(path: string, method: string, body: Record<string, any>): unknow
 
   if (is('POST', '/auth/signin')) {
     const u = users.find((x) => x.email === String(body.email).toLowerCase())
-    if (!u || body.password !== 'Password123') fail('UNAUTHORIZED', 'Invalid email or password')
+    if (!u || !u.isActive || body.password !== (passwords[u.id] ?? 'Password123')) fail('UNAUTHORIZED', 'Invalid email or password')
     return { token: fakeJwt(u), user: u }
   }
 
@@ -257,6 +263,36 @@ function handle(path: string, method: string, body: Record<string, any>): unknow
 
   const me = currentUser()
   if (is('GET', '/me')) return me
+  if (is('POST', '/auth/change-password')) {
+    if (!/^[A-Za-z0-9]{6,}$/.test(body.newPassword)) fail('VALIDATION_ERROR', 'Password must be at least 6 letters or digits')
+    passwords[me.id] = body.newPassword
+    me.mustChangePassword = false
+    return { changed: true }
+  }
+  if (me.mustChangePassword) fail('PASSWORD_CHANGE_REQUIRED', 'Set a new password to continue')
+
+  // employees
+  if (seg[0] === 'users' && me.role !== 'OWNER') fail('FORBIDDEN', 'You do not have access to this resource')
+  if (is('GET', '/users')) return [...users].sort((a, b) => Number(b.isActive) - Number(a.isActive)) // deactivated last
+  if (is('POST', '/users')) {
+    const email = String(body.email).toLowerCase()
+    if (users.some((u) => u.email === email)) fail('CONFLICT', 'Duplicate value for email')
+    const u: Employee = { id: `usr_${users.length + 1}`, name: body.name, email, role: body.role, extraTabs: body.extraTabs ?? [], isActive: true, mustChangePassword: true, createdAt: new Date().toISOString() }
+    users.unshift(u) // newest first
+    passwords[u.id] = body.password
+    return u
+  }
+  if (is('PATCH', '/users/:id')) {
+    const u = byId(users, seg[1]) ?? fail('NOT_FOUND', 'User not found')
+    const { password, ...changes } = body
+    Object.assign(u, changes)
+    users.unshift(...users.splice(users.indexOf(u), 1)) // last edited on top
+    if (password) {
+      passwords[u.id] = password
+      u.mustChangePassword = true
+    }
+    return u
+  }
 
   // masters
   if (is('GET', '/suppliers')) return suppliers
