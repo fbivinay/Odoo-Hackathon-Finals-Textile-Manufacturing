@@ -408,7 +408,7 @@ body::before {
 .figures-panel {
   border-radius: var(--radius-slab);
   border: 2px solid color-mix(in srgb, var(--ink) 45%, transparent);
-  background: linear-gradient(180deg, #e9e9eb, #dededf);
+  background: linear-gradient(180deg, var(--ground), var(--line));
   box-shadow: var(--glass-edge), var(--glass-shadow);
   padding: clamp(1rem, 2.4vw, 1.6rem);
 }

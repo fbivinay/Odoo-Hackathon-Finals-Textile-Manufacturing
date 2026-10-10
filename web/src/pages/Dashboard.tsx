@@ -34,7 +34,7 @@ function Figure({ label, value, note, tone, loading }: { label: string; value: s
 }
 
 // Monochrome: colour is reserved for status, so stages are three inks.
-const STAGE_COLOR: Record<Stage, string> = { SPINNING: '#a3a3ab', WEAVING: '#4a4a52', DYEING: '#0b0b0c' }
+const STAGE_COLOR: Record<Stage, string> = { SPINNING: '#6b6b74', WEAVING: '#4a4a52', DYEING: '#0b0b0c' } // ink-3, ink-2, ink
 
 const money = ({ getValue }: { getValue: () => unknown }) => formatINR(getValue() as number)
 
@@ -161,7 +161,7 @@ export function Dashboard() {
           <h2 className="section-head">{month.slice(0, 4)} month by month</h2>
           <div className="flex gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <span className="size-2 rounded-full bg-ink-3/50" />
+              <span className="size-2 rounded-full bg-ink-3" />
               Invoiced (click a bar to open that month)
             </span>
             <span className="flex items-center gap-1">
@@ -183,7 +183,7 @@ export function Dashboard() {
               />
               <Bar dataKey="invoiced" radius={[6, 6, 0, 0]} animationDuration={900}>
                 {trend.map((t) => (
-                  <Cell key={t.month} fill={t.month === month ? '#4a4a52' : '#c9c9cf'} cursor="pointer" onClick={() => setMonth(t.month)} />
+                  <Cell key={t.month} fill={t.month === month ? '#0b0b0c' : '#6b6b74'} cursor="pointer" onClick={() => setMonth(t.month)} />
                 ))}
               </Bar>
               <Line dataKey="profit" type="monotone" stroke="#16704a" strokeWidth={2} dot={{ r: 2.5 }} animationDuration={900} />
