@@ -8,6 +8,8 @@
 //
 // Pure: no database. Same as-of date in, identical dataset out.
 
+const crypto = require('crypto');
+
 const H = 3600 * 1000;
 const D = 24 * H;
 const IST = 5.5 * H;
@@ -275,7 +277,8 @@ function generate({ asOfDate }) {
   }
   orders.forEach((o, i) => {
     o.orderNo = `ORD-${pad(i + 1)}`;
-    o.trackingToken = `trk${pad(i + 1, 5)}${(i * 2654435761 >>> 0).toString(36)}`;
+    // 120 bits from a hash, not a running number: a buyer cannot guess another order's link.
+    o.trackingToken = crypto.createHash('sha256').update(`${SEED}|${o.orderNo}|track`).digest('base64url').slice(0, 20);
   });
   const years = (T - START) / (365 * D);
   for (const m of materials) {
