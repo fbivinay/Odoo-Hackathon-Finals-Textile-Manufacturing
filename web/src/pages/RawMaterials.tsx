@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { AlertTriangle, Bell, BellOff, PackagePlus, ShoppingCart } from 'lucide-react'
+import { AlertTriangle, Bell, BellOff, PackagePlus, Search, ShoppingCart } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { actsAs } from '@/components/AppShell'
@@ -16,11 +17,13 @@ import { Pill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, ApiError } from '@/lib/api'
 import { formatDateTime, formatINR, formatQty } from '@/lib/format'
 import { toOrder } from '@/lib/reorder'
 import { useApi, usePaged } from '@/lib/useApi'
+import { cn } from '@/lib/utils'
 import type { MaterialCategory, MaterialInward, PurchaseOrder, RawMaterial, Ref } from '@/types'
 
 // Everything the mill uses besides yarn, in store sections. Yarn has its own tab (pages/Materials.tsx).
@@ -81,8 +84,9 @@ export function RawMaterials() {
   const canEdit = actsAs(user, 'STORE')
 
   const all = stock.data ?? []
-  // Materials that need reordering come first.
-  const rows = all.filter((m) => category === 'ALL' || m.category === category).sort((a, b) => Number(b.lowStock) - Number(a.lowStock))
+  // Search and filters for the section boxes.
+  const [q, setQ] = useState('')
+  const [status, setStatus] = useState<'' | 'short' | 'onorder' | 'ok'>('')
   // Material already ordered and on its way is not short again.
   const pending = useApi<PurchaseOrder[]>('/materials/purchase-orders?status=PENDING&kind=other')
   const history = usePaged<PurchaseOrder>('/materials/purchase-orders?kind=other')
@@ -99,71 +103,26 @@ export function RawMaterials() {
   }
   const shortOf = (id: string) => short.find((s) => s.m.id === id)?.qty ?? 0
   const low = short.length
+  const needle = q.trim().toLowerCase()
+  const matches = (m: RawMaterial) =>
+    (category === 'ALL' || m.category === category) &&
+    (!needle || [m.yarnType, m.colour, m.sku, m.subcategory].some((x) => x?.toLowerCase().includes(needle))) &&
+    (!status ||
+      (status === 'short' ? m.lowStock || shortOf(m.id) > 0 : status === 'onorder' ? onOrderOf(m.id) > 0 : !m.lowStock && shortOf(m.id) === 0))
+  // Within a box: short first, then on order, then by name.
+  const rank = (m: RawMaterial) => (shortOf(m.id) > 0 || m.lowStock ? 0 : onOrderOf(m.id) > 0 ? 1 : 2)
+  const boxes = CATEGORIES.map((c) => ({
+    c,
+    items: all.filter((m) => m.category === c && matches(m)).sort((a, b) => rank(a) - rank(b) || a.yarnType.localeCompare(b.yarnType)),
+    total: all.filter((m) => m.category === c).length,
+    shortCount: all.filter((m) => m.category === c && (m.lowStock || shortOf(m.id) > 0)).length,
+    value: all.filter((m) => m.category === c).reduce((t, m) => t + Number(m.qtyInStock) * Number(m.avgCost), 0),
+  })).filter((b) => b.items.length > 0)
+  const filtersOn = Boolean(needle || status || category !== 'ALL')
   const reload = () => {
     stock.reload()
     received.reload()
   }
-
-  const stockCols: ColumnDef<RawMaterial>[] = [
-    {
-      accessorKey: 'yarnType',
-      header: 'Material',
-      cell: ({ row: { original: m } }) => (
-        <div className="leading-tight">
-          <p className="font-medium">{m.yarnType}</p>
-          <p className="text-xs text-muted-foreground">{[m.colour, m.sku, m.subcategory].filter(Boolean).join(' · ')}</p>
-        </div>
-      ),
-    },
-    { accessorKey: 'category', header: 'Type', cell: ({ row: { original: m } }) => CATEGORY[m.category as Category] },
-    {
-      id: 'stock',
-      header: 'In stock',
-      accessorFn: (m) => m.qtyInStock,
-      cell: ({ row: { original: m } }) => (
-        <span className="inline-flex items-center gap-2 tabular-nums">
-          {formatQty(m.qtyInStock, m.unit)}
-          {m.lowStock && (
-            <Pill tone="problem">
-              <AlertTriangle className="mr-1 size-3" />
-              {shortOf(m.id) > 0 ? `Short ${formatQty(shortOf(m.id), m.unit)}` : 'Low'}
-            </Pill>
-          )}
-          {onOrderOf(m.id) > 0 && <Pill tone="watch">On order {formatQty(onOrderOf(m.id), m.unit)}</Pill>}
-        </span>
-      ),
-    },
-    ...(canEdit
-      ? [
-          {
-            id: 'action',
-            header: '',
-            enableSorting: false,
-            cell: ({ row: { original: m } }) => (
-              <div className="flex items-center justify-end gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  title={m.reorderLevel > 0 ? `Warns below ${formatQty(m.reorderLevel, m.unit)}. Click to change.` : 'No low-stock warning. Click to set one.'}
-                  aria-label={`Low-stock warning for ${m.yarnType}`}
-                  onClick={() => setWarning(m)}
-                >
-                  {m.reorderLevel > 0 ? <Bell className="size-3.5" /> : <BellOff className="size-3.5 text-muted-foreground" />}
-                </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={m.qtyInStock <= 0}
-                onClick={() => setUsing(m)}
-              >
-                Use
-              </Button>
-              </div>
-            ),
-          } satisfies ColumnDef<RawMaterial>,
-        ]
-      : []),
-  ]
 
   return (
     <div className="space-y-5">
@@ -195,28 +154,112 @@ export function RawMaterials() {
           <TabsTrigger value="received">Received History</TabsTrigger>
         </TabsList>
         <TabsContent value="stock" className="space-y-3">
-          <div className="flex flex-wrap gap-1">
-            {(['ALL', ...CATEGORIES] as const).map((c) => (
-              <Button key={c} size="sm" variant={c === category ? 'secondary' : 'ghost'} onClick={() => setCategory(c)}>
-                {c === 'ALL' ? 'All' : CATEGORY[c]}
-                <span className="ml-1 text-xs text-muted-foreground">{c === 'ALL' ? all.length : all.filter((m) => m.category === c).length}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-56 flex-1">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input aria-label="Search materials" placeholder="Search name, shade, SKU or type" className="pl-8" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <select aria-label="Section" className={cn(selectClass, 'w-52 bg-surface')} value={category} onChange={(e) => setCategory(e.target.value as Category | 'ALL')}>
+              <option value="ALL">All sections ({all.length})</option>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY[c]} ({all.filter((m) => m.category === c).length})
+                </option>
+              ))}
+            </select>
+            <select aria-label="Stock status" className={cn(selectClass, 'w-44 bg-surface')} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
+              <option value="">Any stock level</option>
+              <option value="short">Low or short</option>
+              <option value="onorder">On order</option>
+              <option value="ok">Enough stock</option>
+            </select>
+            {filtersOn && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setQ('')
+                  setStatus('')
+                  setCategory('ALL')
+                }}
+              >
+                Reset filters
               </Button>
-            ))}
+            )}
           </div>
           {stock.error && <p className="text-sm text-problem">{stock.error}</p>}
-          <DataTable
-            columns={stockCols}
-            data={rows}
-            loading={stock.loading}
-            empty={
+          {stock.loading && !stock.data ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {[0, 1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-56 w-full" />
+              ))}
+            </div>
+          ) : boxes.length === 0 ? (
+            <div className="data-table-wrap">
               <EmptyState
                 icon={PackagePlus}
-                line={category === 'ALL' ? 'No raw materials yet.' : `No ${CATEGORY[category].toLowerCase()} yet.`}
-                actionLabel={canEdit ? 'Receive material' : undefined}
-                onAction={canEdit ? () => setReceiving(true) : undefined}
+                line={all.length === 0 ? 'No raw materials yet.' : 'No materials match these filters.'}
+                actionLabel={canEdit && all.length === 0 ? 'Receive material' : undefined}
+                onAction={canEdit && all.length === 0 ? () => setReceiving(true) : undefined}
               />
-            }
-          />
+            </div>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {boxes.map(({ c, items, total, shortCount, value }) => (
+                <section key={c} className="data-table-wrap space-y-2 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h2 className="section-head">{CATEGORY[c]}</h2>
+                      <p className="text-xs text-muted-foreground">
+                        {items.length === total ? `${total} items` : `${items.length} of ${total} items`} · stock worth {formatINR(value)}
+                      </p>
+                    </div>
+                    {shortCount > 0 && <Pill tone="problem">{shortCount} low</Pill>}
+                  </div>
+                  <ul className="divide-y divide-border">
+                    {items.map((m) => (
+                      <li key={m.id} className="flex items-center justify-between gap-3 py-2">
+                        <Link to={`/raw-materials/${m.id}`} className="min-w-0 leading-tight hover:text-brand">
+                          <p className="truncate font-medium">{m.yarnType}</p>
+                          <p className="truncate text-xs text-muted-foreground">{[m.colour, m.sku, m.subcategory].filter(Boolean).join(' · ')}</p>
+                        </Link>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <div className="text-right leading-tight">
+                            <p className="tabular-nums">{formatQty(m.qtyInStock, m.unit)}</p>
+                            <div className="flex justify-end gap-1">
+                              {(m.lowStock || shortOf(m.id) > 0) && (
+                                <Pill tone="problem">
+                                  <AlertTriangle className="mr-1 size-3" />
+                                  {shortOf(m.id) > 0 ? `Short ${formatQty(shortOf(m.id), m.unit)}` : 'Low'}
+                                </Pill>
+                              )}
+                              {onOrderOf(m.id) > 0 && <Pill tone="watch">On order {formatQty(onOrderOf(m.id), m.unit)}</Pill>}
+                            </div>
+                          </div>
+                          {canEdit && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                title={m.reorderLevel > 0 ? `Warns below ${formatQty(m.reorderLevel, m.unit)}. Click to change.` : 'No low-stock warning. Click to set one.'}
+                                aria-label={`Low-stock warning for ${m.yarnType}`}
+                                onClick={() => setWarning(m)}
+                              >
+                                {m.reorderLevel > 0 ? <Bell className="size-3.5" /> : <BellOff className="size-3.5 text-muted-foreground" />}
+                              </Button>
+                              <Button size="xs" variant="outline" disabled={m.qtyInStock <= 0} onClick={() => setUsing(m)}>
+                                Use
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="orders" className="space-y-3">
           <PurchaseOrders

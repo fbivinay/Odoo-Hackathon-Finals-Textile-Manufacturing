@@ -19,7 +19,6 @@ const Production = page(() => import('@/pages/Production'), 'Production')
 const QC = page(() => import('@/pages/QC'), 'QC')
 const Dispatch = page(() => import('@/pages/Dispatch'), 'Dispatch')
 const Track = page(() => import('@/pages/Track'), 'Track')
-const Planning = page(() => import('@/pages/Planning'), 'Planning')
 const RawMaterials = page(() => import('@/pages/RawMaterials'), 'RawMaterials')
 const RawMaterial = page(() => import('@/pages/RawMaterial'), 'RawMaterial')
 const Waste = page(() => import('@/pages/Waste'), 'Waste')
@@ -40,7 +39,6 @@ const PAGES: Record<string, ReactNode> = {
   '/orders': <Orders />,
   '/clients': <Customers />,
   '/production': <Production />,
-  '/planning': <Planning />,
   '/materials': <Materials />,
   '/raw-materials': <RawMaterials />,
   '/waste': <Waste />,

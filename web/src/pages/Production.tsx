@@ -1,13 +1,17 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/DataTable'
-import { Factory } from 'lucide-react'
+import { Factory, Plus } from 'lucide-react'
+import { toast } from 'sonner'
+import { useSession } from '@/auth/session'
+import { actsAs } from '@/components/AppShell'
+import { api, ApiError } from '@/lib/api'
 import { EmptyState } from '@/components/EmptyState'
 import { PageHead } from '@/components/PageHead'
 import { Field, selectClass } from '@/components/Field'
 import { StatusPill, label } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { formatQty, unitFor } from '@/lib/format'
 import { mutate, useApi } from '@/lib/useApi'
@@ -50,6 +54,10 @@ function currentShift(): Shift {
 }
 
 export function Production() {
+  const { user } = useSession()
+  // Only the owner adds machines (POST /machines is owner-only).
+  const canAdd = actsAs(user)
+  const [adding, setAdding] = useState(false)
   const board = useApi<Board>('/production/board')
   const [filter, setFilter] = useState(0)
   // Keep the id, not the row, so the popup shows fresh numbers after each action.
@@ -99,7 +107,18 @@ export function Production() {
 
   return (
     <div className="space-y-5">
-      <PageHead eyebrow="On the floor" title="Production" />
+      <PageHead
+        eyebrow="On the floor"
+        title="Production"
+        actions={
+          canAdd && (
+            <Button className="gap-1.5" onClick={() => setAdding(true)}>
+              <Plus className="size-4" />
+              Add machine
+            </Button>
+          )
+        }
+      />
       {board.error && <p className="text-sm text-problem">{board.error}</p>}
 
       <div className="flex flex-wrap gap-1">
@@ -137,7 +156,79 @@ export function Production() {
       )}
 
       {selected && <MachineDialog m={selected} machines={machines} onClose={() => setOpenId(null)} onChange={board.reload} />}
+      {adding && <AddMachineDialog machines={machines} onClose={() => setAdding(false)} />}
     </div>
+  )
+}
+
+const PREFIX: Record<Stage, string> = { SPINNING: 'SP', WEAVING: 'WV', DYEING: 'DY' }
+const KIND: Record<Stage, string> = { SPINNING: 'Ring Frame', WEAVING: 'Loom', DYEING: 'Dyeing Machine' }
+
+// A new machine joins the floor idle; capacity and planning pick it up from its stage.
+function AddMachineDialog({ machines, onClose }: { machines: BoardMachine[]; onClose: () => void }) {
+  const nextCode = (stage: Stage) => {
+    const nums = machines.filter((m) => m.code.startsWith(`${PREFIX[stage]}-`)).map((m) => Number(m.code.split('-')[1]) || 0)
+    return `${PREFIX[stage]}-${String(Math.max(0, ...nums) + 1).padStart(2, '0')}`
+  }
+  const [type, setType] = useState<Stage>('WEAVING')
+  const [code, setCode] = useState(nextCode('WEAVING'))
+  const [name, setName] = useState(`${KIND.WEAVING} ${Number(nextCode('WEAVING').split('-')[1])}`)
+  const [busy, setBusy] = useState(false)
+
+  function pickType(t: Stage) {
+    setType(t)
+    const c = nextCode(t)
+    setCode(c)
+    setName(`${KIND[t]} ${Number(c.split('-')[1])}`)
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (machines.some((m) => m.code.toLowerCase() === code.trim().toLowerCase())) {
+      toast.error(`${code} is already on the floor. Pick another code.`)
+      return
+    }
+    setBusy(true)
+    try {
+      await api('/machines', { method: 'POST', body: { code: code.trim().toUpperCase(), name: name.trim(), type } })
+      toast.success(`${code.trim().toUpperCase()} added, idle and ready for work`)
+      onClose()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Add machine</DialogTitle>
+          <DialogDescription>It starts idle. Capacity and delivery dates for new orders count it from now on.</DialogDescription>
+        </DialogHeader>
+        <form id="add-machine" onSubmit={submit} className="grid gap-4">
+          <Field label="Stage" htmlFor="machineType">
+            <select id="machineType" className={selectClass} value={type} onChange={(e) => pickType(e.target.value as Stage)}>
+              <option value="SPINNING">Spinning (output in kg)</option>
+              <option value="WEAVING">Weaving (output in metres)</option>
+              <option value="DYEING">Dyeing (output in metres)</option>
+            </select>
+          </Field>
+          <Field label="Code" htmlFor="machineCode" hint="Shown on the floor board and in reports">
+            <Input id="machineCode" required value={code} onChange={(e) => setCode(e.target.value)} />
+          </Field>
+          <Field label="Name" htmlFor="machineName">
+            <Input id="machineName" required value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+        </form>
+        <DialogFooter>
+          <Button type="submit" form="add-machine" disabled={busy}>
+            {busy ? 'Adding…' : 'Add machine'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -267,7 +267,7 @@ const TOOLS = [
   {
     name: 'delivery_forecast',
     description: 'The delivery forecast: which open orders will finish on time or late, which are waiting for yarn, and which yarns need buying.',
-    access: ['/planning'],
+    access: ['/orders', '/production'], // Order Forecast was removed; its readers all have Orders
     input: {},
     async run() {
       const plan = await planningService.schedule({ days: 90 });

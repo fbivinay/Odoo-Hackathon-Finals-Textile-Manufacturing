@@ -27,7 +27,6 @@ const STARTERS: [tab: string, question: string][] = [
   ['/orders', 'Which orders are past their deadline?'],
   ['/materials', 'Which yarns are low on stock?'],
   ['/production', 'Which machines are idle right now?'],
-  ['/planning', 'Which yarns do we need to buy?'],
   ['/qc', 'How many rolls are waiting for quality check?'],
   ['/waste', 'What are the top defects this month?'],
   ['/dispatch', 'What is ready to dispatch?'],
