@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { api, ApiError } from './api'
 
-export function useApi<T>(path: string | null, deps: unknown[] = []) {
+export function useApi<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -21,8 +22,19 @@ export function useApi<T>(path: string | null, deps: unknown[] = []) {
     return () => {
       live = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, nonce, ...deps])
+  }, [path, nonce])
 
-  return { data, loading, error, reload, setData }
+  return { data, loading, error, reload }
+}
+
+// Fire a write, toast the outcome, return true on success.
+export async function mutate(path: string, method: string, body: unknown, success: string) {
+  try {
+    await api(path, { method, body })
+    toast.success(success)
+    return true
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : 'Something went wrong.')
+    return false
+  }
 }

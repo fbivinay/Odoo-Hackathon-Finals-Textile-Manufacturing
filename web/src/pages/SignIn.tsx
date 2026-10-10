@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { AlertCircle, CalendarCheck, Clock, Loader2, ShieldCheck, Wallet } from 'lucide-react'
+import { AlertCircle, ClipboardCheck, Factory, Loader2, Package, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -8,31 +8,35 @@ import { PasswordInput } from '@/components/ui/password-input'
 import { Logo } from '@/components/Logo'
 import { useSession } from '@/auth/session'
 import { ApiError } from '@/lib/api'
+import { homeFor } from '@/components/AppShell'
+import type { Role } from '@/types'
 
 const FEATURES = [
-  { icon: Clock, title: 'Attendance, tracked automatically' },
-  { icon: CalendarCheck, title: 'Leave without the back-and-forth' },
-  { icon: Wallet, title: 'Payroll, always current' },
-  { icon: ShieldCheck, title: 'Access that matches your role' },
+  { icon: Package, title: 'Yarn stock with low-stock warnings' },
+  { icon: Factory, title: 'Every machine, every order, live' },
+  { icon: ClipboardCheck, title: 'Each roll traced through QC' },
+  { icon: Truck, title: 'Dispatch, invoice and buyer tracking' },
 ]
 
+const DEMO_ROLES: Role[] = ['OWNER', 'STORE', 'PRODUCTION', 'QC', 'DISPATCH']
+
 export function SignIn() {
-  const { employee, loading, signIn } = useSession()
+  const { user, loading, signIn } = useSession()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  if (!loading && employee) return <Navigate to="/" replace />
+  if (!loading && user) return <Navigate to={homeFor(user.role)} replace />
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError(null)
     try {
-      await signIn(email, password)
-      navigate('/', { replace: true })
+      const u = await signIn(email, password)
+      navigate(homeFor(u.role), { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Sign in failed.')
     } finally {
@@ -60,16 +64,16 @@ export function SignIn() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
             <Logo className="size-4.5" />
           </div>
-          <span className="text-base font-medium">Dayflow</span>
+          <span className="text-base font-medium">Everest Textile Mills</span>
         </div>
 
         <div className="relative space-y-10">
           <div className="space-y-3">
             <h1 className="text-3xl leading-tight font-semibold tracking-tight">
-              One place to run your whole workforce.
+              From yarn at the gate to rolls on the truck.
             </h1>
             <p className="max-w-sm text-sm text-zinc-400">
-              Attendance, leave, and payroll, all in one place, so HR can spend less time on busywork.
+              One system replacing the mill's notebooks and phone calls.
             </p>
           </div>
 
@@ -85,7 +89,7 @@ export function SignIn() {
           </div>
         </div>
 
-        <p className="relative text-xs text-zinc-500">© {new Date().getFullYear()} Dayflow HRMS</p>
+        <p className="relative text-xs text-zinc-500">© {new Date().getFullYear()} Everest Textile Mills</p>
       </div>
 
       <div className="flex items-center justify-center bg-zinc-50 px-4 py-16">
@@ -95,14 +99,14 @@ export function SignIn() {
               <div className="flex h-6 w-6 items-center justify-center rounded bg-indigo-600 text-white">
                 <Logo className="size-3.5" />
               </div>
-              <span className="text-sm font-medium">Dayflow</span>
+              <span className="text-sm font-medium">Everest Textile Mills</span>
             </div>
           </div>
 
           <div className="space-y-8 rounded-xl border bg-white p-10 shadow-sm">
             <div className="space-y-1.5">
               <h2 className="text-xl font-semibold tracking-tight">Sign in</h2>
-              <p className="text-sm text-muted-foreground">Enter your work email and password to continue.</p>
+              <p className="text-sm text-muted-foreground">Use your mill email and password.</p>
             </div>
 
             <form className="space-y-5" onSubmit={onSubmit} noValidate>
@@ -116,7 +120,7 @@ export function SignIn() {
                   disabled={busy}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="employee1@dayflow.dev"
+                  placeholder="store@everest.dev"
                   required
                 />
               </div>
@@ -150,9 +154,25 @@ export function SignIn() {
             </form>
           </div>
 
-          <p className="text-center text-xs text-muted-foreground">
-            Don't have an account? Ask your admin to invite you.
-          </p>
+          <div className="space-y-2 text-center">
+            <p className="text-xs text-muted-foreground">Demo logins (password Password123)</p>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {DEMO_ROLES.map((r) => (
+                <Button
+                  key={r}
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => {
+                    setEmail(`${r.toLowerCase()}@everest.dev`)
+                    setPassword('Password123')
+                  }}
+                >
+                  {r.charAt(0) + r.slice(1).toLowerCase()}
+                </Button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

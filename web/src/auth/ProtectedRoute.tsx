@@ -1,23 +1,13 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, Outlet } from 'react-router-dom'
+import { homeFor } from '@/components/AppShell'
+import type { Role } from '@/types'
 import { useSession } from './session'
 
-// `anyRole` opts out of the role-exclusive redirects below — for the handful of routes
-// (e.g. /notifications) that both an employee and an admin should be able to land on
-// directly, without being bounced to their role's home page first.
-export function ProtectedRoute({ adminOnly = false, anyRole = false }: { adminOnly?: boolean; anyRole?: boolean }) {
-  const { employee, loading } = useSession()
-  const location = useLocation()
-
+// OWNER passes every role check, same as the backend's requireRole.
+export function ProtectedRoute({ roles }: { roles?: Role[] }) {
+  const { user, loading } = useSession()
   if (loading) return null
-  if (!employee) return <Navigate to="/sign-in" replace />
-
-  if (employee.mustChangePassword) {
-    return location.pathname === '/change-password' ? <Outlet /> : <Navigate to="/change-password" replace />
-  }
-
-  if (anyRole) return <Outlet />
-  if (adminOnly && employee.role !== 'HR_ADMIN') return <Navigate to="/" replace />
-  if (!adminOnly && employee.role === 'HR_ADMIN') return <Navigate to="/admin" replace />
-
+  if (!user) return <Navigate to="/sign-in" replace />
+  if (roles && user.role !== 'OWNER' && !roles.includes(user.role)) return <Navigate to={homeFor(user.role)} replace />
   return <Outlet />
 }

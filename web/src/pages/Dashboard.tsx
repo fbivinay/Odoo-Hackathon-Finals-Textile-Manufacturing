@@ -1,155 +1,93 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { toast } from 'sonner'
-import { CalendarRange, LogIn, LogOut, ReceiptIndianRupee, UserRound } from 'lucide-react'
-import { AttendanceRibbon, RibbonLegend } from '@/components/AttendanceRibbon'
-import { LeaveStatusPill, LeaveTypePill } from '@/components/StatusPill'
+import { useState } from 'react'
+import type { ColumnDef } from '@tanstack/react-table'
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { DataTable } from '@/components/DataTable'
+import { label } from '@/components/StatusPill'
 import { KpiCard } from '@/components/tremor/KpiCard'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { useSession } from '@/auth/session'
-import { api, ApiError } from '@/lib/api'
-import { asISODate, elapsed, formatDate, toISODate } from '@/lib/format'
+import { Input } from '@/components/ui/input'
+import { formatINR, formatQty, unitFor } from '@/lib/format'
 import { useApi } from '@/lib/useApi'
-import type { Attendance, Leave } from '@/types'
+import type { OwnerReport, Stage } from '@/types'
 
-const QUICK_LINKS = [
-  { to: '/profile', label: 'Profile', hint: 'Personal and job details', icon: UserRound },
-  { to: '/leave', label: 'Leave', hint: 'Apply and track requests', icon: CalendarRange },
-  { to: '/payroll', label: 'Payroll', hint: 'Current salary structure', icon: ReceiptIndianRupee },
+const STAGE_COLOR: Record<Stage, string> = { SPINNING: '#0ea5e9', WEAVING: '#6366f1', DYEING: '#a855f7' }
+
+const orderCols: ColumnDef<OwnerReport['orders'][number]>[] = [
+  { accessorKey: 'orderNo', header: 'Order' },
+  { accessorKey: 'buyer', header: 'Buyer' },
+  { accessorKey: 'revenue', header: 'Order value', cell: ({ getValue }) => formatINR(getValue<number>()) },
+  { accessorKey: 'materialCost', header: 'Yarn cost', cell: ({ getValue }) => formatINR(getValue<number>()) },
+  {
+    accessorKey: 'margin',
+    header: 'Margin',
+    cell: ({ row: { original: o } }) => (
+      <span className={o.margin < 0 ? 'text-rose-600' : 'text-emerald-700'}>
+        {formatINR(o.margin)}
+        {o.revenue > 0 && <span className="ml-1 text-xs text-muted-foreground">{Math.round((o.margin / o.revenue) * 100)}%</span>}
+      </span>
+    ),
+  },
 ]
 
-function LiveTimer({ since }: { since: string }) {
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [])
-  return <span className="tabular-nums">{elapsed(since, now)}</span>
-}
-
 export function Dashboard() {
-  const { employee } = useSession()
-  const attendance = useApi<Attendance[]>('/attendance')
-  const leave = useApi<Leave[]>('/leave')
-  const [busy, setBusy] = useState(false)
-
-  const records = attendance.data ?? []
-  const today = records.find((r) => asISODate(r.date) === toISODate(new Date())) ?? null
-  const present = records.filter((r) => r.status === 'PRESENT').length
-  const absent = records.filter((r) => r.status === 'ABSENT').length
-  const pending = (leave.data ?? []).filter((l) => l.status === 'PENDING').length
-
-  async function punch(kind: 'check-in' | 'check-out') {
-    setBusy(true)
-    try {
-      await api<Attendance>(`/attendance/${kind}`, { method: 'POST' })
-      toast.success(kind === 'check-in' ? 'Checked in' : 'Checked out')
-      attendance.reload()
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'That did not go through.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const { data: r, loading, error } = useApi<OwnerReport>(`/reports/owner?month=${month}`)
 
   return (
     <div className="space-y-6">
-      <Card className="shadow-sm">
-        <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
-          <div>
-            <CardTitle className="text-base">Last 30 days</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">
-              One bar per day, coloured by attendance status.
-            </p>
-          </div>
-          {today?.checkIn && !today.checkOut ? (
-            <Button size="sm" disabled={busy} onClick={() => punch('check-out')}>
-              <LogOut className="size-4" />
-              Check out · <LiveTimer since={today.checkIn} />
-            </Button>
-          ) : (
-            <Button size="sm" disabled={busy || Boolean(today?.checkOut)} onClick={() => punch('check-in')}>
-              <LogIn className="size-4" />
-              {today?.checkOut ? 'Done for today' : 'Check in'}
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {attendance.loading ? (
-            <Skeleton className="h-10 w-full" />
-          ) : (
-            <AttendanceRibbon records={records} shift={employee?.shift ?? null} />
-          )}
-          <RibbonLegend />
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">Month at a glance</h2>
+        <Input type="month" className="w-40" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} aria-label="Month" />
+      </div>
+      {error && <p className="text-sm text-rose-600">{error}</p>}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Days present" value={present} loading={attendance.loading} hint="Last 30 working days" />
-        <KpiCard label="Days absent" value={absent} loading={attendance.loading} hint="Last 30 working days" />
-        <KpiCard label="Leave pending" value={pending} loading={leave.loading} hint="Awaiting a decision" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <KpiCard label="Invoiced" value={formatINR(r?.revenue ?? 0)} loading={loading} />
+        <KpiCard label="Received from buyers" value={formatINR(r?.received ?? 0)} loading={loading} />
+        <KpiCard label="Raw material bills" value={formatINR(r?.materialCost ?? 0)} loading={loading} />
+        <KpiCard label="Wages paid" value={formatINR(r?.wages ?? 0)} loading={loading} />
         <KpiCard
-          label="Today"
-          value={today?.checkIn ? (today.checkOut ? 'Checked out' : 'Checked in') : 'Not checked in'}
-          loading={attendance.loading}
+          label="Profit"
+          value={<span className={(r?.profit ?? 0) < 0 ? 'text-rose-600' : 'text-emerald-600'}>{formatINR(r?.profit ?? 0)}</span>}
+          hint="Invoiced − material − wages"
+          loading={loading}
+          className="ring-1 ring-indigo-100"
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {QUICK_LINKS.map(({ to, label, hint, icon: Icon }) => (
-          <Link
-            key={to}
-            to={to}
-            className="group rounded-lg border border-border bg-card p-4 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50/40"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="rounded-md bg-indigo-50 p-2 text-indigo-600">
-                <Icon className="size-4" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">{label}</p>
-                <p className="text-xs text-muted-foreground">{hint}</p>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+      <section className="space-y-3 rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium">Machine output</h2>
+          <div className="flex gap-3 text-xs text-muted-foreground">
+            {(Object.keys(STAGE_COLOR) as Stage[]).map((s) => (
+              <span key={s} className="flex items-center gap-1">
+                <span className="size-2 rounded-full" style={{ background: STAGE_COLOR[s] }} />
+                {label(s)} ({unitFor(s)})
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={r?.machines ?? []} margin={{ left: 0, right: 8, top: 8 }}>
+              <CartesianGrid vertical={false} stroke="#f4f4f5" />
+              <XAxis dataKey="code" tickLine={false} axisLine={false} fontSize={12} />
+              <YAxis tickLine={false} axisLine={false} fontSize={12} width={48} />
+              <Tooltip
+                cursor={{ fill: '#f4f4f5' }}
+                formatter={(v, _n, item) => [formatQty(Number(v), unitFor(item.payload.type)), 'Produced']}
+              />
+              <Bar dataKey="produced" radius={[4, 4, 0, 0]}>
+                {r?.machines.map((m) => <Cell key={m.code} fill={STAGE_COLOR[m.type]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
 
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base">Recent activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {leave.loading ? (
-            <div className="space-y-2">
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-9 w-full" />
-              ))}
-            </div>
-          ) : (leave.data ?? []).length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Nothing yet. Your leave requests will show up here.
-            </p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {(leave.data ?? []).slice(0, 5).map((l) => (
-                <li key={l.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <div>
-                    <p className="flex items-center gap-2 text-sm">
-                      <LeaveTypePill type={l.type} />
-                      {formatDate(l.startDate)} – {formatDate(l.endDate)}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">{l.remarks ?? 'No remarks'}</p>
-                  </div>
-                  <LeaveStatusPill status={l.status} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium">Cost per order</h2>
+        <DataTable columns={orderCols} data={r?.orders ?? []} loading={loading} initialSorting={[{ id: 'margin', desc: true }]} />
+      </section>
     </div>
   )
 }

@@ -1,59 +1,35 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import {
-  Bell,
-  CalendarDays,
-  CalendarRange,
-  ChartColumn,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  ReceiptIndianRupee,
-  Users,
-  UserRound,
-} from 'lucide-react'
+import { ClipboardCheck, Factory, LayoutDashboard, LogOut, Menu, Package, ShoppingCart, Truck } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 import { Logo } from '@/components/Logo'
 import { useSession } from '@/auth/session'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { EmployeeAvatar } from '@/components/EmployeeAvatar'
-import { NotificationBell } from '@/components/NotificationBell'
 import { cn } from '@/lib/utils'
-
-const EMPLOYEE_NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/attendance', label: 'Attendance', icon: CalendarDays },
-  { to: '/leave', label: 'Leave', icon: CalendarRange },
-  { to: '/payroll', label: 'Payroll', icon: ReceiptIndianRupee },
-  { to: '/profile', label: 'Profile', icon: UserRound },
-  { to: '/notifications', label: 'Alerts', icon: Bell },
-]
-
-const ADMIN_NAV = [
-  { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
-  { to: '/admin/analytics', label: 'Analytics', icon: ChartColumn },
-  { to: '/admin/employees', label: 'Employees', icon: Users },
-  { to: '/admin/attendance', label: 'Attendance', icon: CalendarDays },
-  { to: '/admin/leave', label: 'Leave approvals', icon: CalendarRange },
-  { to: '/admin/payroll', label: 'Payroll', icon: ReceiptIndianRupee },
-  { to: '/notifications', label: 'Alerts', icon: Bell },
-]
+import type { Role } from '@/types'
 
 interface NavItem {
   to: string
   label: string
   icon: ComponentType<{ className?: string }>
-  end?: boolean
+  roles: Role[] // OWNER sees everything
 }
 
-function SidebarNav({ nav, onNavigate, onSignOutClick }: { nav: NavItem[]; onNavigate?: () => void; onSignOutClick: () => void }) {
+export const NAV: NavItem[] = [
+  { to: '/dashboard', label: 'Owner dashboard', icon: LayoutDashboard, roles: [] },
+  { to: '/materials', label: 'Raw material', icon: Package, roles: ['STORE'] },
+  { to: '/orders', label: 'Orders', icon: ShoppingCart, roles: ['STORE', 'PRODUCTION', 'DISPATCH'] },
+  { to: '/production', label: 'Production', icon: Factory, roles: ['PRODUCTION'] },
+  { to: '/qc', label: 'Quality check', icon: ClipboardCheck, roles: ['QC'] },
+  { to: '/dispatch', label: 'Dispatch', icon: Truck, roles: ['DISPATCH'] },
+]
+
+export const navFor = (role: Role) => NAV.filter((n) => role === 'OWNER' || n.roles.includes(role))
+export const homeFor = (role: Role) => navFor(role)[0].to
+
+const ROLE_LABEL: Record<Role, string> = { OWNER: 'Owner', STORE: 'Store', PRODUCTION: 'Production', QC: 'Quality', DISPATCH: 'Dispatch' }
+
+function SidebarNav({ role, onNavigate, onSignOut }: { role: Role; onNavigate?: () => void; onSignOut: () => void }) {
   return (
     <>
       <div className="flex h-14 items-center gap-2 border-b border-border px-5">
@@ -61,24 +37,21 @@ function SidebarNav({ nav, onNavigate, onSignOutClick }: { nav: NavItem[]; onNav
           <Logo className="size-3.5" />
         </div>
         <div className="leading-tight">
-          <p className="text-sm font-medium">Dayflow</p>
-          <p className="text-[11px] text-muted-foreground">Every workday, aligned</p>
+          <p className="text-sm font-medium">Everest</p>
+          <p className="text-[11px] text-muted-foreground">Textile Mills</p>
         </div>
       </div>
 
       <nav className="flex-1 space-y-0.5 p-3">
-        {nav.map(({ to, label, icon: Icon, end }) => (
+        {navFor(role).map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
-            end={end}
             onClick={onNavigate}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
-                isActive
-                  ? 'bg-indigo-50 font-medium text-indigo-700'
-                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900',
+                isActive ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900',
               )
             }
           >
@@ -89,12 +62,7 @@ function SidebarNav({ nav, onNavigate, onSignOutClick }: { nav: NavItem[]; onNav
       </nav>
 
       <div className="border-t border-border p-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start gap-2.5 text-zinc-600"
-          onClick={onSignOutClick}
-        >
+        <Button variant="ghost" size="sm" className="w-full justify-start gap-2.5 text-zinc-600" onClick={onSignOut}>
           <LogOut className="size-4" />
           Log out
         </Button>
@@ -104,61 +72,34 @@ function SidebarNav({ nav, onNavigate, onSignOutClick }: { nav: NavItem[]; onNav
 }
 
 export function AppShell() {
-  const { employee, signOut } = useSession()
+  const { user, signOut } = useSession()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const [confirmingSignOut, setConfirmingSignOut] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  if (!employee) return null
+  if (!user) return null
 
-  const nav = employee.role === 'HR_ADMIN' ? ADMIN_NAV : EMPLOYEE_NAV
-  const activeLabel = nav.find((n) => n.to === pathname)?.label ?? 'Dayflow'
+  const activeLabel = NAV.find((n) => pathname.startsWith(n.to))?.label ?? 'Everest'
 
   function handleSignOut() {
+    setMobileNavOpen(false)
     signOut()
     navigate('/sign-in', { replace: true })
   }
 
   return (
     <div className="flex min-h-screen bg-zinc-50">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-border bg-white md:flex">
-        <SidebarNav nav={nav} onSignOutClick={() => setConfirmingSignOut(true)} />
+      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-border bg-white md:flex print:hidden">
+        <SidebarNav role={user.role} onSignOut={handleSignOut} />
       </aside>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-60 md:hidden">
-          <SidebarNav
-            nav={nav}
-            onNavigate={() => setMobileNavOpen(false)}
-            onSignOutClick={() => {
-              setMobileNavOpen(false)
-              setConfirmingSignOut(true)
-            }}
-          />
+          <SidebarNav role={user.role} onNavigate={() => setMobileNavOpen(false)} onSignOut={handleSignOut} />
         </SheetContent>
       </Sheet>
 
-      <Dialog open={confirmingSignOut} onOpenChange={setConfirmingSignOut}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Log out?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            You'll need to sign in again to get back to your dashboard.
-          </p>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setConfirmingSignOut(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleSignOut}>
-              Log out
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <div className="flex min-w-0 flex-1 flex-col md:pl-60">
-        <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-white/80 px-4 backdrop-blur sm:px-6">
+      <div className="flex min-w-0 flex-1 flex-col md:pl-60 print:pl-0">
+        <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-white/80 px-4 backdrop-blur sm:px-6 print:hidden">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setMobileNavOpen(true)}>
               <Menu className="size-4.5" />
@@ -166,13 +107,9 @@ export function AppShell() {
             </Button>
             <h1 className="text-sm font-medium">{activeLabel}</h1>
           </div>
-          <div className="flex items-center gap-3">
-            <NotificationBell />
-            <div className="hidden text-right leading-tight sm:block">
-              <p className="text-xs font-medium">{employee.name}</p>
-              <p className="text-[11px] text-muted-foreground">{employee.email}</p>
-            </div>
-            <EmployeeAvatar name={employee.name} photoUrl={employee.photoUrl} className="size-8" fallbackClassName="text-xs" />
+          <div className="text-right leading-tight">
+            <p className="text-xs font-medium">{user.name}</p>
+            <p className="text-[11px] text-muted-foreground">{ROLE_LABEL[user.role]}</p>
           </div>
         </header>
 

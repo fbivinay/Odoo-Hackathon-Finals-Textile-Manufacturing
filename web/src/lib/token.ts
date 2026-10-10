@@ -14,7 +14,7 @@ export function clearToken() {
 
 export interface TokenPayload {
   sub: string
-  role: 'EMPLOYEE' | 'HR_ADMIN'
+  role: string
   exp: number
 }
 

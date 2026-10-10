@@ -1,99 +1,180 @@
-export type Role = 'EMPLOYEE' | 'HR_ADMIN'
-export type LeaveType = 'PAID' | 'SICK' | 'UNPAID'
-export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
-export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE'
+// Mirrors backend/prisma/schema.prisma. Prisma Decimals arrive as strings in JSON.
+export type Dec = string
 
-// Presentational only, never sent by the API: today's live check-in, days with no row, and
-// a shift that hasn't started yet today.
-export type DisplayStatus = AttendanceStatus | 'IN_PROGRESS' | 'NO_RECORD' | 'UPCOMING'
+export type Role = 'OWNER' | 'STORE' | 'PRODUCTION' | 'QC' | 'DISPATCH'
+export type Shift = 'MORNING' | 'EVENING' | 'NIGHT'
+export type Stage = 'SPINNING' | 'WEAVING' | 'DYEING'
+export type OrderStatus = 'PENDING' | 'SPINNING' | 'WEAVING' | 'DYEING' | 'QC' | 'READY' | 'DISPATCHED' | 'CANCELLED'
+export type MachineStatus = 'IDLE' | 'RUNNING' | 'BREAKDOWN' | 'MAINTENANCE'
+export type JobStatus = 'RUNNING' | 'COMPLETED' | 'STOPPED'
+export type RollStatus = 'PENDING_QC' | 'PASSED' | 'REWORK' | 'REJECTED' | 'DISPATCHED'
+export type QCResult = 'PASS' | 'REWORK' | 'REJECT'
+export type InvoiceStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
 
-export interface Employee {
+export interface User {
   id: string
-  employeeId: string
+  name: string
   email: string
   role: Role
-  name: string
-  phone: string | null
-  address: string | null
-  photoUrl: string | null
-  jobTitle: string | null
-  department: string | null
-  shift: string | null
-  isActive: boolean
-  emailVerified: boolean
-  mustChangePassword: boolean
-  createdAt: string
-}
-
-export interface EmployeeRef {
-  id: string
-  name: string
-  employeeId: string
-}
-
-export interface Attendance {
-  id: string
-  employeeId: string
-  date: string
-  checkIn: string | null
-  checkOut: string | null
-  status: AttendanceStatus
-}
-
-// Only present on GET /admin/attendance, which includes the employee relation.
-export interface AdminAttendanceRow extends Attendance {
-  employee: EmployeeRef
-}
-
-export interface Leave {
-  id: string
-  employeeId: string
-  type: LeaveType
-  startDate: string
-  endDate: string
-  remarks: string | null
-  status: LeaveStatus
-  decisionById: string | null
-  comment: string | null
-  createdAt: string
-}
-
-// Only present on GET /admin/leave, which includes the employee relation.
-export interface AdminLeaveRow extends Leave {
-  employee: EmployeeRef
-}
-
-export interface Payroll {
-  id: string
-  employeeId: string
-  baseSalary: string
-  effectiveDate: string
-  createdById: string
-  createdAt: string
 }
 
 export interface AuthResponse {
   token: string
-  employee: Pick<Employee, 'id' | 'employeeId' | 'email' | 'role' | 'name' | 'mustChangePassword'>
+  user: User
 }
 
-// Matches GET /api/admin/payroll (payrollService.listCurrentForAll) — deliberately thin,
-// the backend selects only these fields for the roster-wide payroll view.
-export interface AdminPayrollSummary {
+export interface Ref {
   id: string
-  employeeId: string
   name: string
-  department: string | null
-  jobTitle: string | null
-  payroll: Payroll | null
 }
 
-// Not backed by any real endpoint yet — GET /api/me/notifications doesn't exist on the
-// deployed backend. Shape matches the standing backend handoff notes so nothing changes
-// here once it ships. Requests against real prod are caught and treated as "no notifications".
-export interface Notification {
+export interface RawMaterial {
   id: string
-  message: string
-  read: boolean
+  yarnType: string
+  colour: string
+  unit: string
+  qtyInStock: Dec
+  reorderLevel: Dec
+  avgCost: Dec
+}
+
+export interface MaterialInward {
+  id: string
+  materialId: string
+  supplierId: string
+  orderId: string | null
+  qty: Dec
+  rate: Dec
+  billAmount: Dec
+  receivedAt: string
+  material: RawMaterial
+  supplier: Ref
+  order: { id: string; orderNo: string } | null
+}
+
+export interface Order {
+  id: string
+  orderNo: string
+  trackingToken: string
+  buyerId: string
+  materialId: string | null
+  fabricType: string
+  colour: string
+  qty: Dec
+  yarnRequired: Dec
+  pricePerUnit: Dec
+  deadline: string
+  status: OrderStatus
   createdAt: string
+  buyer: Ref
+  material: RawMaterial | null
+}
+
+export type OrderRef = Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour'>
+
+export interface Machine {
+  id: string
+  code: string
+  name: string
+  type: Stage
+  status: MachineStatus
+}
+
+export interface ProductionJob {
+  id: string
+  orderId: string
+  machineId: string
+  stage: Stage
+  shift: Shift
+  status: JobStatus
+  qtyPlanned: Dec
+  qtyProduced: Dec
+  startedAt: string
+  completedAt: string | null
+  order: OrderRef
+}
+
+// GET /machines includes the running job (if any) and today's roll output.
+export interface MachineBoardRow extends Machine {
+  currentJob: ProductionJob | null
+  producedToday: Dec
+}
+
+export interface Roll {
+  id: string
+  rollNo: string
+  orderId: string
+  machineId: string
+  jobId: string | null
+  dispatchId: string | null
+  qty: Dec
+  status: RollStatus
+  createdAt: string
+  order: OrderRef
+  machine: Pick<Machine, 'id' | 'code' | 'type'>
+}
+
+export interface QCRecord {
+  id: string
+  rollId: string
+  result: QCResult
+  defectType: string | null
+  notes: string | null
+  checkedAt: string
+  roll: Pick<Roll, 'id' | 'rollNo'> & { order: OrderRef; machine: Pick<Machine, 'id' | 'code'> }
+  inspector: Ref
+}
+
+export interface Payment {
+  id: string
+  amount: Dec
+  method: string | null
+  paidAt: string
+}
+
+export interface Invoice {
+  id: string
+  invoiceNo: string
+  amount: Dec
+  status: InvoiceStatus
+  issuedAt: string
+  payments: Payment[]
+}
+
+export interface Dispatch {
+  id: string
+  dispatchNo: string
+  vehicleNo: string | null
+  dispatchedAt: string
+  order: Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour' | 'pricePerUnit'>
+  buyer: Ref
+  rolls: Pick<Roll, 'id' | 'rollNo' | 'qty'>[]
+  invoice: Invoice | null
+}
+
+// GET /track/:token — public, no auth.
+export interface Tracking {
+  orderNo: string
+  buyerName: string
+  fabricType: string
+  colour: string
+  qty: Dec
+  deadline: string
+  status: OrderStatus
+  producedQty: Dec
+  passedQty: Dec
+  dispatchedQty: Dec
+  updatedAt: string
+}
+
+// GET /reports/owner?month=YYYY-MM — OWNER only.
+export interface OwnerReport {
+  month: string
+  revenue: number // invoiced this month
+  received: number // buyer payments this month
+  materialCost: number // inward bills this month
+  wages: number // wage payments this month
+  profit: number // revenue - materialCost - wages
+  orders: { orderNo: string; buyer: string; materialCost: number; revenue: number; margin: number }[]
+  machines: { code: string; type: Stage; produced: number }[]
 }

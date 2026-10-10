@@ -1,15 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, ApiError } from '@/lib/api'
 import { clearToken, decodeToken, getToken, setToken } from '@/lib/token'
-import type { AuthResponse, Employee } from '@/types'
+import type { AuthResponse, User } from '@/types'
 
 interface SessionValue {
-  employee: Employee | null
+  user: User | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<void>
-  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
+  signIn: (email: string, password: string) => Promise<User>
   signOut: () => void
-  refresh: () => Promise<void>
 }
 
 const SessionContext = createContext<SessionValue | null>(null)
@@ -21,13 +19,8 @@ export function useSession() {
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [employee, setEmployee] = useState<Employee | null>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-
-  async function refresh() {
-    const employee = await api<Employee>('/me')
-    setEmployee(employee)
-  }
 
   useEffect(() => {
     const token = getToken()
@@ -35,34 +28,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       return
     }
-    refresh()
+    api<User>('/me')
+      .then(setUser)
       .catch(() => clearToken())
       .finally(() => setLoading(false))
   }, [])
 
   const value = useMemo<SessionValue>(
     () => ({
-      employee,
+      user,
       loading,
       async signIn(email, password) {
-        const { token } = await api<AuthResponse>('/auth/signin', {
-          method: 'POST',
-          body: { email, password },
-        })
+        const { token, user } = await api<AuthResponse>('/auth/signin', { method: 'POST', body: { email, password } })
         setToken(token)
-        await refresh()
-      },
-      async changePassword(currentPassword, newPassword) {
-        await api('/me/password', { method: 'PATCH', body: { currentPassword, newPassword } })
-        await refresh()
+        setUser(user)
+        return user
       },
       signOut() {
         clearToken()
-        setEmployee(null)
+        setUser(null)
       },
-      refresh,
     }),
-    [employee, loading],
+    [user, loading],
   )
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
