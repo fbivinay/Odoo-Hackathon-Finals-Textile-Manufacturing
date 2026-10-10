@@ -26,7 +26,7 @@ export const NAV: NavItem[] = [
 export const navFor = (role: Role) => NAV.filter((n) => role === 'OWNER' || n.roles.includes(role))
 export const homeFor = (role: Role) => navFor(role)[0].to
 
-const ROLE_LABEL: Record<Role, string> = { OWNER: 'Owner', STORE: 'Store', PRODUCTION: 'Production', QC: 'Quality', DISPATCH: 'Dispatch' }
+export const ROLE_LABEL: Record<Role, string> = { OWNER: 'Owner', STORE: 'Store', PRODUCTION: 'Production', QC: 'Quality Control', DISPATCH: 'Dispatch' }
 
 export function Wordmark() {
   return (
