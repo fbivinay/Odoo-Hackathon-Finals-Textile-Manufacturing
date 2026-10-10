@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 196 48" width="392" height="96">
+  <rect width="48" height="48" rx="11" fill="#1e2a78" />
+  <path d="M10 9.5h9l5.2 7H10z" fill="#facc15" />
+  <path d="M10 20.5h17.2l5.2 7H10zM10 31.5h25.4l5.2 7H10z" fill="#ffffff" />
+  <text x="60" y="26" font-family="'Geist Variable', Inter, Helvetica, Arial, sans-serif" font-weight="700" font-size="22" letter-spacing="-0.5" fill="#1e2a78">Everest</text>
+  <text x="61" y="41" font-family="'Geist Variable', Inter, Helvetica, Arial, sans-serif" font-weight="500" font-size="9" letter-spacing="2.6" fill="#6b7280">TEXTILE MILLS</text>
+</svg>
