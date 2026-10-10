@@ -79,13 +79,13 @@ export function Planning() {
 
   return (
     <div className="space-y-5">
-      <PageHead eyebrow="Next 90 days" title="Planning" />
+      <PageHead eyebrow="Open customer orders" title="Order Forecast" />
       {error && <p className="text-sm text-problem">{error}</p>}
 
       {/* The store comes here to see what to buy; everyone else for the deadlines. */}
       <Tabs defaultValue={user?.role === 'STORE' ? 'yarn' : 'schedule'}>
         <TabsList>
-          <TabsTrigger value="schedule">Schedule{s && s.late > 0 ? ` · ${s.late} late` : ''}</TabsTrigger>
+          <TabsTrigger value="schedule">Deadlines{s && s.late > 0 ? ` · ${s.late} late` : ''}</TabsTrigger>
           <TabsTrigger value="yarn">Yarn to buy{s && s.yarnsShort > 0 ? ` · ${s.yarnsShort}` : ''}</TabsTrigger>
         </TabsList>
         <TabsContent value="schedule" className="space-y-3">

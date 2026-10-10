@@ -4,6 +4,7 @@ import { useState, type ComponentType } from 'react'
 import { Logo } from '@/components/Logo'
 import { useSession } from '@/auth/session'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import type { Role } from '@/types'
@@ -20,7 +21,7 @@ export const NAV: NavItem[] = [
   { to: '/materials', label: 'Yarn Received', icon: Package, roles: ['STORE'] },
   { to: '/orders', label: 'Customer Orders', icon: ShoppingCart, roles: ['STORE', 'PRODUCTION', 'DISPATCH'] },
   { to: '/production', label: 'Production', icon: Factory, roles: ['PRODUCTION'] },
-  { to: '/planning', label: 'Planning', icon: CalendarRange, roles: ['PRODUCTION', 'STORE'] },
+  { to: '/planning', label: 'Order Forecast', icon: CalendarRange, roles: ['PRODUCTION', 'STORE'] },
   { to: '/qc', label: 'Quality check', icon: ClipboardCheck, roles: ['QC'] },
   { to: '/dispatch', label: 'Dispatch', icon: Truck, roles: ['DISPATCH'] },
 ]
@@ -95,10 +96,17 @@ export function AppShell() {
   const { user, signOut } = useSession()
   const navigate = useNavigate()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [confirmLogout, setConfirmLogout] = useState(false)
   if (!user) return null
 
-  function handleSignOut() {
+  // Log out asks first, so a stray click doesn't end the session.
+  function askSignOut() {
     setMobileNavOpen(false)
+    setConfirmLogout(true)
+  }
+
+  function handleSignOut() {
+    setConfirmLogout(false)
     signOut()
     navigate('/sign-in', { replace: true })
   }
@@ -106,14 +114,29 @@ export function AppShell() {
   return (
     <div className="flex min-h-screen">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 flex-col border-r border-border bg-white md:flex print:hidden">
-        <SidebarNav role={user.role} onSignOut={handleSignOut} />
+        <SidebarNav role={user.role} onSignOut={askSignOut} />
       </aside>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-60 md:hidden">
-          <SidebarNav role={user.role} onNavigate={() => setMobileNavOpen(false)} onSignOut={handleSignOut} />
+          <SidebarNav role={user.role} onNavigate={() => setMobileNavOpen(false)} onSignOut={askSignOut} />
         </SheetContent>
       </Sheet>
+
+      <Dialog open={confirmLogout} onOpenChange={setConfirmLogout}>
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Log out?</DialogTitle>
+            <DialogDescription>You'll need to sign in again to continue.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmLogout(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSignOut}>Log out</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex min-w-0 flex-1 flex-col md:pl-60 print:pl-0">
         <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-white/80 px-4 backdrop-blur sm:px-6 print:hidden">
