@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Link2, Plus } from 'lucide-react'
+import { Copy, PackageSearch, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { PageHead } from '@/components/PageHead'
@@ -68,8 +68,6 @@ export function Orders() {
   // Yarn still to be issued for an open order.
   const needsYarn = (o: Order) => OPEN(o.status) && o.yarnRequired > 0 && yarnNeed(o.yarnRequired, issuedTo(o.id), 0).remaining > 0
   const matches = [(o: Order) => OPEN(o.status), needsYarn, (o: Order) => o.status === 'READY', () => true]
-  // Only the roles that talk to buyers need the tracking link.
-  const showLink = user?.role === 'OWNER' || user?.role === 'DISPATCH'
 
   const columns: ColumnDef<Order>[] = [
     {
@@ -96,26 +94,29 @@ export function Orders() {
         <YarnCheck o={o} material={materials.data?.find((m) => m.id === o.materialId)} issued={issuedTo(o.id)} canIssue={canIssue} onIssued={reloadYarn} />
       ),
     },
-    ...(showLink
-      ? [
-          {
-            id: 'track',
-            header: '',
-            enableSorting: false,
-            cell: ({ row: { original: o } }) => (
-              <Button
-                variant="ghost"
-                size="xs"
-                className="gap-1"
-                onClick={() => navigator.clipboard.writeText(trackingUrl(o.trackingToken)).then(() => toast.success('Tracking link copied'))}
-              >
-                <Link2 className="size-3" />
-                Buyer link
-              </Button>
-            ),
-          } satisfies ColumnDef<Order>,
-        ]
-      : []),
+    {
+      id: 'track',
+      header: 'Track',
+      enableSorting: false,
+      cell: ({ row: { original: o } }) => (
+        <div className="flex gap-0.5">
+          <Button variant="ghost" size="icon-xs" title="Open tracking page" aria-label={`Open tracking page for ${o.orderNo}`} asChild>
+            <a href={trackingUrl(o.trackingToken)} target="_blank" rel="noreferrer">
+              <PackageSearch className="size-3.5" />
+            </a>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            title="Copy link for the buyer"
+            aria-label={`Copy tracking link for ${o.orderNo}`}
+            onClick={() => navigator.clipboard.writeText(trackingUrl(o.trackingToken)).then(() => toast.success(`Tracking link for ${o.orderNo} copied`))}
+          >
+            <Copy className="size-3.5" />
+          </Button>
+        </div>
+      ),
+    },
   ]
 
   const rows = orders.rows.filter(matches[filter])
