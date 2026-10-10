@@ -18,6 +18,14 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
     return res.status(409).json({ ok: false, error: 'CONFLICT', message: `Duplicate value for ${err.meta?.target}` });
   }
 
+  if (err.code === 'P2025' || err.code === 'P2003') {
+    return res.status(404).json({ ok: false, error: 'NOT_FOUND', message: 'Related record not found' });
+  }
+
+  if (err.name === 'PrismaClientValidationError') {
+    return res.status(400).json({ ok: false, error: 'BAD_REQUEST', message: 'Invalid filter or field value' });
+  }
+
   console.error(err);
   return res.status(500).json({ ok: false, error: 'INTERNAL_ERROR', message: 'Something went wrong' });
 }

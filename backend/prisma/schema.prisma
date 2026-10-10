@@ -200,6 +200,7 @@ model Machine {
 
   jobs  ProductionJob[]
   rolls Roll[]
+  logs  ProductionLog[]
 }
 
 // One order running one stage on one machine
@@ -220,10 +221,25 @@ model ProductionJob {
   machine Machine @relation(fields: [machineId], references: [id])
   worker  Worker? @relation(fields: [workerId], references: [id])
   rolls   Roll[]
+  logs    ProductionLog[]
 
   @@index([orderId])
   @@index([machineId, status])
   @@index([startedAt])
+}
+
+// Each quantity reported against a job — drives per-day machine output
+model ProductionLog {
+  id        String   @id @default(cuid())
+  jobId     String
+  machineId String
+  qty       Decimal  @db.Decimal(12, 2)
+  loggedAt  DateTime @default(now())
+
+  job     ProductionJob @relation(fields: [jobId], references: [id])
+  machine Machine       @relation(fields: [machineId], references: [id])
+
+  @@index([machineId, loggedAt])
 }
 
 model Roll {

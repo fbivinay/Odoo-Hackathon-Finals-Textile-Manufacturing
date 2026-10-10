@@ -24,7 +24,8 @@ One platform replacing the mill's notebooks and phone calls. Problem statement: 
 ```bash
 # backend (http://localhost:4000)
 cd backend && npm i && cp .env.example .env
-npx prisma migrate dev && npm run seed && npm run dev
+npx prisma migrate deploy && npm run seed && npm run dev
+npm run seed -- --reset    # wipe and rebuild demo data
 
 # web (http://localhost:5173)
 cd web && npm i && cp .env.example .env && npm run dev
@@ -45,9 +46,11 @@ backend/src/
   lib/           prisma client, AppError helpers
 ```
 
-- Routes never touch Prisma; services never touch `req`/`res`.
+- Routes never touch Prisma; services never touch `req`/`res`. Wrap route functions in `handle()`.
+- Endpoint list for the frontend: `docs/api.md`. Update it whenever a route or shape changes.
+- Order status is derived by `orderService.syncStatus`; call it after any job, roll, QC or dispatch change.
 - Every response: `{ ok: true, data }` or `{ ok: false, error, message }`.
-- Throw `badRequest/notFound/conflict/...` from `lib/errors`; wrap handlers in `asyncHandler`.
+- Throw `badRequest/notFound/conflict/...` from `lib/errors`.
 - `OWNER` passes every `requireRole` check.
 - Multi-step stock or dispatch changes go in `prisma.$transaction`.
 
@@ -61,7 +64,7 @@ backend/src/
 
 ```
 Supplier → MaterialInward → RawMaterial stock → MaterialIssue
-Buyer → Order → ProductionJob (machine × stage × shift) → Roll
+Buyer → Order → ProductionJob (machine × stage × shift) → ProductionLog, Roll
 Roll → QCRecord (pass/rework/reject) → Dispatch → Invoice → Payment
 Worker → Attendance → WagePayment
 ```
