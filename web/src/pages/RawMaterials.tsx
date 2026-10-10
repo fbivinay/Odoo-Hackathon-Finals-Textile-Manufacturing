@@ -80,6 +80,9 @@ export function RawMaterials() {
   const [using, setUsing] = useState<RawMaterial | null>(null)
   const [warning, setWarning] = useState<RawMaterial | null>(null)
   const [ordering, setOrdering] = useState(false)
+  // The material whose box was clicked: its full details open in a popup.
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const setDetail = (m: RawMaterial) => setDetailId(m.id)
   // Only the store moves stock; production can look.
   const canEdit = actsAs(user, 'STORE')
 
@@ -204,58 +207,50 @@ export function RawMaterials() {
               />
             </div>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-6">
               {boxes.map(({ c, items, total, shortCount, value }) => (
-                <section key={c} className="data-table-wrap space-y-2 p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h2 className="section-head">{CATEGORY[c]}</h2>
-                      <p className="text-xs text-muted-foreground">
-                        {items.length === total ? `${total} items` : `${items.length} of ${total} items`} · stock worth {formatINR(value)}
-                      </p>
-                    </div>
+                <section key={c} className="space-y-2">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h2 className="section-head">{CATEGORY[c]}</h2>
+                    <span className="text-xs text-muted-foreground">
+                      {items.length === total ? `${total} items` : `${items.length} of ${total} items`} · stock worth {formatINR(value)}
+                    </span>
                     {shortCount > 0 && <Pill tone="problem">{shortCount} low</Pill>}
                   </div>
-                  <ul className="divide-y divide-border">
-                    {items.map((m) => (
-                      <li key={m.id} className="flex items-center justify-between gap-3 py-2">
-                        <Link to={`/raw-materials/${m.id}`} className="min-w-0 leading-tight hover:text-brand">
-                          <p className="truncate font-medium">{m.yarnType}</p>
-                          <p className="truncate text-xs text-muted-foreground">{[m.colour, m.sku, m.subcategory].filter(Boolean).join(' · ')}</p>
-                        </Link>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <div className="text-right leading-tight">
-                            <p className="tabular-nums">{formatQty(m.qtyInStock, m.unit)}</p>
-                            <div className="flex justify-end gap-1">
-                              {(m.lowStock || shortOf(m.id) > 0) && (
-                                <Pill tone="problem">
-                                  <AlertTriangle className="mr-1 size-3" />
-                                  {shortOf(m.id) > 0 ? `Short ${formatQty(shortOf(m.id), m.unit)}` : 'Low'}
-                                </Pill>
-                              )}
-                              {onOrderOf(m.id) > 0 && <Pill tone="watch">On order {formatQty(onOrderOf(m.id), m.unit)}</Pill>}
-                            </div>
-                          </div>
-                          {canEdit && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                title={m.reorderLevel > 0 ? `Warns below ${formatQty(m.reorderLevel, m.unit)}. Click to change.` : 'No low-stock warning. Click to set one.'}
-                                aria-label={`Low-stock warning for ${m.yarnType}`}
-                                onClick={() => setWarning(m)}
-                              >
-                                {m.reorderLevel > 0 ? <Bell className="size-3.5" /> : <BellOff className="size-3.5 text-muted-foreground" />}
-                              </Button>
-                              <Button size="xs" variant="outline" disabled={m.qtyInStock <= 0} onClick={() => setUsing(m)}>
-                                Use
-                              </Button>
-                            </>
+                  {/* One box per material; click it for everything about it. */}
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {items.map((m) => {
+                      const low = m.lowStock || shortOf(m.id) > 0
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setDetail(m)}
+                          className={cn(
+                            'data-table-wrap flex flex-col gap-2 p-3 text-left transition hover:ring-2 hover:ring-brand/30 focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none',
+                            low && 'ring-1 ring-problem/40',
                           )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{m.yarnType}</p>
+                            <p className="truncate text-xs text-muted-foreground">{[m.colour, m.sku].filter(Boolean).join(' · ')}</p>
+                          </div>
+                          <p className="text-xl font-semibold tabular-nums">{formatQty(m.qtyInStock, m.unit)}</p>
+                          <div className="flex min-h-5 flex-wrap gap-1">
+                            {low ? (
+                              <Pill tone="problem">
+                                <AlertTriangle className="mr-1 size-3" />
+                                {shortOf(m.id) > 0 ? `Short ${formatQty(shortOf(m.id), m.unit)}` : 'Low'}
+                              </Pill>
+                            ) : (
+                              <Pill tone="good">In stock</Pill>
+                            )}
+                            {onOrderOf(m.id) > 0 && <Pill tone="watch">On order {formatQty(onOrderOf(m.id), m.unit)}</Pill>}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </section>
               ))}
             </div>
@@ -280,6 +275,17 @@ export function RawMaterials() {
       {receiving && <ReceiveDialog materials={all} startWith={category === 'ALL' ? null : category} onClose={() => setReceiving(false)} onSaved={reload} />}
       {warning && <StockWarningDialog m={warning} onClose={() => setWarning(null)} onSaved={stock.reload} />}
       <ReorderDialog open={ordering} onOpenChange={setOrdering} items={short} inwardsPath="/materials/inwards?kind=other" onPlaced={reloadOrders} />
+      {detailId && all.find((m) => m.id === detailId) && (
+        <MaterialDetail
+          m={all.find((m) => m.id === detailId)!}
+          short={shortOf(detailId)}
+          onOrder={onOrderOf(detailId)}
+          canEdit={canEdit}
+          onClose={() => setDetailId(null)}
+          onUse={(m) => setUsing(m)}
+          onWarning={(m) => setWarning(m)}
+        />
+      )}
       {using && <UseDialog m={using} onClose={() => setUsing(null)} onSaved={reload} />}
     </div>
   )
@@ -494,6 +500,124 @@ function UseDialog({ m, onClose, onSaved }: { m: RawMaterial; onClose: () => voi
           <Button type="submit" form="use-material" disabled={busy}>
             {busy ? 'Saving…' : 'Save'}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+type TaxCodeInfo = { code: string; label: string; hsn: string; rateToday: number; confidence: string }
+type Issue = { id: string; qty: number; cost: number; issuedAt: string; department?: string | null; order?: { orderNo: string } | null }
+
+// Everything about one material: stock, value, warning level, supplier, GST, what is on order,
+// the latest deliveries and the latest uses.
+function MaterialDetail({ m, short, onOrder, canEdit, onClose, onUse, onWarning }: {
+  m: RawMaterial
+  short: number
+  onOrder: number
+  canEdit: boolean
+  onClose: () => void
+  onUse: (m: RawMaterial) => void
+  onWarning: (m: RawMaterial) => void
+}) {
+  const ins = useApi<MaterialInward[]>(`/materials/inwards?materialId=${m.id}&limit=5`)
+  const outs = useApi<Issue[]>(`/materials/issues?materialId=${m.id}&limit=5`)
+  const suppliers = useApi<Ref[]>('/suppliers')
+  const taxCodes = useApi<TaxCodeInfo[]>('/materials/tax-codes')
+  const rule = taxCodes.data?.find((t) => t.code === m.taxCode)
+  const usual = suppliers.data?.find((s) => s.id === m.supplierId)?.name ?? ins.data?.[0]?.supplier.name
+  const low = m.lowStock || short > 0
+  const facts: [string, React.ReactNode][] = [
+    ['In stock', formatQty(m.qtyInStock, m.unit)],
+    ['Warning level', m.reorderLevel > 0 ? formatQty(m.reorderLevel, m.unit) : 'Not set'],
+    ['Average cost', `${formatINR(Number(m.avgCost))} per ${m.unit}`],
+    ['Stock value', formatINR(Number(m.qtyInStock) * Number(m.avgCost))],
+    ['On order', onOrder > 0 ? formatQty(onOrder, m.unit) : 'Nothing'],
+    ['Section', CATEGORY[m.category as Category] ?? m.category],
+    ['Type', m.subcategory || '—'],
+    ['SKU', m.sku || '—'],
+    ['Used by', m.department ? m.department.charAt(0) + m.department.slice(1).toLowerCase() : '—'],
+    ['Usual supplier', usual ?? '—'],
+    ['Delivery time', m.leadDays != null ? `${m.leadDays} days` : '—'],
+    ['GST', rule ? `${rule.label} · HSN ${rule.hsn} · ${rule.rateToday}%${rule.confidence === 'UNVERIFIED' ? ' (unverified)' : ''}` : 'Not classified'],
+  ]
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            {m.yarnType}
+            {low ? <Pill tone="problem">{short > 0 ? `Short ${formatQty(short, m.unit)}` : 'Low'}</Pill> : <Pill tone="good">In stock</Pill>}
+          </DialogTitle>
+          <DialogDescription>{[m.colour, m.sku].filter(Boolean).join(' · ')}</DialogDescription>
+        </DialogHeader>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+          {facts.map(([k, v]) => (
+            <div key={k}>
+              <dt className="text-xs text-muted-foreground">{k}</dt>
+              <dd className={k === 'In stock' ? 'font-semibold tabular-nums' : undefined}>{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Latest deliveries</p>
+            {ins.data?.length ? (
+              <ul className="space-y-1 text-sm">
+                {ins.data.map((i) => (
+                  <li key={i.id} className="flex justify-between gap-2">
+                    <span>
+                      {formatDateTime(i.receivedAt)}
+                      <span className="block text-xs text-muted-foreground">{i.supplier.name}{i.billNo ? ` · ${i.billNo}` : ''}</span>
+                    </span>
+                    <span className="text-right tabular-nums">
+                      {formatQty(i.qty, m.unit)}
+                      <span className="block text-xs text-muted-foreground">{formatINR(Number(i.totalAmount ?? i.billAmount))}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">{ins.loading ? 'Loading…' : 'None yet.'}</p>
+            )}
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Latest uses</p>
+            {outs.data?.length ? (
+              <ul className="space-y-1 text-sm">
+                {outs.data.map((u) => (
+                  <li key={u.id} className="flex justify-between gap-2">
+                    <span>
+                      {formatDateTime(u.issuedAt)}
+                      <span className="block text-xs text-muted-foreground">{[u.order?.orderNo, u.department?.toLowerCase()].filter(Boolean).join(' · ') || 'General use'}</span>
+                    </span>
+                    <span className="text-right tabular-nums">
+                      {formatQty(u.qty, m.unit)}
+                      <span className="block text-xs text-muted-foreground">{formatINR(Number(u.cost))}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">{outs.loading ? 'Loading…' : 'Not used yet.'}</p>
+            )}
+          </div>
+        </div>
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Link to={`/raw-materials/${m.id}`} className="self-center text-sm text-brand hover:underline">
+            Full history and chart
+          </Link>
+          {canEdit && (
+            <div className="flex gap-2">
+              <Button variant="outline" className="gap-1.5" onClick={() => onWarning(m)}>
+                {m.reorderLevel > 0 ? <Bell className="size-4" /> : <BellOff className="size-4" />}
+                Warning level
+              </Button>
+              <Button disabled={m.qtyInStock <= 0} onClick={() => onUse(m)}>
+                Use
+              </Button>
+            </div>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
