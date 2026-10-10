@@ -260,6 +260,8 @@ function handle(path: string, method: string, body: Record<string, any>): unknow
 
   // masters
   if (is('GET', '/suppliers')) return suppliers
+  // ponytail: no purchase orders in mock mode; the real list comes from the backend.
+  if (is('GET', '/materials/purchase-orders')) return []
   if (is('GET', '/buyers')) return buyers
 
   // store

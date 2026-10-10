@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { AlertTriangle, Bell, BellOff, PackagePlus } from 'lucide-react'
+import { AlertTriangle, Bell, BellOff, PackagePlus, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { DataTable } from '@/components/DataTable'
@@ -8,6 +8,8 @@ import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
 import { LoadMore } from '@/components/LoadMore'
 import { PageHead } from '@/components/PageHead'
+import { PurchaseOrders } from '@/components/PurchaseOrders'
+import { ReorderDialog } from '@/components/ReorderDialog'
 import { StockWarningDialog } from '@/components/StockWarningDialog'
 import { Pill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
@@ -16,8 +18,9 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, ApiError } from '@/lib/api'
 import { formatDateTime, formatINR, formatQty } from '@/lib/format'
+import { toOrder } from '@/lib/reorder'
 import { useApi, usePaged } from '@/lib/useApi'
-import type { MaterialCategory, MaterialInward, RawMaterial, Ref } from '@/types'
+import type { MaterialCategory, MaterialInward, PurchaseOrder, RawMaterial, Ref } from '@/types'
 
 // Everything the mill uses besides yarn. Yarn has its own tab (pages/Materials.tsx).
 type Category = Exclude<MaterialCategory, 'YARN'>
@@ -47,13 +50,29 @@ export function RawMaterials() {
   const [receiving, setReceiving] = useState(false)
   const [using, setUsing] = useState<RawMaterial | null>(null)
   const [warning, setWarning] = useState<RawMaterial | null>(null)
+  const [ordering, setOrdering] = useState(false)
   // Only the store moves stock; production can look.
   const canEdit = user?.role === 'OWNER' || user?.role === 'STORE'
 
   const all = stock.data ?? []
   // Materials that need reordering come first.
   const rows = all.filter((m) => category === 'ALL' || m.category === category).sort((a, b) => Number(b.lowStock) - Number(a.lowStock))
-  const low = all.filter((m) => m.lowStock).length
+  // Material already ordered and on its way is not short again.
+  const pending = useApi<PurchaseOrder[]>('/materials/purchase-orders?status=PENDING&kind=other')
+  const history = usePaged<PurchaseOrder>('/materials/purchase-orders?kind=other')
+  const onOrder = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of pending.data ?? []) map.set(p.material.id, (map.get(p.material.id) ?? 0) + Number(p.qty))
+    return map
+  }, [pending.data])
+  const onOrderOf = (id: string) => onOrder.get(id) ?? 0
+  const short = useMemo(() => (stock.data ?? []).map((m) => ({ m, qty: toOrder(m, 0, onOrder.get(m.id)) })).filter((s) => s.qty > 0), [stock.data, onOrder])
+  const reloadOrders = () => {
+    pending.reload()
+    history.reload()
+  }
+  const shortOf = (id: string) => short.find((s) => s.m.id === id)?.qty ?? 0
+  const low = short.length
   const reload = () => {
     stock.reload()
     received.reload()
@@ -81,9 +100,10 @@ export function RawMaterials() {
           {m.lowStock && (
             <Pill tone="problem">
               <AlertTriangle className="mr-1 size-3" />
-              Low
+              {shortOf(m.id) > 0 ? `Short ${formatQty(shortOf(m.id), m.unit)}` : 'Low'}
             </Pill>
           )}
+          {onOrderOf(m.id) > 0 && <Pill tone="watch">On order {formatQty(onOrderOf(m.id), m.unit)}</Pill>}
         </span>
       ),
     },
@@ -126,17 +146,26 @@ export function RawMaterials() {
         title="Raw Materials"
         actions={
           canEdit && (
-            <Button className="gap-1.5" onClick={() => setReceiving(true)}>
-              <PackagePlus className="size-4" />
-              Receive material
-            </Button>
+            <div className="flex gap-2">
+              {short.length > 0 && (
+                <Button variant="outline" className="gap-1.5" onClick={() => setOrdering(true)}>
+                  <ShoppingCart className="size-4" />
+                  Order all short ({short.length})
+                </Button>
+              )}
+              <Button className="gap-1.5" onClick={() => setReceiving(true)}>
+                <PackagePlus className="size-4" />
+                Receive material
+              </Button>
+            </div>
           )
         }
       />
 
       <Tabs defaultValue="stock">
         <TabsList>
-          <TabsTrigger value="stock">Current Stock{low > 0 && ` · ${low} low`}</TabsTrigger>
+          <TabsTrigger value="stock">Current Stock{low > 0 && ` · ${low} short`}</TabsTrigger>
+          <TabsTrigger value="orders">Order History{(pending.data?.length ?? 0) > 0 && ` · ${pending.data!.length} pending`}</TabsTrigger>
           <TabsTrigger value="received">Received History</TabsTrigger>
         </TabsList>
         <TabsContent value="stock" className="space-y-3">
@@ -163,6 +192,16 @@ export function RawMaterials() {
             }
           />
         </TabsContent>
+        <TabsContent value="orders" className="space-y-3">
+          <PurchaseOrders
+            {...history}
+            canEdit={canEdit}
+            onChanged={() => {
+              reloadOrders()
+              reload()
+            }}
+          />
+        </TabsContent>
         <TabsContent value="received" className="space-y-3">
           <DataTable columns={receivedCols} data={received.rows} loading={received.loading} empty={<EmptyState icon={PackagePlus} line="Nothing received yet." />} />
           <LoadMore hasMore={received.hasMore} more={received.more} />
@@ -171,6 +210,7 @@ export function RawMaterials() {
 
       {receiving && <ReceiveDialog materials={all} startWith={category === 'ALL' ? null : category} onClose={() => setReceiving(false)} onSaved={reload} />}
       {warning && <StockWarningDialog m={warning} onClose={() => setWarning(null)} onSaved={stock.reload} />}
+      <ReorderDialog open={ordering} onOpenChange={setOrdering} items={short} inwardsPath="/materials/inwards?kind=other" onPlaced={reloadOrders} />
       {using && <UseDialog m={using} onClose={() => setUsing(null)} onSaved={reload} />}
     </div>
   )

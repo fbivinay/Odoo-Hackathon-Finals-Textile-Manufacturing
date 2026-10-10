@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { AlertTriangle, Bell, BellOff, PackagePlus } from 'lucide-react'
+import { AlertTriangle, Bell, BellOff, PackagePlus, ShoppingCart } from 'lucide-react'
 import { PageHead } from '@/components/PageHead'
+import { PurchaseOrders } from '@/components/PurchaseOrders'
+import { ReorderDialog } from '@/components/ReorderDialog'
 import { StockWarningDialog } from '@/components/StockWarningDialog'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
@@ -11,14 +13,15 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatDateTime, formatINR, formatQty } from '@/lib/format'
+import { dayFromToday, formatDateTime, formatINR, formatQty } from '@/lib/format'
+import { toOrder } from '@/lib/reorder'
 import { toast } from 'sonner'
 import { api, ApiError } from '@/lib/api'
 import { useApi, usePaged } from '@/lib/useApi'
 import { LoadMore } from '@/components/LoadMore'
-import type { MaterialInward, RawMaterial, Ref } from '@/types'
+import type { MaterialInward, Planning, PurchaseOrder, RawMaterial, Ref } from '@/types'
 
-const stockCols = (onWarning: (m: RawMaterial) => void): ColumnDef<RawMaterial>[] => [
+const stockCols = (onWarning: (m: RawMaterial) => void, shortOf: (id: string) => number, onOrderOf: (id: string) => number): ColumnDef<RawMaterial>[] => [
   { accessorKey: 'yarnType', header: 'Yarn' },
   { accessorKey: 'colour', header: 'Colour' },
   {
@@ -28,12 +31,13 @@ const stockCols = (onWarning: (m: RawMaterial) => void): ColumnDef<RawMaterial>[
     cell: ({ row: { original: m } }) => (
       <span className="inline-flex items-center gap-2 tabular-nums">
         {formatQty(m.qtyInStock, m.unit)}
-        {m.lowStock && (
+        {(m.lowStock || shortOf(m.id) > 0) && (
           <Pill tone="problem">
             <AlertTriangle className="mr-1 size-3" />
-            Low
+            {shortOf(m.id) > 0 ? `Short ${formatQty(shortOf(m.id), m.unit)}` : 'Low'}
           </Pill>
         )}
+        {onOrderOf(m.id) > 0 && <Pill tone="watch">On order {formatQty(onOrderOf(m.id), m.unit)}</Pill>}
       </span>
     ),
   },
@@ -68,9 +72,30 @@ export function Materials() {
   const inwards = usePaged<MaterialInward>('/materials/inwards?category=YARN')
   const [open, setOpen] = useState(false)
   const [warning, setWarning] = useState<RawMaterial | null>(null)
-  // Yarns that need reordering come first.
-  const rows = [...(stock.data ?? [])].sort((a, b) => Number(b.lowStock) - Number(a.lowStock))
-  const low = rows.filter((m) => m.lowStock).length
+  const [ordering, setOrdering] = useState(false)
+  // Yarn the open orders still need, beyond what is in stock, counts towards the shortage.
+  const plan = useApi<Planning>('/planning/schedule')
+  // Yarn already ordered and on its way is not short again.
+  const pending = useApi<PurchaseOrder[]>('/materials/purchase-orders?status=PENDING&category=YARN')
+  const history = usePaged<PurchaseOrder>('/materials/purchase-orders?category=YARN')
+  const onOrder = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of pending.data ?? []) map.set(p.material.id, (map.get(p.material.id) ?? 0) + Number(p.qty))
+    return map
+  }, [pending.data])
+  const onOrderOf = (id: string) => onOrder.get(id) ?? 0
+  const short = useMemo(() => {
+    const needed = new Map(plan.data?.yarnNeeds.map((y) => [y.id, y.needed]))
+    return (stock.data ?? []).map((m) => ({ m, qty: toOrder(m, needed.get(m.id), onOrder.get(m.id)) })).filter((s) => s.qty > 0)
+  }, [stock.data, plan.data, onOrder])
+  const shortOf = (id: string) => short.find((s) => s.m.id === id)?.qty ?? 0
+  const reloadOrders = () => {
+    pending.reload()
+    history.reload()
+  }
+  // Yarns that need reordering come first, biggest shortage on top.
+  const rows = [...(stock.data ?? [])].sort((a, b) => shortOf(b.id) - shortOf(a.id) || Number(b.lowStock) - Number(a.lowStock))
+  const low = rows.filter((m) => shortOf(m.id) > 0).length
 
   return (
     <div className="space-y-5">
@@ -78,25 +103,46 @@ export function Materials() {
         eyebrow="From suppliers"
         title="Yarn Received"
         actions={
-          <Button className="gap-1.5" onClick={() => setOpen(true)}>
-            <PackagePlus className="size-4" />
-            Receive yarn
-          </Button>
+          <div className="flex gap-2">
+            {short.length > 0 && (
+              <Button variant="outline" className="gap-1.5" onClick={() => setOrdering(true)}>
+                <ShoppingCart className="size-4" />
+                Order all short ({short.length})
+              </Button>
+            )}
+            <Button className="gap-1.5" onClick={() => setOpen(true)}>
+              <PackagePlus className="size-4" />
+              Receive yarn
+            </Button>
+          </div>
         }
       />
 
       <Tabs defaultValue="stock">
         <TabsList>
-          <TabsTrigger value="stock">Current Stock{low > 0 && ` · ${low} low`}</TabsTrigger>
+          <TabsTrigger value="stock">Current Stock{low > 0 && ` · ${low} short`}</TabsTrigger>
+          <TabsTrigger value="orders">Order History{(pending.data?.length ?? 0) > 0 && ` · ${pending.data!.length} pending`}</TabsTrigger>
           <TabsTrigger value="deliveries">Received History</TabsTrigger>
         </TabsList>
         <TabsContent value="stock" className="space-y-3">
           {stock.error && <p className="text-sm text-problem">{stock.error}</p>}
           <DataTable
-            columns={stockCols(setWarning)}
+            columns={stockCols(setWarning, shortOf, onOrderOf)}
             data={rows}
             loading={stock.loading}
             empty={<EmptyState icon={PackagePlus} line="No yarn in the store yet." actionLabel="Receive yarn" onAction={() => setOpen(true)} />}
+          />
+        </TabsContent>
+        <TabsContent value="orders" className="space-y-3">
+          <PurchaseOrders
+            {...history}
+            canEdit
+            onChanged={() => {
+              reloadOrders()
+              stock.reload()
+              inwards.reload()
+              plan.reload()
+            }}
           />
         </TabsContent>
         <TabsContent value="deliveries" className="space-y-3">
@@ -105,6 +151,7 @@ export function Materials() {
         </TabsContent>
       </Tabs>
 
+      <ReorderDialog open={ordering} onOpenChange={setOrdering} items={short} inwardsPath={`/materials/inwards?category=YARN&from=${dayFromToday(-365)}`} onPlaced={reloadOrders} />
       {warning && <StockWarningDialog m={warning} onClose={() => setWarning(null)} onSaved={stock.reload} />}
 
       <InwardDialog

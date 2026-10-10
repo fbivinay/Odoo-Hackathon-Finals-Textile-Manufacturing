@@ -16,6 +16,11 @@ router.post('/inwards', requireRole('STORE'), handle((req) => materialService.in
 router.get('/issues', handle((req) => materialService.listIssues(req.query)));
 router.post('/issues', requireRole('STORE'), handle((req) => materialService.issue(v.issueSchema.parse(req.body)), 201));
 
+router.get('/purchase-orders', handle((req) => materialService.listPurchaseOrders(req.query)));
+router.post('/purchase-orders', requireRole('STORE'), handle((req) => materialService.placeOrders(v.purchaseOrderSchema.parse(req.body).lines, req.user.id), 201));
+router.post('/purchase-orders/:id/receive', requireRole('STORE'), handle((req) => materialService.receiveOrder(req.params.id, v.receiveSchema.parse(req.body || {}), req.user.id)));
+router.post('/purchase-orders/:id/cancel', requireRole('STORE'), handle((req) => materialService.cancelOrder(req.params.id)));
+
 router.patch('/:id', requireRole('STORE'), handle((req) => materialService.update(req.params.id, v.updateMaterialSchema.parse(req.body))));
 
 module.exports = router;

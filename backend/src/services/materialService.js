@@ -75,31 +75,92 @@ async function allocateAllYarn() {
 }
 
 // Yarn arriving at the gate: record the bill, add to stock, re-average the cost.
-async function inward({ materialId, supplierId, orderId, qty, rate }, userId) {
-  return prisma.$transaction(async (tx) => {
-    const material = await tx.rawMaterial.findUnique({ where: { id: materialId } });
-    if (!material) throw notFound('Material not found');
-    if (!(await tx.supplier.findUnique({ where: { id: supplierId } }))) throw notFound('Supplier not found');
-    if (orderId && !(await tx.order.findUnique({ where: { id: orderId } }))) throw notFound('Order not found');
+async function inward(data, userId) {
+  return prisma.$transaction((tx) => addInward(tx, data, userId));
+}
 
-    const oldQty = Number(material.qtyInStock);
-    const newQty = oldQty + qty;
-    const avgCost = (oldQty * Number(material.avgCost) + qty * rate) / newQty;
+async function addInward(tx, { materialId, supplierId, orderId, qty, rate }, userId) {
+  const material = await tx.rawMaterial.findUnique({ where: { id: materialId } });
+  if (!material) throw notFound('Material not found');
+  if (!(await tx.supplier.findUnique({ where: { id: supplierId } }))) throw notFound('Supplier not found');
+  if (orderId && !(await tx.order.findUnique({ where: { id: orderId } }))) throw notFound('Order not found');
 
-    const entry = await tx.materialInward.create({
-      data: { materialId, supplierId, orderId, receivedById: userId, qty, rate, billAmount: qty * rate },
-      include: { supplier: true, order: { select: { id: true, orderNo: true } } },
-    });
-    await tx.rawMaterial.update({
-      where: { id: materialId },
-      data: { qtyInStock: { increment: qty }, avgCost: Math.round(avgCost * 100) / 100 },
-    });
-    // Orders that were waiting for this yarn get it now.
-    const issuedTo = await allocateYarn(tx, materialId);
-    const updated = await tx.rawMaterial.findUnique({ where: { id: materialId } });
+  const oldQty = Number(material.qtyInStock);
+  const newQty = oldQty + qty;
+  const avgCost = (oldQty * Number(material.avgCost) + qty * rate) / newQty;
 
-    return { ...entry, material: withLowStock(updated), issuedTo };
+  const entry = await tx.materialInward.create({
+    data: { materialId, supplierId, orderId, receivedById: userId, qty, rate, billAmount: qty * rate },
+    include: { supplier: true, order: { select: { id: true, orderNo: true } } },
   });
+  await tx.rawMaterial.update({
+    where: { id: materialId },
+    data: { qtyInStock: { increment: qty }, avgCost: Math.round(avgCost * 100) / 100 },
+  });
+  // Orders that were waiting for this yarn get it now.
+  const issuedTo = await allocateYarn(tx, materialId);
+  const updated = await tx.rawMaterial.findUnique({ where: { id: materialId } });
+
+  return { ...entry, material: withLowStock(updated), issuedTo };
+}
+
+const poInclude = {
+  material: { select: { id: true, category: true, yarnType: true, colour: true, unit: true } },
+  supplier: { select: { id: true, name: true, phone: true } },
+  orderedBy: { select: { id: true, name: true } },
+};
+
+// ?status=PENDING|RECEIVED|CANCELLED, plus ?category= / ?kind=other like the stock list.
+async function listPurchaseOrders(query = {}) {
+  const rows = await prisma.purchaseOrder.findMany({
+    where: { status: query.status, material: ofKind(query) },
+    orderBy: [{ orderedAt: 'desc' }, { poNo: 'desc' }],
+    ...pageArgs(query),
+    include: poInclude,
+  });
+  return toPage(rows, query);
+}
+
+// One PO number per line, numbered on from the last one.
+async function placeOrders(lines, userId) {
+  return prisma.$transaction(async (tx) => {
+    const last = await tx.purchaseOrder.findFirst({ orderBy: { poNo: 'desc' }, select: { poNo: true } });
+    let n = last ? Number(last.poNo.slice(3)) : 0;
+    const made = [];
+    for (const { materialId, supplierId, qty, rate } of lines) {
+      if (!(await tx.rawMaterial.findUnique({ where: { id: materialId } }))) throw notFound('Material not found');
+      if (!(await tx.supplier.findUnique({ where: { id: supplierId } }))) throw notFound('Supplier not found');
+      n += 1;
+      made.push(await tx.purchaseOrder.create({
+        data: { poNo: `PO-${String(n).padStart(5, '0')}`, materialId, supplierId, qty, rate, orderedById: userId },
+        include: poInclude,
+      }));
+    }
+    return made;
+  });
+}
+
+// The goods are at the gate: only now does the material go into stock.
+async function receiveOrder(id, { qty, rate } = {}, userId) {
+  return prisma.$transaction(async (tx) => {
+    const po = await tx.purchaseOrder.findUnique({ where: { id } });
+    if (!po) throw notFound('Purchase order not found');
+    // The guarded update stops a double click receiving the same order twice.
+    const { count } = await tx.purchaseOrder.updateMany({ where: { id, status: 'PENDING' }, data: { status: 'RECEIVED', receivedAt: new Date() } });
+    if (count === 0) throw conflict(`${po.poNo} is already ${po.status.toLowerCase()}`, 'NOT_PENDING');
+    const got = { qty: qty ?? Number(po.qty), rate: rate ?? Number(po.rate) };
+    const entry = await addInward(tx, { materialId: po.materialId, supplierId: po.supplierId, ...got }, userId);
+    const updated = await tx.purchaseOrder.update({ where: { id }, data: { inwardId: entry.id, ...got }, include: poInclude });
+    return { ...updated, issuedTo: entry.issuedTo };
+  });
+}
+
+async function cancelOrder(id) {
+  const po = await prisma.purchaseOrder.findUnique({ where: { id } });
+  if (!po) throw notFound('Purchase order not found');
+  const { count } = await prisma.purchaseOrder.updateMany({ where: { id, status: 'PENDING' }, data: { status: 'CANCELLED' } });
+  if (count === 0) throw conflict(`${po.poNo} is already ${po.status.toLowerCase()}`, 'NOT_PENDING');
+  return prisma.purchaseOrder.findUnique({ where: { id }, include: poInclude });
 }
 
 // from/to filter on receivedAt.
@@ -161,4 +222,4 @@ async function listIssues(query = {}) {
   return toPage(rows, query);
 }
 
-module.exports = { allocateYarn, allocateAllYarn, list, create, update, inward, listInwards, issue, listIssues };
+module.exports = { allocateYarn, allocateAllYarn, list, create, update, inward, listInwards, issue, listIssues, listPurchaseOrders, placeOrders, receiveOrder, cancelOrder };
