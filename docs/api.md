@@ -77,10 +77,10 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | GET | `/production/queue` | | `?stage=SPINNING/WEAVING/DYEING` → orders with work left in that stage: `{ id, orderNo, fabricType, buyer, deadline, status, target, done, remaining, available, running }`; `available` is how much can start now, given what the stage before has made |
 | GET | `/production/jobs` | | `?orderId=&machineId=&workerId=&status=&stage=` + paging |
 | POST | `/production/jobs` | PRODUCTION | `{ orderId, machineId, workerId?, shift, qtyPlanned }` → 409 `MACHINE_BUSY` unless idle |
-| POST | `/production/jobs/:id/progress` | PRODUCTION | `{ qty }` quantity produced since last report |
+| POST | `/production/jobs/:id/progress` | PRODUCTION | `{ qty }` quantity produced since last report; 400 `OVER_PLAN` if it would exceed the job's planned quantity |
 | POST | `/production/jobs/:id/complete` | PRODUCTION | frees the machine |
 | POST | `/production/jobs/:id/stop` | PRODUCTION | frees the machine |
-| POST | `/production/rolls` | PRODUCTION | `{ jobId, qty }` → roll in `PENDING_QC`, linked to order + machine |
+| POST | `/production/rolls` | PRODUCTION | `{ jobId, qty }` → roll in `PENDING_QC`, linked to order + machine; 400 `OVER_OUTPUT` if rolls would exceed what the job has made |
 
 ## Quality check
 
@@ -142,7 +142,7 @@ Assumptions: Sundays are closed, broken or under-maintenance machines count as u
 
 | Status | `error` |
 |---|---|
-| 400 | `VALIDATION_ERROR`, `BAD_REQUEST` |
+| 400 | `VALIDATION_ERROR`, `BAD_REQUEST`, `OVER_PLAN`, `OVER_OUTPUT` |
 | 401 | `UNAUTHORIZED` |
 | 403 | `FORBIDDEN` |
 | 404 | `NOT_FOUND` |

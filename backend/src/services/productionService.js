@@ -162,6 +162,11 @@ async function logProgress(jobId, { qty }) {
     const job = await tx.productionJob.findUnique({ where: { id: jobId } });
     if (!job) throw notFound('Job not found');
     if (job.status !== 'RUNNING') throw badRequest(`Job is ${job.status}`);
+    // A job can't make more than it was planned for; extra work is a new job.
+    const left = Math.round((Number(job.qtyPlanned) - Number(job.qtyProduced)) * 100) / 100;
+    if (qty > left + 0.005) {
+      throw badRequest(left > 0 ? `Only ${left} left on this job` : 'This job has already made its planned quantity', 'OVER_PLAN');
+    }
 
     await tx.productionLog.create({ data: { jobId, machineId: job.machineId, qty } });
     const updated = await tx.productionJob.update({
@@ -205,8 +210,13 @@ async function listJobs(query = {}) {
 // A finished roll comes off a job, so it always carries its order and machine.
 async function createRoll({ jobId, qty }) {
   return prisma.$transaction(async (tx) => {
-    const job = await tx.productionJob.findUnique({ where: { id: jobId } });
+    const job = await tx.productionJob.findUnique({ where: { id: jobId }, include: { rolls: true } });
     if (!job) throw notFound('Job not found');
+    // Rolls are cut from what the job has made, so they can't add up to more than that.
+    const unrolled = Math.round((Number(job.qtyProduced) - job.rolls.reduce((total, r) => total + Number(r.qty), 0)) * 100) / 100;
+    if (qty > unrolled + 0.005) {
+      throw badRequest(unrolled > 0 ? `Only ${unrolled} m made and not yet rolled` : 'Nothing made yet to roll. Add output first.', 'OVER_OUTPUT');
+    }
 
     const roll = await tx.roll.create({
       data: {

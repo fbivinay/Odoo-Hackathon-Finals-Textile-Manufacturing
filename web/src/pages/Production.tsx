@@ -291,6 +291,8 @@ function RunningJob({ m, busy, run, onFinish }: { m: BoardMachine; busy: boolean
   const next = NEXT_STAGE[m.type]
   const [output, setOutput] = useState('')
   const [roll, setRoll] = useState('')
+  // A job can't make more than its plan.
+  const left = Math.max(0, Math.round((job.qtyPlanned - job.qtyProduced) * 100) / 100)
 
   return (
     <div className="grid gap-4">
@@ -303,10 +305,10 @@ function RunningJob({ m, busy, run, onFinish }: { m: BoardMachine; busy: boolean
           if (await run(`/production/jobs/${job.id}/progress`, 'POST', { qty: Number(output) }, `${formatQty(Number(output), unit)} added`)) setOutput('')
         }}
       >
-        <Field label={`Output made (${unit})`} htmlFor="output">
+        <Field label={`Output made (${unit})`} htmlFor="output" hint={left > 0 ? `${formatQty(left, unit)} left to make` : 'Planned quantity reached'}>
           <div className="flex gap-2">
-            <Input id="output" type="number" min="0.01" step="0.01" inputMode="decimal" required value={output} onChange={(e) => setOutput(e.target.value)} />
-            <Button type="submit" variant="outline" disabled={busy}>
+            <Input id="output" type="number" min="0.01" max={left} step="0.01" inputMode="decimal" required disabled={left <= 0} value={output} onChange={(e) => setOutput(e.target.value)} />
+            <Button type="submit" variant="outline" disabled={busy || left <= 0}>
               Add
             </Button>
           </div>
