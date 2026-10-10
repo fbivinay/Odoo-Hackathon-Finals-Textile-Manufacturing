@@ -3,6 +3,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { Link2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
+import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
 import { Field, selectClass } from '@/components/Field'
 import { Pill, StatusPill } from '@/components/StatusPill'
@@ -22,8 +23,8 @@ function YarnCheck({ o, material, issued, canIssue, onIssued }: { o: Order; mate
   if (!material || !o.yarnRequired) return <span className="text-muted-foreground">—</span>
   const { remaining, shortBy } = yarnNeed(o.yarnRequired, issued, material.qtyInStock)
   if (remaining === 0) return <span className="text-muted-foreground">Issued</span>
-  if (shortBy > 0) return <Pill tone="red">Short {formatQty(shortBy, material.unit)}</Pill>
-  if (!canIssue || ['DISPATCHED', 'CANCELLED'].includes(o.status)) return <Pill tone="green">Enough yarn</Pill>
+  if (shortBy > 0) return <Pill tone="problem">Short {formatQty(shortBy, material.unit)}</Pill>
+  if (!canIssue || ['DISPATCHED', 'CANCELLED'].includes(o.status)) return <Pill tone="good">Enough yarn</Pill>
   return (
     <Button
       size="xs"
@@ -70,7 +71,7 @@ export function Orders() {
       header: 'Deadline',
       accessorFn: (o) => o.deadline,
       cell: ({ row: { original: o } }) =>
-        o.isDelayed ? <span className="font-medium text-rose-600">{formatDate(o.deadline)} · late</span> : formatDate(o.deadline),
+        o.isDelayed ? <span className="font-medium text-problem">{formatDate(o.deadline)} · late</span> : formatDate(o.deadline),
     },
     { accessorKey: 'status', header: 'Status', cell: ({ row: { original: o } }) => <StatusPill status={o.status} /> },
     { id: 'yarn', header: 'Yarn', enableSorting: false, cell: ({ row: { original: o } }) => (
@@ -99,6 +100,7 @@ export function Orders() {
 
   return (
     <div className="space-y-4">
+      <PageHead eyebrow="Order book" title="Orders" lede="Every buyer's order with its deadline, where it is on the floor, and whether there is yarn to start it." />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1">
           {FILTERS.map((f, i) => (
@@ -115,7 +117,7 @@ export function Orders() {
           </Button>
         )}
       </div>
-      {orders.error && <p className="text-sm text-rose-600">{orders.error}</p>}
+      {orders.error && <p className="text-sm text-problem">{orders.error}</p>}
       <DataTable columns={columns} data={rows} loading={orders.loading} initialSorting={[{ id: 'deadline', desc: false }]} />
       {canCreate && <OrderDialog open={open} onOpenChange={setOpen} onSaved={orders.reload} />}
     </div>
@@ -199,9 +201,9 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
               short === null ? (
                 mat && `${formatQty(mat.qtyInStock, 'kg')} in store`
               ) : short > 0 ? (
-                <span className="text-rose-600">Short by {formatQty(short, 'kg')}, order yarn first</span>
+                <span className="text-problem">Short by {formatQty(short, 'kg')}, order yarn first</span>
               ) : (
-                <span className="text-emerald-600">Enough yarn to start</span>
+                <span className="text-good">Enough yarn to start</span>
               )
             }
           >

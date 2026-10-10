@@ -1,11 +1,9 @@
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ClipboardCheck, Factory, LayoutDashboard, LogOut, Menu, Package, ShoppingCart, Truck } from 'lucide-react'
-import { useState, type ComponentType } from 'react'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { ClipboardCheck, Factory, LayoutDashboard, LogOut, Package, ShoppingCart, Truck } from 'lucide-react'
+import type { ComponentType } from 'react'
 import { Logo } from '@/components/Logo'
 import { useSession } from '@/auth/session'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { cn } from '@/lib/utils'
 import type { Role } from '@/types'
 
 interface NavItem {
@@ -16,7 +14,7 @@ interface NavItem {
 }
 
 export const NAV: NavItem[] = [
-  { to: '/dashboard', label: 'Owner dashboard', icon: LayoutDashboard, roles: [] },
+  { to: '/dashboard', label: 'Overview', icon: LayoutDashboard, roles: [] },
   { to: '/materials', label: 'Raw material', icon: Package, roles: ['STORE'] },
   { to: '/orders', label: 'Orders', icon: ShoppingCart, roles: ['STORE', 'PRODUCTION', 'DISPATCH'] },
   { to: '/production', label: 'Production', icon: Factory, roles: ['PRODUCTION'] },
@@ -29,94 +27,76 @@ export const homeFor = (role: Role) => navFor(role)[0].to
 
 const ROLE_LABEL: Record<Role, string> = { OWNER: 'Owner', STORE: 'Store', PRODUCTION: 'Production', QC: 'Quality', DISPATCH: 'Dispatch' }
 
-function SidebarNav({ role, onNavigate, onSignOut }: { role: Role; onNavigate?: () => void; onSignOut: () => void }) {
+export function Wordmark() {
   return (
-    <>
-      <div className="flex h-14 items-center gap-2 border-b border-border px-5">
-        <div className="flex h-6 w-6 items-center justify-center rounded bg-indigo-600 text-white">
-          <Logo className="size-3.5" />
-        </div>
-        <div className="leading-tight">
-          <p className="text-sm font-medium">Everest</p>
-          <p className="text-[11px] text-muted-foreground">Textile Mills</p>
-        </div>
-      </div>
-
-      <nav className="flex-1 space-y-0.5 p-3">
-        {navFor(role).map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
-                isActive ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900',
-              )
-            }
-          >
-            <Icon className="size-4" />
-            {label}
-          </NavLink>
-        ))}
-      </nav>
-
-      <div className="border-t border-border p-3">
-        <Button variant="ghost" size="sm" className="w-full justify-start gap-2.5 text-zinc-600" onClick={onSignOut}>
-          <LogOut className="size-4" />
-          Log out
-        </Button>
-      </div>
-    </>
+    <span className="wordmark">
+      <span className="wordmark__mark">
+        <Logo className="size-5" />
+      </span>
+      <span className="wordmark__text">
+        Everest
+        <span className="wordmark__sub">Textile Mills</span>
+      </span>
+    </span>
   )
 }
 
 export function AppShell() {
   const { user, signOut } = useSession()
   const navigate = useNavigate()
-  const { pathname } = useLocation()
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   if (!user) return null
 
-  const activeLabel = NAV.find((n) => pathname.startsWith(n.to))?.label ?? 'Everest'
-
-  function handleSignOut() {
-    setMobileNavOpen(false)
-    signOut()
-    navigate('/sign-in', { replace: true })
-  }
-
   return (
-    <div className="flex min-h-screen bg-zinc-50">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-border bg-white md:flex print:hidden">
-        <SidebarNav role={user.role} onSignOut={handleSignOut} />
-      </aside>
-
-      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="w-60 md:hidden">
-          <SidebarNav role={user.role} onNavigate={() => setMobileNavOpen(false)} onSignOut={handleSignOut} />
-        </SheetContent>
-      </Sheet>
-
-      <div className="flex min-w-0 flex-1 flex-col md:pl-60 print:pl-0">
-        <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-white/80 px-4 backdrop-blur sm:px-6 print:hidden">
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setMobileNavOpen(true)}>
-              <Menu className="size-4.5" />
-              <span className="sr-only">Open menu</span>
+    <div className="flex min-h-screen flex-col">
+      <header className="masthead print:hidden">
+        <div className="shell masthead__inner">
+          <Link to={homeFor(user.role)} aria-label="Everest home">
+            <Wordmark />
+          </Link>
+          <nav className="nav" aria-label="Sections">
+            {navFor(user.role).map(({ to, label, icon: Icon }) => (
+              <NavLink key={to} to={to} className="nav__link">
+                <Icon className="size-3.5" />
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden text-right leading-tight lg:block">
+              <p className="text-xs font-medium">{user.name}</p>
+              <p className="text-[11px] text-ink-3">{ROLE_LABEL[user.role]}</p>
+            </div>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label="Log out"
+              title="Log out"
+              onClick={() => {
+                signOut()
+                navigate('/sign-in', { replace: true })
+              }}
+            >
+              <LogOut className="size-3.5" />
             </Button>
-            <h1 className="text-sm font-medium">{activeLabel}</h1>
           </div>
-          <div className="text-right leading-tight">
-            <p className="text-xs font-medium">{user.name}</p>
-            <p className="text-[11px] text-muted-foreground">{ROLE_LABEL[user.role]}</p>
-          </div>
-        </header>
+        </div>
+      </header>
 
-        <main className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6">
-          <Outlet />
-        </main>
-      </div>
+      <main className="shell flex-1 py-5">
+        <Outlet />
+      </main>
+
+      <footer className="footer print:hidden">
+        <div className="shell">
+          <div className="footer__meta">
+            <span>Everest Textile Mills · Surat, Gujarat · one system for yarn, looms, QC and dispatch</span>
+            <span>Signed in as {user.email}</span>
+          </div>
+          <div className="footer__wordmark" aria-hidden="true">
+            Everest
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }

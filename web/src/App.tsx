@@ -6,6 +6,8 @@ import { ProtectedRoute } from '@/auth/ProtectedRoute'
 import { SessionProvider, useSession } from '@/auth/session'
 import { AppShell, homeFor, NAV } from '@/components/AppShell'
 import { SignIn } from '@/pages/SignIn'
+import { Splash } from '@/components/Splash'
+import { ScrollReveal } from '@/components/ScrollReveal'
 
 const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) =>
   lazy(() => load().then((m) => ({ default: m[name] })))
@@ -45,6 +47,8 @@ function Home() {
 export default function App() {
   return (
     <BrowserRouter>
+      <Splash />
+      <ScrollReveal />
       <SessionProvider>
         <Suspense fallback={<RouteFallback />}>
           <Routes>

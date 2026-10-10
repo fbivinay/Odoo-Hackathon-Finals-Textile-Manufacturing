@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { PageHead } from '@/components/PageHead'
 import { KpiCard } from '@/components/tremor/KpiCard'
 import { Field, selectClass } from '@/components/Field'
 import { StatusPill, label } from '@/components/StatusPill'
@@ -25,10 +26,11 @@ export function Production() {
 
   return (
     <div className="space-y-6">
+      <PageHead eyebrow="Production floor" title="What every machine is doing" lede="Spinning, weaving and dyeing, shift by shift. Amber is idle, red is down." />
       <div className="grid gap-4 sm:grid-cols-4">
-        <KpiCard label="Running" value={<span className="text-emerald-600">{sum?.running}</span>} loading={board.loading} />
-        <KpiCard label="Idle" value={<span className="text-amber-600">{sum?.idle}</span>} hint="Ready for an order" loading={board.loading} />
-        <KpiCard label="Down" value={<span className="text-rose-600">{(sum?.breakdown ?? 0) + (sum?.maintenance ?? 0)}</span>} hint="Breakdown or maintenance" loading={board.loading} />
+        <KpiCard label="Running" tone="good" value={String(sum?.running ?? 0)} loading={board.loading} />
+        <KpiCard label="Idle" tone="watch" value={String(sum?.idle ?? 0)} hint="Ready for an order" loading={board.loading} />
+        <KpiCard label="Down" tone="problem" value={String((sum?.breakdown ?? 0) + (sum?.maintenance ?? 0))} hint="Breakdown or maintenance" loading={board.loading} />
         <KpiCard
           label="Woven + dyed today"
           value={formatQty(ms.filter((m) => m.type !== 'SPINNING').reduce((a, m) => a + m.producedToday, 0))}
@@ -36,7 +38,7 @@ export function Production() {
         />
       </div>
 
-      {board.error && <p className="text-sm text-rose-600">{board.error}</p>}
+      {board.error && <p className="text-sm text-problem">{board.error}</p>}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {STAGES.map((stage) => (
@@ -68,9 +70,9 @@ function MachineCard({ m, onChange, onAssign }: { m: BoardMachine; onChange: () 
   return (
     <div
       className={cn(
-        'space-y-3 rounded-lg border bg-white p-4 shadow-sm',
-        m.status === 'IDLE' && 'border-amber-300 bg-amber-50/40',
-        m.status === 'BREAKDOWN' && 'border-rose-300 bg-rose-50/40',
+        'card space-y-3',
+        m.status === 'IDLE' && 'border-watch/40!',
+        m.status === 'BREAKDOWN' && 'border-problem/50! bg-problem-bg/60!',
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -107,8 +109,8 @@ function MachineCard({ m, onChange, onAssign }: { m: BoardMachine; onChange: () 
               </span>
               <span className="text-muted-foreground">{label(job.shift)} shift</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
-              <div className="h-full rounded-full bg-indigo-500" style={{ width: `${pct}%` }} />
+            <div className="h-1.5 overflow-hidden rounded-full bg-ink/10">
+              <div className="h-full rounded-full bg-ink transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }} />
             </div>
             <p className="text-xs text-muted-foreground tabular-nums">
               {formatQty(job.qtyProduced, unit)} of {formatQty(job.qtyPlanned, unit)} · {Math.round(pct)}% · today {formatQty(m.producedToday, unit)}

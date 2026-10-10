@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { AlertTriangle, PackagePlus } from 'lucide-react'
+import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
 import { Field, selectClass } from '@/components/Field'
 import { Pill } from '@/components/StatusPill'
@@ -23,7 +24,7 @@ const stockCols: ColumnDef<RawMaterial>[] = [
       <span className="inline-flex items-center gap-2 tabular-nums">
         {formatQty(m.qtyInStock, m.unit)}
         {m.lowStock && (
-          <Pill tone="red">
+          <Pill tone="problem">
             <AlertTriangle className="mr-1 size-3" />
             Low stock
           </Pill>
@@ -53,6 +54,7 @@ export function Materials() {
 
   return (
     <div className="space-y-6">
+      <PageHead eyebrow="Store" title="Yarn at the gate" lede="Every delivery is logged against its supplier, and stock warns before it runs out." />
       <div className="grid gap-4 sm:grid-cols-3">
         <KpiCard label="Yarn types" value={stock.data?.length ?? 0} loading={stock.loading} />
         <KpiCard
@@ -62,7 +64,8 @@ export function Materials() {
         />
         <KpiCard
           label="Low stock"
-          value={<span className={low.length ? 'text-rose-600' : undefined}>{low.length}</span>}
+          tone={low.length ? 'problem' : undefined}
+          value={String(low.length)}
           hint={low.map((m) => m.yarnType).join(', ') || 'All above reorder level'}
           loading={stock.loading}
         />
@@ -76,7 +79,7 @@ export function Materials() {
             Record inward
           </Button>
         </div>
-        {stock.error && <p className="text-sm text-rose-600">{stock.error}</p>}
+        {stock.error && <p className="text-sm text-problem">{stock.error}</p>}
         <DataTable columns={stockCols} data={stock.data ?? []} loading={stock.loading} />
       </section>
 

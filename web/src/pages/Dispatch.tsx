@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { PackageOpen, Printer, Truck } from 'lucide-react'
+import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
@@ -59,6 +60,7 @@ export function Dispatch() {
 
   return (
     <div className="space-y-6">
+      <PageHead eyebrow="Dispatch" title="Loading the truck" lede="Only passed rolls can go, each one once, with an invoice that matches what left." />
       <div className="grid gap-4 sm:grid-cols-3">
         <KpiCard
           label="Finished fabric on shelf"
@@ -129,7 +131,7 @@ function LoadCard({ group, onDone }: { group: ShelfGroup; onDone: () => void }) 
       </div>
       <div className="flex flex-wrap gap-2">
         {rolls.map((r) => (
-          <label key={r.id} className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs has-checked:border-indigo-300 has-checked:bg-indigo-50">
+          <label key={r.id} className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs has-checked:border-ink has-checked:bg-ink has-checked:text-surface transition-colors">
             <input type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} />
             {r.rollNo} · {formatQty(r.qty)}
           </label>

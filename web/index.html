@@ -4,7 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Everest Textile</title>
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f1f1f2" />
+    <title>Everest Textile Mills</title>
+    <script>
+      // The loading cover plays once every six hours; otherwise the page is simply there
+      // (and later entrances skip their delay). Storage can throw in private mode: then it plays.
+      try {
+        var k = 'everest-cover', n = Date.now(), t = +localStorage.getItem(k) || 0, h = document.documentElement
+        if (n - t < 216e5) { h.setAttribute('data-no-cover', ''); h.setAttribute('data-entered', '') }
+        else localStorage.setItem(k, String(n))
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -8,15 +8,6 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 interface Props<T> {
@@ -50,28 +41,25 @@ export function DataTable<T>({
   })
 
   if (!loading && data.length === 0 && empty) {
-    return <div className="rounded-lg border border-border bg-card">{empty}</div>
+    return <div className="data-table-wrap">{empty}</div>
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-card">
-      <Table>
-        <TableHeader>
+    <div className="data-table-wrap">
+      <table className="data-table">
+        <thead>
           {table.getHeaderGroups().map((group) => (
-            <TableRow key={group.id} className="hover:bg-transparent">
+            <tr key={group.id}>
               {group.headers.map((header) => {
                 const sortable = header.column.getCanSort()
                 const dir = header.column.getIsSorted()
                 return (
-                  <TableHead
-                    key={header.id}
-                    className="h-10 text-xs font-medium text-muted-foreground"
-                  >
+                  <th key={header.id} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : undefined}>
                     {header.isPlaceholder ? null : sortable ? (
                       <button
                         type="button"
                         onClick={header.column.getToggleSortingHandler()}
-                        className="inline-flex items-center gap-1 hover:text-foreground"
+                        className="inline-flex items-center gap-1 hover:text-ink"
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         {dir === 'asc' ? (
@@ -85,38 +73,36 @@ export function DataTable<T>({
                     ) : (
                       flexRender(header.column.columnDef.header, header.getContext())
                     )}
-                  </TableHead>
+                  </th>
                 )
               })}
-            </TableRow>
+            </tr>
           ))}
-        </TableHeader>
-        <TableBody>
+        </thead>
+        <tbody>
           {loading
             ? Array.from({ length: skeletonRows }).map((_, i) => (
-                <TableRow key={i} className="h-10">
+                <tr key={i}>
                   {columns.map((_c, j) => (
-                    <TableCell key={j} className="py-2">
-                      <Skeleton className="h-4 w-full max-w-[140px]" />
-                    </TableCell>
+                    <td key={j}>
+                      <div className="skel h-3.5 w-full max-w-[140px]" />
+                    </td>
                   ))}
-                </TableRow>
+                </tr>
               ))
             : table.getRowModel().rows.map((row) => (
-                <TableRow
+                <tr
                   key={row.id}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                  className={cn('h-10', onRowClick && 'cursor-pointer')}
+                  className={cn(onRowClick && 'cursor-pointer')}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="py-2">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
+                    <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
                   ))}
-                </TableRow>
+                </tr>
               ))}
-        </TableBody>
-      </Table>
+        </tbody>
+      </table>
     </div>
   )
 }

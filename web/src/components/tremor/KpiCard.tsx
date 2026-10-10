@@ -1,54 +1,27 @@
 import type { ReactNode } from 'react'
-import { Skeleton } from '@/components/ui/skeleton'
+import { CountUp } from '@/components/CountUp'
 import { cn } from '@/lib/utils'
 
 interface Props {
   label: string
   value: ReactNode
-  hint?: string
+  hint?: ReactNode
   loading?: boolean
+  tone?: 'good' | 'watch' | 'problem'
   className?: string
 }
 
-export function KpiCard({ label, value, hint, loading, className }: Props) {
+// Glass stat tile. String values count up when they come into view.
+export function KpiCard({ label, value, hint, loading, tone, className }: Props) {
   return (
-    <div className={cn('rounded-lg border border-border bg-card p-4 shadow-sm', className)}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+    <div className={cn('stat-card', tone && `stat-card--${tone}`, className)}>
+      <p className="stat-card__label">{label}</p>
       {loading ? (
-        <Skeleton className="mt-2 h-7 w-20" />
+        <div className="skel mt-2 h-6 w-20" />
       ) : (
-        <p className="mt-1 text-2xl font-medium tabular-nums tracking-tight">{value}</p>
+        <p className="stat-card__value">{typeof value === 'string' || typeof value === 'number' ? <CountUp text={String(value)} /> : value}</p>
       )}
-      {hint && !loading && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  )
-}
-
-interface BarListItem {
-  name: string
-  value: number
-}
-
-export function BarList({ data, valueFormatter }: { data: BarListItem[]; valueFormatter?: (n: number) => string }) {
-  const max = Math.max(1, ...data.map((d) => d.value))
-  return (
-    <div className="space-y-2">
-      {data.map((d) => (
-        <div key={d.name} className="flex items-center gap-3">
-          <div className="relative h-7 flex-1 overflow-hidden rounded-sm bg-zinc-50">
-            <div
-              className="h-full rounded-sm bg-indigo-100"
-              style={{ width: `${(d.value / max) * 100}%` }}
-            />
-            <span className="absolute inset-y-0 left-2 flex items-center text-xs font-medium text-zinc-700">
-              {d.name}
-            </span>
-          </div>
-          <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">
-            {valueFormatter ? valueFormatter(d.value) : d.value}
-          </span>
-        </div>
-      ))}
+      {hint && !loading && <p className="stat-card__note">{hint}</p>}
     </div>
   )
 }

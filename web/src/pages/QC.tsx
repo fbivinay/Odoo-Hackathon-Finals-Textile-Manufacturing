@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { ClipboardCheck } from 'lucide-react'
+import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
@@ -54,7 +55,7 @@ export function QC() {
       enableSorting: false,
       cell: ({ row: { original: r } }) => (
         <div className="flex justify-end gap-1">
-          <Button size="xs" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => pass(r)}>
+          <Button size="xs" className="bg-good text-white hover:bg-good/90" onClick={() => pass(r)}>
             Pass
           </Button>
           <Button size="xs" variant="outline" onClick={() => setDefectFor({ roll: r, result: 'REWORK' })}>
@@ -70,11 +71,12 @@ export function QC() {
 
   return (
     <div className="space-y-6">
+      <PageHead eyebrow="Quality" title="Before it leaves the line" lede="Each roll is traced to its order and machine, so a defect leads back to its cause." />
       <div className="grid gap-4 sm:grid-cols-4">
-        <KpiCard label="Waiting for check" value={<span className="text-amber-600">{waiting.length}</span>} loading={rolls.loading} />
-        <KpiCard label="Passed" value={<span className="text-emerald-600">{count('PASSED') + count('DISPATCHED')}</span>} loading={rolls.loading} />
-        <KpiCard label="Rework" value={<span className="text-violet-600">{count('REWORK')}</span>} loading={rolls.loading} />
-        <KpiCard label="Rejected" value={<span className="text-rose-600">{count('REJECTED')}</span>} loading={rolls.loading} />
+        <KpiCard label="Waiting for check" tone="watch" value={String(waiting.length)} loading={rolls.loading} />
+        <KpiCard label="Passed" tone="good" value={(count('PASSED') + count('DISPATCHED')).toLocaleString('en-IN')} loading={rolls.loading} />
+        <KpiCard label="Rework" tone="watch" value={String(count('REWORK'))} loading={rolls.loading} />
+        <KpiCard label="Rejected" tone="problem" value={String(count('REJECTED'))} loading={rolls.loading} />
       </div>
 
       <section className="space-y-3">

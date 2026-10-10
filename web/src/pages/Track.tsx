@@ -12,34 +12,34 @@ export function Track() {
   const { data: t, loading, error } = useApi<Tracking>(`/track/${token}`)
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-4 py-10">
+    <div className="min-h-screen px-4 py-10">
       <div className="mx-auto max-w-lg space-y-6">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-indigo-600 text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-ink text-white">
             <Logo className="size-4" />
           </div>
           <span className="text-sm font-medium">Everest Textile Mills · Order tracking</span>
         </div>
 
         {loading && <Skeleton className="h-96 w-full" />}
-        {error && <p className="rounded-lg border bg-white p-6 text-sm text-rose-600">{error}</p>}
+        {error && <p className="card text-sm text-problem">{error}</p>}
 
         {t && (
-          <div className="space-y-6 rounded-xl border bg-white p-6 shadow-sm">
+          <div className="card space-y-6 p-6!">
             <div>
               <p className="text-xs text-muted-foreground">{t.buyer}</p>
               <h1 className="text-xl font-semibold tracking-tight">{t.orderNo}</h1>
               <p className="text-sm text-muted-foreground">
                 {formatQty(t.qty)} {t.fabricType} · {t.colour} · due {formatDate(t.deadline)}
               </p>
-              <p className={cn('mt-2 text-sm font-medium', t.isDelayed ? 'text-rose-600' : 'text-indigo-700')}>
+              <p className={cn('mt-2 text-sm font-medium', t.isDelayed ? 'text-problem' : 'text-ink')}>
                 {t.statusLabel}
                 {t.isDelayed && ' · running late'}
               </p>
             </div>
 
             {t.status === 'CANCELLED' ? (
-              <p className="text-sm font-medium text-rose-600">This order was cancelled.</p>
+              <p className="text-sm font-medium text-problem">This order was cancelled.</p>
             ) : (
               <ol className="space-y-0">
                 {t.timeline.map((s, i) => {
@@ -52,16 +52,16 @@ export function Track() {
                         <span
                           className={cn(
                             'flex size-6 items-center justify-center rounded-full border-2 text-xs',
-                            done && 'border-indigo-600 bg-indigo-600 text-white',
-                            now && 'border-indigo-600 text-indigo-600',
-                            !done && !now && 'border-zinc-200 text-zinc-300',
+                            done && 'border-ink bg-ink text-white',
+                            now && 'animate-pulse border-ink text-ink',
+                            !done && !now && 'border-line text-ink-3/50',
                           )}
                         >
                           {done ? <Check className="size-3.5" /> : i + 1}
                         </span>
-                        {i < t.timeline.length - 1 && <span className={cn('h-6 w-0.5', done ? 'bg-indigo-600' : 'bg-zinc-200')} />}
+                        {i < t.timeline.length - 1 && <span className={cn('h-6 w-0.5', done ? 'bg-ink' : 'bg-line')} />}
                       </div>
-                      <p className={cn('pt-0.5 text-sm', now ? 'font-medium text-indigo-700' : done ? 'text-zinc-900' : 'text-zinc-400')}>
+                      <p className={cn('pt-0.5 text-sm', now ? 'font-medium text-ink' : done ? 'text-ink-2' : 'text-ink-3/60')}>
                         {s.label}
                         {now && <span className="ml-2 text-xs font-normal text-muted-foreground">in progress</span>}
                       </p>

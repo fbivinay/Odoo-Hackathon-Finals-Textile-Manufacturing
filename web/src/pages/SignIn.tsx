@@ -46,7 +46,7 @@ export function SignIn() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-zinc-950 p-12 text-white lg:flex">
+      <div className="relative m-4 hidden flex-col justify-between overflow-hidden rounded-[28px] bg-ink p-12 text-white lg:flex">
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.07]"
           style={{
@@ -57,11 +57,11 @@ export function SignIn() {
         />
         <div
           className="pointer-events-none absolute -top-32 -right-32 h-96 w-96 rounded-full opacity-20 blur-3xl"
-          style={{ background: 'radial-gradient(circle, #6366f1, transparent 70%)' }}
+          style={{ background: 'radial-gradient(circle, #facc15, transparent 70%)' }}
         />
 
         <div className="relative flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white">
             <Logo className="size-4.5" />
           </div>
           <span className="text-base font-medium">Everest Textile Mills</span>
@@ -72,7 +72,7 @@ export function SignIn() {
             <h1 className="text-3xl leading-tight font-semibold tracking-tight">
               From yarn at the gate to rolls on the truck.
             </h1>
-            <p className="max-w-sm text-sm text-zinc-400">
+            <p className="max-w-sm text-sm text-white/60">
               One system replacing the mill's notebooks and phone calls.
             </p>
           </div>
@@ -81,7 +81,7 @@ export function SignIn() {
             {FEATURES.map(({ icon: Icon, title }) => (
               <div key={title} className="flex items-center gap-3.5">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10">
-                  <Icon className="size-4.5 text-indigo-300" />
+                  <Icon className="size-4.5 text-[#facc15]" />
                 </div>
                 <p className="text-sm font-medium text-white">{title}</p>
               </div>
@@ -89,21 +89,21 @@ export function SignIn() {
           </div>
         </div>
 
-        <p className="relative text-xs text-zinc-500">© {new Date().getFullYear()} Everest Textile Mills</p>
+        <p className="relative text-xs text-white/40">© {new Date().getFullYear()} Everest Textile Mills</p>
       </div>
 
-      <div className="flex items-center justify-center bg-zinc-50 px-4 py-16">
+      <div className="flex items-center justify-center px-4 py-16">
         <div className="w-full max-w-sm space-y-8">
           <div className="space-y-1.5 lg:hidden">
             <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-indigo-600 text-white">
+              <div className="flex h-6 w-6 items-center justify-center rounded bg-ink text-white">
                 <Logo className="size-3.5" />
               </div>
               <span className="text-sm font-medium">Everest Textile Mills</span>
             </div>
           </div>
 
-          <div className="space-y-8 rounded-xl border bg-white p-10 shadow-sm">
+          <div className="space-y-8 card p-10!">
             <div className="space-y-1.5">
               <h2 className="text-xl font-semibold tracking-tight">Sign in</h2>
               <p className="text-sm text-muted-foreground">Use your mill email and password.</p>
@@ -140,7 +140,7 @@ export function SignIn() {
                 <div
                   role="alert"
                   aria-live="polite"
-                  className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"
+                  className="flex items-start gap-2 rounded-md border border-problem/30 bg-problem-bg px-3 py-2 text-xs text-problem"
                 >
                   <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                   <span>{error}</span>

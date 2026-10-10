@@ -1,183 +1,683 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 
-@custom-variant dark (&:is(.dark *));
+/* ============================================================================
+   Everest design system, ported from the Kasauti (MPLADS monitor) theme.
+
+   Monochrome by default. The only saturated colours are status colours (good /
+   watch / problem / neutral), so colour always means "look at this" and never
+   decoration. The one exception is the logo's yellow summit.
+
+   Two grounds alternate: the light ground carries working content (tables,
+   forms), and an inset near-black slab carries what should stop you (the
+   owner's month figures). Surfaces are glass: translucent panes over a faint
+   fixed wash, with a lit top rim and a three-layer shadow.
+   ========================================================================== */
 
 @theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, monospace;
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --color-ground: var(--ground);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-good: var(--good);
+  --color-good-bg: var(--good-bg);
+  --color-watch: var(--watch);
+  --color-watch-bg: var(--watch-bg);
+  --color-problem: var(--problem);
+  --color-problem-bg: var(--problem-bg);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+  color-scheme: light;
+
+  /* Grounds */
+  --ground: #f1f1f2;
+  --surface: #ffffff;
+  --surface-2: #fafafa;
+  --line: #e3e3e6;
+  --line-strong: #d2d2d7;
+
+  /* Ink */
+  --ink: #0b0b0c;
+  --ink-2: #4a4a52;
+  --ink-3: #6b6b74;
+
+  /* The inset dark slab */
+  --slab: #0b0b0c;
+  --slab-2: #17171a;
+  --slab-line: rgba(255, 255, 255, 0.11);
+  --on-slab: #fafafa;
+  --on-slab-2: #b6b6bf;
+
+  /* Status, the only hues. good / watch / problem / neutral. */
+  --good: #16704a;
+  --good-bg: #e6f2ec;
+  --watch: #96600a;
+  --watch-bg: #f8efdc;
+  --problem: #a82e22;
+  --problem-bg: #fbe9e7;
+  --neutral: #6b6b74;
+  --neutral-bg: #eeeef0;
+  --summit: #facc15;
+
+  /* Glass */
+  --glass: rgba(255, 255, 255, 0.46);
+  --glass-strong: rgba(255, 255, 255, 0.72);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 0 rgba(11, 11, 12, 0.04);
+  --glass-border: rgba(255, 255, 255, 0.68);
+  --glass-shadow:
+    0 1px 1px rgba(11, 11, 12, 0.035),
+    0 4px 10px -4px rgba(11, 11, 12, 0.06),
+    0 18px 40px -22px rgba(11, 11, 12, 0.18);
+  --glass-shadow-lift:
+    0 1px 1px rgba(11, 11, 12, 0.04),
+    0 8px 18px -6px rgba(11, 11, 12, 0.1),
+    0 28px 60px -28px rgba(11, 11, 12, 0.26);
+
+  /* One easing family and two durations for the whole interface. */
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 130ms;
+  --t-base: 240ms;
+  --lift: 1.03;
+  --lift-press: 1.045;
+  --t-lift: 220ms;
+
+  --radius-slab: 28px;
+  --radius-card: 18px;
+  --radius-control: 10px;
+
+  /* shadcn tokens, pointed at the same palette */
+  --radius: 0.625rem;
+  --background: var(--ground);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--surface);
+  --secondary: #e8e8ea;
+  --secondary-foreground: var(--ink);
+  --muted: #ececee;
+  --muted-foreground: var(--ink-3);
+  --accent: #ececee;
+  --accent-foreground: var(--ink);
+  --destructive: var(--problem);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--ink-2);
+
+  /* Entrance timing: the page assembles as the loading cover lifts. */
+  --enter-at: 1100ms;
+  --rise-y: 48px;  --rise-s: 0.97;
+  --card-y: 64px;  --card-s: 0.92;
 }
 
-.dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+/* After the first entrance (or when the cover is skipped) a page arrives in place. */
+:root[data-entered] {
+  --enter-at: 0ms;
+  --rise-y: 18px;  --rise-s: 0.99;
+  --card-y: 26px;  --card-s: 0.97;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
-  body {
-    @apply bg-background text-foreground;
-    }
+  }
   html {
     @apply font-sans;
-    /* 125% scale via root font-size, not `zoom` — `zoom` breaks Radix/floating-ui's
-       getBoundingClientRect-based popover positioning (calendars, selects, filter menus
-       render off-screen). Tailwind's spacing/type scale is rem-based, so this scales the
-       whole UI proportionally while keeping normal layout math intact. */
+    /* 125% scale via root font-size, not `zoom`: zoom breaks Radix popover positioning. */
     font-size: 20px;
-    }
-}
-/* Design tokens per architecture spec 8.2: zinc neutral, single indigo accent, Inter, 8px radius */
-@import "@fontsource-variable/inter";
-
-@theme inline {
-    --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-    --font-heading: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-}
-
-:root {
-    --radius: 0.5rem;
-    --background: #ffffff;
-    --foreground: #09090b;
-    --card: #ffffff;
-    --card-foreground: #09090b;
-    --popover: #ffffff;
-    --popover-foreground: #09090b;
-    --primary: #4f46e5;
-    --primary-foreground: #ffffff;
-    --secondary: #f4f4f5;
-    --secondary-foreground: #18181b;
-    --muted: #f4f4f5;
-    --muted-foreground: #71717b;
-    --accent: #f4f4f5;
-    --accent-foreground: #18181b;
-    --destructive: #e11d48;
-    --border: #e4e4e7;
-    --input: #e4e4e7;
-    --ring: #4f46e5;
-    --sidebar: #fafafa;
-    --sidebar-foreground: #09090b;
-    --sidebar-primary: #4f46e5;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #f4f4f5;
-    --sidebar-accent-foreground: #18181b;
-    --sidebar-border: #e4e4e7;
-    --sidebar-ring: #4f46e5;
+    overflow-anchor: none;
+  }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    @apply text-sm antialiased;
+    font-feature-settings: "cv05" 1;
+  }
 }
 
-body {
-    @apply bg-background text-foreground text-sm antialiased;
-    font-feature-settings: "cv11", "ss01";
+/* The ambient wash: one fixed layer, composited once, never repainted on scroll. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse 70rem 38rem at 8% -6%, rgba(250, 204, 21, 0.1), transparent 58%),
+    radial-gradient(ellipse 58rem 34rem at 96% 2%, rgba(22, 112, 74, 0.07), transparent 56%),
+    radial-gradient(ellipse 52rem 40rem at 62% 108%, rgba(168, 46, 34, 0.05), transparent 58%);
+}
+
+::selection {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  transition: none;
+}
+
+.font-data,
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------------- shell -- */
+
+.shell {
+  width: 100%;
+  max-width: 76rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+/* --------------------------------------------------------------- masthead -- */
+
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: saturate(1.9) blur(26px);
+  backdrop-filter: saturate(1.9) blur(26px);
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.masthead__inner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-block: 0.55rem;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.wordmark__mark {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9px;
+  background: var(--ink);
+  color: var(--surface);
+}
+.wordmark__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  font-size: 1.1rem;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+.wordmark__sub {
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+
+/* The floating island: its own glass pane with an ink ring, lifted off the bar. */
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  margin-inline: auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0.22rem;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 2px solid color-mix(in srgb, var(--ink) 45%, transparent);
+  box-shadow: var(--glass-edge), var(--glass-shadow);
+}
+.nav::-webkit-scrollbar { display: none; }
+.nav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.36rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  white-space: nowrap;
+  transition: color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease), scale var(--t-lift) var(--ease-out);
+}
+.nav__link:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  scale: 1.06;
+}
+.nav__link:active { scale: 1.02; }
+/* The current section is the one solid thing in a bar of glass. */
+.nav__link[aria-current="page"] {
+  color: var(--surface);
+  background: var(--ink);
+  box-shadow: 0 1px 2px rgba(11, 11, 12, 0.18);
+}
+.nav__link[aria-current="page"]:hover { color: var(--surface); background: var(--ink); }
+
+@media (max-width: 900px) {
+  .wordmark__text { display: none; }
+  .nav { margin-inline: 0; }
+}
+
+/* ---------------------------------------------------------- page headings -- */
+
+.page-head {
+  padding-block: 1.4rem 1rem;
+}
+.display {
+  font-size: clamp(1.6rem, 3.2vw, 2.2rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+  text-wrap: balance;
+}
+.section-head {
+  font-size: 1rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+.lede {
+  margin-top: 0.4rem;
+  max-width: 40rem;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ------------------------------------------------------------------ slab -- */
+
+.slab {
+  background: var(--slab);
+  color: var(--on-slab);
+  border-radius: var(--radius-slab);
+  padding: clamp(1.25rem, 3vw, 2.25rem);
+}
+.slab .section-head, .slab .display { color: var(--on-slab); }
+.slab .lede, .slab .eyebrow { color: var(--on-slab-2); }
+
+/* ------------------------------------------------------------ glass card -- */
+
+.card,
+.stat-card,
+.data-table-wrap {
+  position: relative;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--glass-edge), var(--glass-shadow);
+}
+.card { padding: 1rem 1.1rem; }
+
+.stat-card {
+  container-type: inline-size;
+  padding: 0.8rem 1rem 0.85rem;
+  min-width: 0;
+}
+.slab .stat-card {
+  background: var(--slab-2);
+  border-color: var(--slab-line);
+  box-shadow: none;
+}
+.stat-card__label { font-size: 0.72rem; color: var(--ink-2); }
+.slab .stat-card__label { color: var(--on-slab-2); }
+.stat-card__value {
+  margin-top: 0.3rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.45rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+@container (max-width: 11rem) {
+  .stat-card__value { font-size: 1.15rem; }
+}
+.slab .stat-card__value { color: var(--on-slab); }
+.stat-card__note { margin-top: 0.25rem; font-size: 0.66rem; line-height: 1.4; color: var(--ink-3); }
+.slab .stat-card__note { color: var(--on-slab-2); }
+/* Tones tint only the figure, never the whole card. */
+.stat-card--good .stat-card__value { color: var(--good); }
+.stat-card--watch .stat-card__value { color: var(--watch); }
+.stat-card--problem .stat-card__value { color: var(--problem); }
+.slab .stat-card--good .stat-card__value { color: #6fd3a3; }
+.slab .stat-card--problem .stat-card__value { color: #ff8f80; }
+
+/* ------------------------------------------------------------ status pill -- */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 0.16rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.pill--good { color: var(--good); background: var(--good-bg); border-color: color-mix(in srgb, var(--good) 28%, transparent); }
+.pill--watch { color: var(--watch); background: var(--watch-bg); border-color: color-mix(in srgb, var(--watch) 28%, transparent); }
+.pill--problem { color: var(--problem); background: var(--problem-bg); border-color: color-mix(in srgb, var(--problem) 30%, transparent); }
+.pill--neutral { color: var(--neutral); background: var(--neutral-bg); border-color: color-mix(in srgb, var(--neutral) 26%, transparent); }
+.pill--ink { color: var(--surface); background: var(--ink); }
+
+/* ------------------------------------------------------------------ table -- */
+
+.data-table-wrap { overflow: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  background: var(--surface-2);
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--ink-2);
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.data-table tbody tr:last-child td { border-bottom: 0; }
+.data-table tbody tr { transition: background-color var(--t-fast) var(--ease); }
+.data-table tbody tr:hover td { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+
+/* --------------------------------------------------------------- skeleton -- */
+
+.skel {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  animation: skel-pulse 1.4s ease-in-out infinite;
+}
+@keyframes skel-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.95; }
+}
+
+/* ----------------------------------------------------------------- footer -- */
+
+.footer {
+  margin-top: 4rem;
+  padding-bottom: 1.5rem;
+}
+.footer__meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 2rem;
+  padding-block: 1.1rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.68rem;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+/* The name set enormous and low-contrast, closing the page the way the masthead opens it. */
+.footer__wordmark {
+  margin-top: 1rem;
+  font-size: clamp(3rem, 14vw, 9rem);
+  line-height: 0.8;
+  letter-spacing: -0.055em;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--ink) 7%, transparent);
+  user-select: none;
+  text-align: center;
+}
+
+/* ================================================================ motion == */
+
+/* First paint: sections rise, cards come from below and behind, rows ripple in. */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(var(--rise-y)) scale(var(--rise-s)); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(var(--card-y)) scale(var(--card-s)); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes value-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Each page is one root element; its blocks rise in one after another. */
+main > * > * {
+  animation: rise-in 900ms var(--ease) var(--enter-at) both;
+}
+main > * > :nth-child(2) { animation-delay: calc(var(--enter-at) + 90ms); }
+main > * > :nth-child(3) { animation-delay: calc(var(--enter-at) + 170ms); }
+main > * > :nth-child(4) { animation-delay: calc(var(--enter-at) + 240ms); }
+main > * > :nth-child(n + 5) { animation-delay: calc(var(--enter-at) + 300ms); }
+
+.stat-card,
+.grid > .card {
+  animation: card-in 960ms var(--ease) var(--enter-at) both;
+}
+.grid > :nth-child(2) { animation-delay: calc(var(--enter-at) + 80ms); }
+.grid > :nth-child(3) { animation-delay: calc(var(--enter-at) + 160ms); }
+.grid > :nth-child(4) { animation-delay: calc(var(--enter-at) + 240ms); }
+.grid > :nth-child(5) { animation-delay: calc(var(--enter-at) + 320ms); }
+.grid > :nth-child(n + 6) { animation-delay: calc(var(--enter-at) + 390ms); }
+
+.stat-card__value { animation: value-in 420ms var(--ease-out) calc(var(--enter-at) + 120ms) both; }
+
+.data-table tbody tr:nth-child(-n + 12) { animation: rise-in 700ms var(--ease) var(--enter-at) both; }
+.data-table tbody tr:nth-child(2) { animation-delay: calc(var(--enter-at) + 45ms); }
+.data-table tbody tr:nth-child(3) { animation-delay: calc(var(--enter-at) + 90ms); }
+.data-table tbody tr:nth-child(4) { animation-delay: calc(var(--enter-at) + 135ms); }
+.data-table tbody tr:nth-child(5) { animation-delay: calc(var(--enter-at) + 180ms); }
+.data-table tbody tr:nth-child(n + 6) { animation-delay: calc(var(--enter-at) + 225ms); }
+
+/* Scroll: blocks below the fold arrive as the reader reaches them (ScrollReveal marks them).
+   Fade completes over 300px of travel, the lift over 680px, in pixels so tall tables don't crawl. */
+@keyframes reveal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes reveal-move { from { transform: translateY(80px) scale(0.9); } to { transform: none; } }
+@keyframes reveal-lift { from { transform: translateY(48px) scale(0.97); } to { transform: none; } }
+
+@supports (animation-timeline: view()) {
+  [data-reveal],
+  .grid > [data-reveal] {
+    animation-name: reveal-fade, reveal-move;
+    animation-duration: auto, auto;
+    animation-timing-function: linear, var(--ease);
+    animation-fill-mode: both, both;
+    animation-delay: 0s;
+    animation-timeline: view(), view();
+    animation-range: cover 0px cover 300px, cover 0px cover 680px;
+  }
+  .grid > [data-reveal]:nth-child(2) { animation-range: cover 28px cover 300px, cover 28px cover 680px; }
+  .grid > [data-reveal]:nth-child(3) { animation-range: cover 56px cover 300px, cover 56px cover 680px; }
+  .grid > [data-reveal]:nth-child(n + 4) { animation-range: cover 84px cover 300px, cover 84px cover 680px; }
+  .data-table-wrap[data-reveal],
+  section[data-reveal] {
+    animation-name: reveal-fade, reveal-lift;
+    animation-range: cover 0px cover 260px, cover 0px cover 520px;
+  }
+  .data-table tbody tr,
+  .data-table tbody tr:nth-child(-n + 12) { animation: none; }
+}
+
+/* Pointer feel: surfaces lift toward the reader and keep lifting on press.
+   `scale`/`translate`, not `transform`, so they compose with the arrival animation. */
+.card,
+.stat-card {
+  transition:
+    scale var(--t-lift) var(--ease-out),
+    translate var(--t-lift) var(--ease-out),
+    box-shadow var(--t-lift) var(--ease-out),
+    border-color var(--t-base) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .card:hover,
+  .stat-card:hover {
+    scale: var(--lift);
+    translate: 0 -3px;
+    box-shadow: var(--glass-edge), var(--glass-shadow-lift);
+    z-index: 1;
+  }
+  .slab .stat-card:hover { box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.6); }
+}
+.card:active,
+.stat-card:active {
+  scale: var(--lift-press);
+  translate: 0 -4px;
+  transition-duration: var(--t-fast);
+}
+
+/* --------------------------------------------------------- loading cover -- */
+/* Pure CSS, from first paint: bar fills, the percentage counts, the cover lifts.
+   Plays once every six hours (index.html sets data-no-cover otherwise). */
+@property --splash-pct {
+  syntax: "<integer>";
+  initial-value: 0;
+  inherits: false;
+}
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: var(--ground);
+  animation: splash-out 400ms var(--ease) 1000ms forwards;
+}
+html[data-no-cover] .splash { display: none; }
+@keyframes splash-out {
+  from { opacity: 1; pointer-events: none; }
+  99%  { opacity: 0; visibility: visible; }
+  to   { opacity: 0; visibility: hidden; }
+}
+.splash__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  transform: translateY(-6%);
+  animation: splash-in 500ms var(--ease-out) both;
+}
+@keyframes splash-in {
+  from { opacity: 0; transform: translateY(-2%) scale(0.96); }
+  to   { opacity: 1; transform: translateY(-6%) scale(1); }
+}
+.splash__name { margin-top: 0.5rem; font-size: 1.4rem; font-weight: 650; letter-spacing: -0.035em; }
+.splash__sub { font-size: 0.74rem; font-weight: 500; color: var(--ink-2); }
+.splash__tag {
+  margin-top: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  animation: splash-in 500ms var(--ease-out) 120ms both;
+}
+.splash__track {
+  margin-top: 1rem;
+  width: 220px;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  overflow: hidden;
+}
+.splash__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ink);
+  animation: splash-fill 900ms cubic-bezier(0.45, 0.05, 0.55, 0.95) both;
+}
+@keyframes splash-fill { from { width: 0%; } to { width: 100%; } }
+.splash__pct {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  counter-reset: splash-pct var(--splash-pct);
+  animation: splash-count 900ms cubic-bezier(0.45, 0.05, 0.55, 0.95) both;
+}
+.splash__pct::after { content: counter(splash-pct) "%"; }
+@keyframes splash-count { from { --splash-pct: 0; } to { --splash-pct: 100; } }
+
+/* All of this is a courtesy: under reduced motion nothing moves, fades or reveals. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .splash { display: none; }
+  .card:hover, .stat-card:hover, .card:active, .stat-card:active, .nav__link:hover { scale: 1; translate: none; }
 }
 
 /* Print only the invoice dialog. */
 @media print {
   body * { visibility: hidden; }
+  body::before { display: none; }
   .print-area, .print-area * { visibility: visible; }
   .print-area { position: absolute; inset: 0; transform: none; box-shadow: none; border: 0; }
 }
