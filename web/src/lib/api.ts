@@ -1,3 +1,4 @@
+import { dataChanged } from './changes'
 import { mockRequest } from './mock'
 import { getToken } from './token'
 
@@ -31,6 +32,13 @@ export async function api<T>(path: string, init: Init = {}): Promise<T> {
 
 // Same call, keeping the paging meta for lists that page.
 export async function apiPage<T>(path: string, init: Init = {}): Promise<{ data: T; meta?: PageMeta }> {
+  const result = await request<T>(path, init)
+  // A successful write can change what any other section shows.
+  if (init.method && init.method !== 'GET') dataChanged()
+  return result
+}
+
+async function request<T>(path: string, init: Init): Promise<{ data: T; meta?: PageMeta }> {
   if (USE_MOCKS) {
     try {
       return { data: await mockRequest<T>(path, init) }

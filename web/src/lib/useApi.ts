@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, apiPage, ApiError } from './api'
+import { useDataVersion } from './changes'
 
 // `refreshMs` re-fetches in the background on that interval (paused while the tab is hidden),
 // keeping the current data on screen instead of flashing skeletons.
@@ -12,6 +13,25 @@ export function useApi<T>(path: string | null, { refreshMs }: { refreshMs?: numb
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
 
   const reload = useCallback(() => setNonce((n) => n + 1), [])
+  const version = useDataVersion()
+  const seen = useRef(version)
+
+  // Something was saved (here, in another section or another tab): refresh quietly in place.
+  useEffect(() => {
+    if (path === null || seen.current === version) return
+    seen.current = version
+    let live = true
+    api<T>(path)
+      .then((d) => {
+        if (!live) return
+        setData(d)
+        setUpdatedAt(new Date())
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [path, version])
 
   useEffect(() => {
     if (path === null) return
@@ -101,6 +121,29 @@ export function usePaged<T>(path: string | null, limit = 50) {
     }
   }, [url, nonce])
 
+  // Something was saved elsewhere: re-read as many rows as are on screen, quietly.
+  const version = useDataVersion()
+  const seen = useRef(version)
+  const shown = useRef(limit)
+  useEffect(() => {
+    shown.current = Math.max(limit, rows.length)
+  })
+  useEffect(() => {
+    if (path === null || seen.current === version) return
+    seen.current = version
+    let live = true
+    apiPage<T[]>(`${path}${path.includes('?') ? '&' : '?'}limit=${shown.current}`)
+      .then(({ data, meta }) => {
+        if (!live) return
+        setRows(data)
+        setCursor(meta?.nextCursor ?? null)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [path, version])
+
   const more = useCallback(async () => {
     const next = cursor && url(cursor)
     if (!next) return
@@ -123,4 +166,25 @@ export async function fetchAll<T>(path: string): Promise<T[]> {
     cursor = page.meta?.nextCursor ?? null
   } while (cursor)
   return out
+}
+
+// Every row of a paged list, refreshed quietly after any save. For screens that sum or search
+// across the whole history (a few thousand rows).
+export function useAll<T>(path: string | null) {
+  const [rows, setRows] = useState<T[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const version = useDataVersion()
+
+  useEffect(() => {
+    if (path === null) return
+    let live = true
+    fetchAll<T>(path)
+      .then((r) => live && setRows(r))
+      .catch((e) => live && setError(e instanceof ApiError ? e.message : 'Something went wrong.'))
+    return () => {
+      live = false
+    }
+  }, [path, version])
+
+  return { rows, error, loading: rows === null && !error }
 }
