@@ -1,14 +1,15 @@
 const { Router } = require('express');
 const handle = require('../middleware/handle');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireTab } = require('../middleware/auth');
 const configService = require('../services/configService');
 const v = require('../validators/configValidators');
 
 const router = Router();
 router.use(requireAuth);
 
-// Everyone reads the figures (the order form and dispatch checks use them); only the owner edits.
-const owner = requireRole();
+// Everyone reads the figures (the order form and dispatch checks use them); only the owner, or
+// someone the owner gave Mill Setup to, edits.
+const owner = requireTab('/config');
 
 router.get('/', handle(() => configService.get()));
 router.get('/changes', owner, handle((req) => configService.changes(req.query)));

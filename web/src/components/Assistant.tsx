@@ -32,6 +32,7 @@ const STARTERS: [tab: string, question: string][] = [
   ['/dispatch', 'What is ready to dispatch?'],
   ['/clients', 'Which buyer has placed the most orders?'],
   ['/raw-materials', 'What dyes and chemicals are running low?'],
+  ['/config', 'What is the price per metre of each fabric?'],
 ]
 
 // Shrink to MAX_EDGE and re-encode as JPEG: phone photos drop from several MB to a few hundred KB.

@@ -150,17 +150,17 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 
 Assumptions: an order short of yarn can't start for 7 days (delivery lead time), Sundays are closed, a broken machine is counted back after 2 days and one under maintenance after 1, one day is added for QC, spinning is planned in kg of yarn and weaving/dyeing in order quantity.
 
-## Config (owner edits, everyone reads)
+## Config (the Mill Setup tab: everyone reads; the owner, or anyone granted `/config`, edits)
 
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | GET | `/config` | | `{ fabrics, rules, settings, materials }`. A fabric with no saved row is filled from the last 365 days of orders (`saved: false`); `history` always carries those figures |
-| PUT | `/config/fabrics/:fabricType` | OWNER | `{ materialId?, yarnPerMetre, wastagePct, pricePerMetre }` upsert. Yarn to issue = metres × yarnPerMetre × (1 + wastage %) |
-| POST | `/config/rules` | OWNER | `{ kind, below, pricePct, wastagePct }` (kind QUANTITY or DEADLINE); 409 if that band exists |
-| PATCH / DELETE | `/config/rules/:id` | OWNER | `{ below?, pricePct?, wastagePct? }` |
-| PUT | `/config/settings` | OWNER | `{ qcDays?, rollLength?, shiftHours?, dispatchTolerancePct?, shelfWaitDays? }`; a missing key uses its default (1, 1100, 8, 5, 3) |
-| PATCH | `/config/materials/:id` | OWNER | `{ reorderLevel?, supplierId?, leadDays? }` |
-| GET | `/config/changes` | OWNER | `?limit=` (max 500), newest first: `what, field, oldValue, newValue, changedBy, changedAt` |
+| PUT | `/config/fabrics/:fabricType` | OWNER or `/config` | `{ materialId?, yarnPerMetre, wastagePct, pricePerMetre }` upsert. Yarn to issue = metres × yarnPerMetre × (1 + wastage %) |
+| POST | `/config/rules` | OWNER or `/config` | `{ kind, below, pricePct, wastagePct }` (kind QUANTITY or DEADLINE); 409 if that band exists |
+| PATCH / DELETE | `/config/rules/:id` | OWNER or `/config` | `{ below?, pricePct?, wastagePct? }` |
+| PUT | `/config/settings` | OWNER or `/config` | `{ qcDays?, rollLength?, shiftHours?, dispatchTolerancePct?, shelfWaitDays? }`; a missing key uses its default (1, 1100, 8, 5, 3) |
+| PATCH | `/config/materials/:id` | OWNER or `/config` | `{ reorderLevel?, supplierId?, leadDays? }` |
+| GET | `/config/changes` | OWNER or `/config` | `?limit=` (max 500), newest first: `what, field, oldValue, newValue, changedBy, changedAt` |
 
 Read by: planning (`qcDays`, each material's `leadDays` when an order is short of yarn), finishing a dyeing job (`rollLength`), order costs (`shiftHours`), the order form (fabrics and rules) and dispatch checks (`dispatchTolerancePct`, `shelfWaitDays`).
 

@@ -212,7 +212,7 @@ export function OrderDetail() {
           {o.material && (
             <p className="text-sm text-ink-2">
               Needs {formatQty(n(o.yarnRequired), o.material.unit)} of {matName(o.material)}
-              {o.yarnPerMetre != null && ` (${formatQty(qty)} × ${n(o.yarnPerMetre)} kg/m + ${n(o.wastagePct)}% wastage, from Config)`}; {formatQty(yarnIssued, o.material.unit)} issued so far.
+              {o.yarnPerMetre != null && ` (${formatQty(qty)} × ${n(o.yarnPerMetre)} kg/m + ${n(o.wastagePct)}% wastage, from Mill Setup)`}; {formatQty(yarnIssued, o.material.unit)} issued so far.
             </p>
           )}
           {materials.length ? (
@@ -248,7 +248,7 @@ export function OrderDetail() {
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               {o.wastagePct != null && (
                 <>
-                  <dt className="text-ink-2">Wastage allowed (Config)</dt>
+                  <dt className="text-ink-2">Wastage allowed (Mill Setup)</dt>
                   <dd className="text-right tabular-nums">{n(o.wastagePct)}%</dd>
                 </>
               )}
@@ -305,7 +305,7 @@ export function OrderDetail() {
                 </dd>
                 {o.listPrice != null && (
                   <>
-                    <dt className="text-ink-2">Config price</dt>
+                    <dt className="text-ink-2">List price</dt>
                     <dd className="text-right tabular-nums">
                       {formatINR(n(o.listPrice))}/m
                       {n(o.pricePerUnit) !== n(o.listPrice) && <span className="ml-1 text-xs text-muted-foreground">sold at {formatINR(n(o.pricePerUnit))}/m</span>}

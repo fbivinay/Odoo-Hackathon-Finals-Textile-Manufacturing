@@ -9,6 +9,7 @@ const reportService = require('./reportService');
 const workforceService = require('./workforceService');
 const masterService = require('./masterService');
 const userService = require('./userService');
+const configService = require('./configService');
 const { TAB_LABEL, ROLE_LABEL } = require('../lib/tabs');
 
 // What the chat assistant can look up. Every tool only reads; nothing here changes data.
@@ -332,6 +333,22 @@ const TOOLS = [
     async run({ status, from, to, limit }) {
       const rows = rowsOf(await dispatchService.listInvoices({ status, from, to, limit: cap(limit) }));
       return rows.map((i) => ({ invoiceNo: i.invoiceNo, buyer: i.dispatch?.buyer?.name, orderNo: i.dispatch?.order?.orderNo, issuedOn: day(i.issuedAt), amountBeforeGst: num(i.amount), gst: num(Number(i.cgst || 0) + Number(i.sgst || 0) + Number(i.igst || 0)), totalWithGst: num(i.totalAmount ?? i.amount), paid: num(i.paid), balance: num(i.balance), status: i.status }));
+    },
+  },
+  {
+    name: 'mill_setup',
+    description: 'Mill Setup figures: each fabric\'s price per metre, yarn per metre and wastage, the price rules for small or rushed orders, and mill-wide numbers (roll length, shift hours, quality check days, dispatch tolerance). Optional recent changes: who changed what.',
+    access: ['/config', '/orders'],
+    input: { changes: { type: 'boolean', description: 'true to include the latest changes (only for people who can open Mill Setup)' } },
+    async run({ changes }, ctx) {
+      const c = await configService.get();
+      const yarn = new Map(c.materials.map((m) => [m.id, m.colour ? `${m.yarnType} ${m.colour}` : m.yarnType]));
+      return {
+        fabrics: c.fabrics.map((f) => ({ fabric: f.fabricType, pricePerMetre: f.pricePerMetre, yarnKgPerMetre: f.yarnPerMetre, wastagePct: f.wastagePct, usualYarn: yarn.get(f.materialId) || null, setBy: f.saved ? 'saved in Mill Setup' : 'worked out from past orders' })),
+        orderRules: c.rules.map((r) => ({ when: r.kind === 'QUANTITY' ? `order under ${r.below} m` : `deadline under ${r.below} days`, pricePct: r.pricePct, extraWastagePct: r.wastagePct })),
+        general: Object.fromEntries(c.settings.map((s) => [s.label, s.value])),
+        recentChanges: changes && ctx.can('/config') ? (await configService.changes({ limit: 20 })).map((x) => ({ what: x.what, field: x.field, from: x.oldValue, to: x.newValue, by: x.changedBy, at: when(x.changedAt) })) : undefined,
+      };
     },
   },
   {

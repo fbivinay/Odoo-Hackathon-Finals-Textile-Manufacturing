@@ -30,13 +30,15 @@ export const NAV: NavItem[] = [
   { to: '/waste', label: 'Waste', icon: Recycle, roles: ['PRODUCTION', 'QC'] },
   { to: '/dispatch', label: 'Dispatch', icon: Truck, roles: ['DISPATCH'] },
   { to: '/employees', label: 'Employees', icon: UserCog, roles: [] },
-  { to: '/config', label: 'Config', icon: SlidersHorizontal, roles: [] },
+  { to: '/config', label: 'Mill Setup', icon: SlidersHorizontal, roles: [] },
 ]
 
 type Access = Pick<User, 'role' | 'extraTabs'>
 
-// Overview and Employees stay with the owner; every other tab can be granted to one employee on top of their role.
-export const GRANTABLE = NAV.filter((n) => n.to !== '/dashboard' && n.to !== '/employees')
+// Overview, Accounts and Employees stay with the owner; every other tab can be granted to one
+// employee on top of their role. Keep in step with EXTRA_TABS in backend/src/lib/tabs.js.
+const OWNER_ONLY = ['/dashboard', '/accounts', '/employees']
+export const GRANTABLE = NAV.filter((n) => !OWNER_ONLY.includes(n.to))
 // The role whose rights a granted tab carries, mirroring backend/src/lib/tabs.js.
 const TAB_ROLE: Record<string, Role> = { '/materials': 'STORE', '/raw-materials': 'STORE', '/orders': 'STORE', '/production': 'PRODUCTION', '/qc': 'QC', '/dispatch': 'DISPATCH' }
 

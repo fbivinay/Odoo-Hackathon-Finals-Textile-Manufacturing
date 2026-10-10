@@ -552,8 +552,8 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
                 ? undefined
                 : q
                   ? q.applied.length
-                    ? `Config price ${q.pricePct > 0 ? '+' : ''}${q.pricePct}% (${q.applied.map((r) => (r.kind === 'QUANTITY' ? `under ${r.below.toLocaleString('en-IN')} m` : `deadline under ${r.below} days`)).join(', ')})`
-                    : 'Config price for this fabric'
+                    ? `List price ${q.pricePct > 0 ? '+' : ''}${q.pricePct}% (${q.applied.map((r) => (r.kind === 'QUANTITY' ? `under ${r.below.toLocaleString('en-IN')} m` : `deadline under ${r.below} days`)).join(', ')})`
+                    : 'List price for this fabric'
                   : form.pricePerUnit
                     ? 'Usual price'
                     : undefined

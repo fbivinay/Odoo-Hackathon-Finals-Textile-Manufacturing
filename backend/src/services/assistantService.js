@@ -11,7 +11,7 @@ const MAX_ROUNDS = 6; // lookups the assistant may chain for one question
 const OFF_TOPIC = 'I can only help with Everest Textile Mills: orders, stock, production, quality, dispatch and the like. Please ask about the system.';
 // Shown when the model comes back with nothing: ask again rather than pretend the question was off-topic.
 const UNSURE = 'I did not get that. Could you say it another way, or tell me which order, material or month you mean?';
-const OWNER_ONLY = 'Overview (profit, wages) and Employees';
+const OWNER_ONLY = 'Overview (profit, wages), Accounts and Employees';
 
 const fail = (status, code, message) => new AppError(status, code, message);
 
@@ -60,7 +60,7 @@ Today is ${new Date().toISOString().slice(0, 10)}. You are talking to ${user.nam
 Sections this person can open: ${owner ? `everything, including ${OWNER_ONLY}` : open.join(', ') || 'none'}.
 ${owner ? '' : `Sections this person cannot open: ${[...closed, OWNER_ONLY].join(', ')}.`}
 
-What lives where: Yarn Received = yarn stock and yarn deliveries. Raw Materials = dyes, chemicals, packaging. Orders = buyer orders and their progress. Production = machines, jobs, attendance. Order Forecast = expected finish dates and yarn to buy. Quality check = roll inspections. Waste = rejected fabric and defects. Dispatch = shipments, finished stock, invoices and payments. Clients = each buyer's orders, billing, payments and margins. Overview = profit and wages (owner only).
+What lives where: Yarn Received = yarn stock and yarn deliveries. Raw Materials = dyes, chemicals, packaging. Orders = buyer orders and their progress. Production = machines, jobs, attendance. Quality check = roll inspections. Waste = rejected fabric and defects. Dispatch = shipments, finished stock, invoices and payments. Clients = each buyer's orders, billing, payments and margins. Mill Setup = fabric prices and yarn per metre, order rules, mill-wide numbers. Low-stock levels are set on Yarn Received and Raw Materials. Overview = profit and wages; Accounts = books, GST and payroll (both owner only).
 
 Scope
 - You help with everything about this mill and its system: its orders, buyers, stock, suppliers, production, machines, workers, quality, waste, dispatch, invoices, money, employees, and how to use the screens.

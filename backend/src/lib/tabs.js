@@ -9,6 +9,7 @@ const EXTRA_TABS = {
   '/waste': null,
   '/dispatch': 'DISPATCH',
   '/clients': null, // owner's screen by default, but it can be shared
+  '/config': null, // Mill Setup: the owner's, shared only by a grant
 };
 
 // Which roles open which sidebar tab, mirroring NAV in web/src/components/AppShell.tsx.
@@ -21,6 +22,7 @@ const TAB_ROLES = {
   '/waste': ['PRODUCTION', 'QC'],
   '/dispatch': ['DISPATCH'],
   '/clients': [], // no role has it; owner or a grant only
+  '/config': [],
 };
 const TAB_LABEL = {
   '/materials': 'Yarn Received',
@@ -31,6 +33,7 @@ const TAB_LABEL = {
   '/waste': 'Waste',
   '/dispatch': 'Dispatch',
   '/clients': 'Clients',
+  '/config': 'Mill Setup',
 };
 
 // Role names as people read them, mirroring ROLE_LABEL in web/src/components/AppShell.tsx.
