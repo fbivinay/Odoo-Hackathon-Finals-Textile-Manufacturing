@@ -130,8 +130,8 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | Field | Meaning |
 |---|---|
 | `capacity.<STAGE>` | `{ machines, usable, perDay }`; `perDay` = usable machines × their 60-day average output per shift × 3 shifts |
-| `summary` | `{ openOrders, onTime, late, unscheduled, yarnsShort }` |
-| `orders[]` | order fields + `stages[]` (`{ stage, remaining, start, end }`), `yarnToIssue`, `expectedReady`, `lateByDays`, `onTime`, `withinHorizon` |
+| `summary` | `{ openOrders, onTime, late, unscheduled, waitingForYarn, yarnsShort }` |
+| `orders[]` | order fields + `stages[]` (`{ stage, remaining, start, end }`), `yarnToIssue`, `yarnShortBy` (stock is allocated earliest deadline first), `expectedReady`, `lateByDays`, `onTime`, `withinHorizon` |
 | `weeklyLoad[]` | per week (Monday `weekStart`): each stage's `{ load, capacity, utilisation }` |
 | `yarnNeeds[]` | per yarn: `needed` by open orders, `inStock`, `shortBy`, `orders` |
 

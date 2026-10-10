@@ -254,7 +254,7 @@ export interface StageLoad {
 export interface Planning {
   days: number
   capacity: Record<Stage, { machines: number; usable: number; perDay: number }>
-  summary: { openOrders: number; onTime: number; late: number; unscheduled: number; yarnsShort: number }
+  summary: { openOrders: number; onTime: number; late: number; unscheduled: number; waitingForYarn: number; yarnsShort: number }
   orders: {
     id: string
     orderNo: string
@@ -266,6 +266,7 @@ export interface Planning {
     deadline: string
     stages: { stage: Stage; remaining: number; start: string | null; end: string | null }[]
     yarnToIssue: number
+    yarnShortBy: number
     expectedReady: string | null
     lateByDays: number
     onTime: boolean

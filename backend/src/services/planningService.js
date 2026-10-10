@@ -93,6 +93,8 @@ async function schedule({ days = 90 } = {}) {
   }
 
   const yarn = new Map(materials.map((m) => [m.id, { needed: 0, orders: 0 }]));
+  // Stock is handed out in the same order as the plan, so two orders never count the same yarn.
+  const stockLeft = new Map(materials.map((m) => [m.id, Number(m.qtyInStock)]));
   const plan = orders.map((order) => {
     const target = { SPINNING: Number(order.yarnRequired), WEAVING: Number(order.qty), DYEING: Number(order.qty) };
     const done = STAGES.map((stage) => doneOf.get(`${order.id}|${stage}`) || 0);
@@ -116,10 +118,14 @@ async function schedule({ days = 90 } = {}) {
     });
 
     const yarnToIssue = Math.max(0, Number(order.yarnRequired) - (issuedOf.get(order.id) || 0));
+    let yarnShortBy = 0;
     if (order.materialId && yarnToIssue > 0 && yarn.has(order.materialId)) {
       const entry = yarn.get(order.materialId);
       entry.needed += yarnToIssue;
       entry.orders += 1;
+      const covered = Math.min(yarnToIssue, stockLeft.get(order.materialId));
+      stockLeft.set(order.materialId, stockLeft.get(order.materialId) - covered);
+      yarnShortBy = yarnToIssue - covered;
     }
 
     const readyIndex = order.status === 'READY' ? 0 : cursor + QC_DAYS;
@@ -137,6 +143,7 @@ async function schedule({ days = 90 } = {}) {
       deadline: order.deadline,
       stages,
       yarnToIssue: round(yarnToIssue),
+      yarnShortBy: round(yarnShortBy),
       expectedReady: expectedReady && dayKey(expectedReady),
       lateByDays,
       onTime: lateByDays === 0,
@@ -182,6 +189,7 @@ async function schedule({ days = 90 } = {}) {
       onTime: plan.filter((o) => o.onTime).length,
       late: late.length,
       unscheduled: plan.filter((o) => o.expectedReady === null).length,
+      waitingForYarn: plan.filter((o) => o.yarnShortBy > 0).length,
       yarnsShort: yarnNeeds.filter((m) => m.shortBy > 0).length,
     },
     orders: plan,
