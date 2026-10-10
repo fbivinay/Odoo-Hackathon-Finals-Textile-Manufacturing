@@ -614,7 +614,12 @@ function generate({ asOfDate }) {
     const inv = { id: id('inv'), invoiceNo: `INV-${pad(i + 1)}`, dispatchId: d.id, amount, issuedAt: trip.at };
     invoices.push(inv);
     const b = trip.order.buyer;
-    if (r.chance(0.015)) return; // never paid: stays on the books
+    // A disputed invoice: chased for months, then settled 45 to 120 days past terms. Nothing stays
+    // unpaid for years. Spread by trip number, not the RNG, so the rest of the data is unchanged.
+    if (r.chance(0.015)) {
+      payments.push({ id: id('pay'), invoiceId: inv.id, amount, method: 'RTGS', paidAt: trip.at + (b.terms + 45 + (i % 76)) * D });
+      return;
+    }
     const due = trip.at + Math.round((b.terms + r.between(-5, b.late ? 45 : 12)) * D);
     const method = () => r.weighted(METHODS, (m) => m[1])[0];
     if (r.chance(0.15)) {

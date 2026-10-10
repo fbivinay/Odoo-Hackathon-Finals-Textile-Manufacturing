@@ -10,7 +10,8 @@ import { RollLink } from '@/components/RollTrace'
 import { KpiCard } from '@/components/tremor/KpiCard'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/auth/session'
-import { api, apiPage, ApiError } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
+import { fetchAll } from '@/lib/useApi'
 import { dayFromToday, formatDayMonth, formatINR, formatMoney, formatQty } from '@/lib/format'
 import { costPerMetreOf, rate, summariseWaste, type Bucket, type WasteRoll } from '@/lib/waste'
 import type { OrderCost } from '@/types'
@@ -21,19 +22,6 @@ const PERIODS = [
   { key: '90', label: 'Last 90 days', days: 90 },
   { key: '365', label: 'Last 12 months', days: 365 },
 ]
-
-// Every page of a paged list.
-async function fetchAll<T>(path: string): Promise<T[]> {
-  const out: T[] = []
-  let cursor: string | null = null
-  do {
-    const sep = path.includes('?') ? '&' : '?'
-    const page: { data: T[]; meta?: { nextCursor: string | null } } = await apiPage<T[]>(`${path}${sep}limit=500${cursor ? `&cursor=${cursor}` : ''}`)
-    out.push(...page.data)
-    cursor = page.meta?.nextCursor ?? null
-  } while (cursor)
-  return out
-}
 
 const istIso = (iso: string) => new Date(Date.parse(iso) + 5.5 * 3600 * 1000).toISOString()
 

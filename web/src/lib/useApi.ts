@@ -111,3 +111,16 @@ export function usePaged<T>(path: string | null, limit = 50) {
 
   return { rows, loading, error, more, hasMore: cursor !== null, reload: useCallback(() => setNonce((n) => n + 1), []) }
 }
+
+// Every page of a paged list, 500 rows a request.
+export async function fetchAll<T>(path: string): Promise<T[]> {
+  const out: T[] = []
+  let cursor: string | null = null
+  do {
+    const sep = path.includes('?') ? '&' : '?'
+    const page: { data: T[]; meta?: { nextCursor: string | null } } = await apiPage<T[]>(`${path}${sep}limit=500${cursor ? `&cursor=${cursor}` : ''}`)
+    out.push(...page.data)
+    cursor = page.meta?.nextCursor ?? null
+  } while (cursor)
+  return out
+}

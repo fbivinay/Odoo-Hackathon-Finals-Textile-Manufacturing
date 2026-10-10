@@ -23,10 +23,13 @@ const Planning = page(() => import('@/pages/Planning'), 'Planning')
 const RawMaterials = page(() => import('@/pages/RawMaterials'), 'RawMaterials')
 const RawMaterial = page(() => import('@/pages/RawMaterial'), 'RawMaterial')
 const Waste = page(() => import('@/pages/Waste'), 'Waste')
+const Customers = page(() => import('@/pages/Customers'), 'Customers')
+const Customer = page(() => import('@/pages/Customer'), 'Customer')
 
 const PAGES: Record<string, ReactNode> = {
   '/dashboard': <Dashboard />,
   '/orders': <Orders />,
+  '/clients': <Customers />,
   '/production': <Production />,
   '/planning': <Planning />,
   '/materials': <Materials />,
@@ -66,6 +69,9 @@ export default function App() {
                 {/* Pages reached from inside another page rather than the sidebar. */}
                 <Route element={<ProtectedRoute roles={['STORE', 'PRODUCTION']} />}>
                   <Route path="/raw-materials/:id" element={<RawMaterial />} />
+                </Route>
+                <Route element={<ProtectedRoute roles={[]} />}>
+                  <Route path="/clients/:id" element={<Customer />} />
                 </Route>
                 <Route path="/inventory" element={<Navigate to="/raw-materials" replace />} />
                 <Route path="/new-order" element={<Navigate to="/orders" replace />} />

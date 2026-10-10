@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { CalendarRange, ClipboardCheck, Factory, FlaskConical, LayoutDashboard, LogOut, Menu, Package, Recycle, ShoppingCart, Truck } from 'lucide-react'
+import { CalendarRange, ClipboardCheck, Factory, FlaskConical, LayoutDashboard, LogOut, Menu, Package, Recycle, ShoppingCart, Truck, Users } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 import { Logo } from '@/components/Logo'
 import { useSession } from '@/auth/session'
@@ -21,6 +21,7 @@ export const NAV: NavItem[] = [
   { to: '/materials', label: 'Yarn Received', icon: Package, roles: ['STORE'] },
   { to: '/raw-materials', label: 'Raw Materials', icon: FlaskConical, roles: ['STORE', 'PRODUCTION'] },
   { to: '/orders', label: 'Customer Orders', icon: ShoppingCart, roles: ['STORE', 'PRODUCTION', 'DISPATCH'] },
+  { to: '/clients', label: 'Clients', icon: Users, roles: [] },
   { to: '/production', label: 'Production', icon: Factory, roles: ['PRODUCTION'] },
   { to: '/planning', label: 'Order Forecast', icon: CalendarRange, roles: ['PRODUCTION', 'STORE'] },
   { to: '/qc', label: 'Quality check', icon: ClipboardCheck, roles: ['QC'] },
