@@ -442,7 +442,9 @@ function generate({ asOfDate }) {
     }
     const spin = runStage(order, 'SPINNING', order.yarnRequired, order.plannedStart);
     order.issueAt = spin[0].startedAt - 30 * 60 * 1000;
-    const weave = runStage(order, 'WEAVING', roundTo(order.qty * 1.06, 10), spin.at(-1).completedAt + H);
+    // 2% over the order covers the usual QC rejects; a top-up lot covers a bad batch. Buyers accept
+    // delivery within about 5% of the ordered length, so the mill does not weave far beyond it.
+    const weave = runStage(order, 'WEAVING', roundTo(order.qty * 1.02, 10), spin.at(-1).completedAt + H);
     let dye = runStage(order, 'DYEING', weave.reduce((t, j) => t + j.qtyProduced, 0), weave.at(-1).completedAt + H);
     for (let round = 0; round < 4; round += 1) {
       const fresh = rollsFrom(order, dye);
@@ -466,7 +468,10 @@ function generate({ asOfDate }) {
         continue;
       }
     }
-    trips.push({ order, at: workingHours(resolved + Math.round(r.between(4, 40) * H), 9, 18), rolls: good });
+    // Usually loaded within two days of the last QC pass; now and then the buyer asks to hold, or no
+    // truck is free, and finished fabric waits on the shelf for 3 to 10 days.
+    const wait = r.chance(0.04) ? r.between(3, 10) * 24 : r.between(4, 40);
+    trips.push({ order, at: workingHours(resolved + Math.round(wait * H), 9, 18), rolls: good });
   }
 
   // ---------- yarn ledger: purchases and issues in time order ----------
