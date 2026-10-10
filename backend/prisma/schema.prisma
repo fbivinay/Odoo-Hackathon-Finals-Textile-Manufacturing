@@ -1,0 +1,342 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  STORE
+  PRODUCTION
+  QC
+  DISPATCH
+}
+
+enum Shift {
+  MORNING
+  EVENING
+  NIGHT
+}
+
+enum Stage {
+  SPINNING
+  WEAVING
+  DYEING
+}
+
+enum OrderStatus {
+  PENDING
+  SPINNING
+  WEAVING
+  DYEING
+  QC
+  READY
+  DISPATCHED
+  CANCELLED
+}
+
+enum MachineStatus {
+  IDLE
+  RUNNING
+  BREAKDOWN
+  MAINTENANCE
+}
+
+enum JobStatus {
+  RUNNING
+  COMPLETED
+  STOPPED
+}
+
+enum RollStatus {
+  PENDING_QC
+  PASSED
+  REWORK
+  REJECTED
+  DISPATCHED
+}
+
+enum QCResult {
+  PASS
+  REWORK
+  REJECT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  inwards   MaterialInward[]
+  qcRecords QCRecord[]
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  phone     String?
+  createdAt DateTime @default(now())
+
+  inwards MaterialInward[]
+}
+
+model Buyer {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  phone     String?
+  email     String?
+  createdAt DateTime @default(now())
+
+  orders     Order[]
+  dispatches Dispatch[]
+}
+
+model RawMaterial {
+  id           String   @id @default(cuid())
+  yarnType     String
+  colour       String
+  unit         String   @default("kg")
+  qtyInStock   Decimal  @default(0) @db.Decimal(12, 2)
+  reorderLevel Decimal  @default(0) @db.Decimal(12, 2)
+  avgCost      Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt    DateTime @default(now())
+
+  inwards MaterialInward[]
+  issues  MaterialIssue[]
+  orders  Order[]
+
+  @@unique([yarnType, colour])
+}
+
+// Yarn arriving at the gate
+model MaterialInward {
+  id           String   @id @default(cuid())
+  materialId   String
+  supplierId   String
+  orderId      String?
+  receivedById String
+  qty          Decimal  @db.Decimal(12, 2)
+  rate         Decimal  @db.Decimal(12, 2)
+  billAmount   Decimal  @db.Decimal(14, 2)
+  receivedAt   DateTime @default(now())
+
+  material   RawMaterial @relation(fields: [materialId], references: [id])
+  supplier   Supplier    @relation(fields: [supplierId], references: [id])
+  order      Order?      @relation(fields: [orderId], references: [id])
+  receivedBy User        @relation(fields: [receivedById], references: [id])
+
+  @@index([materialId])
+  @@index([receivedAt])
+}
+
+// Yarn leaving the store for an order — drives per-order material cost
+model MaterialIssue {
+  id         String   @id @default(cuid())
+  materialId String
+  orderId    String
+  qty        Decimal  @db.Decimal(12, 2)
+  cost       Decimal  @db.Decimal(14, 2)
+  issuedAt   DateTime @default(now())
+
+  material RawMaterial @relation(fields: [materialId], references: [id])
+  order    Order       @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  orderNo       String      @unique
+  trackingToken String      @unique @default(cuid())
+  buyerId       String
+  materialId    String?
+  fabricType    String
+  colour        String
+  qty           Decimal     @db.Decimal(12, 2)
+  yarnRequired  Decimal     @default(0) @db.Decimal(12, 2)
+  pricePerUnit  Decimal     @default(0) @db.Decimal(12, 2)
+  deadline      DateTime
+  status        OrderStatus @default(PENDING)
+  createdAt     DateTime    @default(now())
+
+  buyer      Buyer            @relation(fields: [buyerId], references: [id])
+  material   RawMaterial?     @relation(fields: [materialId], references: [id])
+  inwards    MaterialInward[]
+  issues     MaterialIssue[]
+  jobs       ProductionJob[]
+  rolls      Roll[]
+  dispatches Dispatch[]
+
+  @@index([status])
+  @@index([deadline])
+}
+
+model Machine {
+  id        String        @id @default(cuid())
+  code      String        @unique
+  name      String
+  type      Stage
+  status    MachineStatus @default(IDLE)
+  createdAt DateTime      @default(now())
+
+  jobs  ProductionJob[]
+  rolls Roll[]
+}
+
+// One order running one stage on one machine
+model ProductionJob {
+  id          String    @id @default(cuid())
+  orderId     String
+  machineId   String
+  workerId    String?
+  stage       Stage
+  shift       Shift
+  status      JobStatus @default(RUNNING)
+  qtyPlanned  Decimal   @db.Decimal(12, 2)
+  qtyProduced Decimal   @default(0) @db.Decimal(12, 2)
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  machine Machine @relation(fields: [machineId], references: [id])
+  worker  Worker? @relation(fields: [workerId], references: [id])
+  rolls   Roll[]
+
+  @@index([orderId])
+  @@index([machineId, status])
+  @@index([startedAt])
+}
+
+model Roll {
+  id         String     @id @default(cuid())
+  rollNo     String     @unique
+  orderId    String
+  machineId  String
+  jobId      String?
+  dispatchId String?
+  qty        Decimal    @db.Decimal(12, 2)
+  status     RollStatus @default(PENDING_QC)
+  createdAt  DateTime   @default(now())
+
+  order     Order          @relation(fields: [orderId], references: [id])
+  machine   Machine        @relation(fields: [machineId], references: [id])
+  job       ProductionJob? @relation(fields: [jobId], references: [id])
+  dispatch  Dispatch?      @relation(fields: [dispatchId], references: [id])
+  qcRecords QCRecord[]
+
+  @@index([orderId])
+  @@index([status])
+}
+
+model QCRecord {
+  id          String   @id @default(cuid())
+  rollId      String
+  inspectorId String
+  result      QCResult
+  defectType  String?
+  notes       String?
+  checkedAt   DateTime @default(now())
+
+  roll      Roll @relation(fields: [rollId], references: [id])
+  inspector User @relation(fields: [inspectorId], references: [id])
+
+  @@index([rollId])
+}
+
+model Dispatch {
+  id           String   @id @default(cuid())
+  dispatchNo   String   @unique
+  orderId      String
+  buyerId      String
+  vehicleNo    String?
+  dispatchedAt DateTime @default(now())
+
+  order   Order    @relation(fields: [orderId], references: [id])
+  buyer   Buyer    @relation(fields: [buyerId], references: [id])
+  rolls   Roll[]
+  invoice Invoice?
+
+  @@index([orderId])
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  invoiceNo  String        @unique
+  dispatchId String        @unique
+  amount     Decimal       @db.Decimal(14, 2)
+  status     InvoiceStatus @default(UNPAID)
+  issuedAt   DateTime      @default(now())
+
+  dispatch Dispatch  @relation(fields: [dispatchId], references: [id])
+  payments Payment[]
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  invoiceId String
+  amount    Decimal  @db.Decimal(14, 2)
+  method    String?
+  paidAt    DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([paidAt])
+}
+
+model Worker {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  shift     Shift
+  dailyWage Decimal  @db.Decimal(10, 2)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  attendance Attendance[]
+  wages      WagePayment[]
+  jobs       ProductionJob[]
+}
+
+model Attendance {
+  id       String           @id @default(cuid())
+  workerId String
+  date     DateTime         @db.Date
+  shift    Shift
+  status   AttendanceStatus
+
+  worker Worker @relation(fields: [workerId], references: [id])
+
+  @@unique([workerId, date])
+  @@index([date])
+}
+
+model WagePayment {
+  id       String   @id @default(cuid())
+  workerId String
+  month    String // YYYY-MM
+  amount   Decimal  @db.Decimal(12, 2)
+  paidAt   DateTime @default(now())
+
+  worker Worker @relation(fields: [workerId], references: [id])
+
+  @@unique([workerId, month])
+}
