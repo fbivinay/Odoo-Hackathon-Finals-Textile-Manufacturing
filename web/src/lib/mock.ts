@@ -436,7 +436,14 @@ function handle(path: string, method: string, body: Record<string, any>): unknow
 
   if (is('GET', '/invoices')) {
     const status = query.get('status')
-    return invoices.map(fullInvoice).filter((i) => !status || i.status === status)
+    // Same shape as the API: each invoice carries its dispatch with order and buyer.
+    return invoices
+      .map((inv) => {
+        const d = byId(dispatches, inv.dispatchId)!
+        const b = byId(buyers, d.buyerId)!
+        return { ...fullInvoice(inv), dispatch: { id: d.id, dispatchNo: d.dispatchNo, dispatchedAt: d.dispatchedAt, order: orderBrief(d.orderId), buyer: { id: b.id, name: b.name } } }
+      })
+      .filter((i) => !status || i.status === status)
   }
   if (is('GET', '/qc/summary')) {
     const counts = { PENDING_QC: 0, PASSED: 0, REWORK: 0, REJECTED: 0, DISPATCHED: 0 }

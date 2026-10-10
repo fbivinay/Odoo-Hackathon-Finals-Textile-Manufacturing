@@ -13,6 +13,7 @@ export interface CustomerData {
 
 // The whole history (a few MB) is loaded once and shared by the list and the detail page.
 // ponytail: client-side aggregation; move to a /reports/buyers endpoint if the history outgrows the browser.
+// An invoice without its dispatch (order, buyer) cannot be attributed, so it is skipped, not crashed on.
 let cache: Promise<CustomerData> | null = null
 const load = () =>
   (cache ??= Promise.all([
@@ -20,7 +21,7 @@ const load = () =>
     fetchAll<COrder>('/orders'),
     fetchAll<CInvoice>('/invoices'),
     fetchAll<CCost>('/reports/order-costs'),
-  ]).then(([buyers, orders, invoices, costs]) => ({ buyers, orders, invoices, costs })))
+  ]).then(([buyers, orders, invoices, costs]) => ({ buyers, orders, invoices: invoices.filter((i) => i.dispatch?.order && i.dispatch.buyer), costs })))
 
 export function useCustomerData() {
   const [data, setData] = useState<CustomerData | null>(null)
