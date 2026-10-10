@@ -86,11 +86,12 @@ function workingHours(t, from, to) {
 
 // ---------- catalogue ----------
 
+// Ten yarns to start with; the store adds more from the delivery form.
 const MATERIALS = [
-  ['Cotton 40s', 'Raw White', 235], ['Cotton 60s Combed', 'Raw White', 290], ['Cotton 80s Compact', 'Raw White', 360],
+  ['Cotton 40s', 'Raw White', 235], ['Cotton 60s Combed', 'Raw White', 290],
   ['Cotton 30s', 'Raw White', 210], ['Cotton 10s OE', 'Raw White', 160], ['Cotton 20s Rope-dyed', 'Indigo', 265],
   ['Poly-Cotton 2/40', 'Grey', 190], ['Polyester 150D Semi-dull', 'Raw White', 150], ['Polyester 75D Bright', 'Raw White', 175],
-  ['Viscose 30s', 'Natural', 230], ['Linen 25s', 'Natural', 540], ['Cotton 30s Melange', 'Grey', 255],
+  ['Viscose 30s', 'Natural', 230], ['Linen 25s', 'Natural', 540],
 ];
 
 // fabric → [price factor, yarn kg per m, material indexes, colours, share].
@@ -98,16 +99,16 @@ const MATERIALS = [
 const FABRICS = {
   Poplin: [1.0, 0.11, [0], ['White', 'Navy', 'Sky Blue', 'Black', 'Olive'], 14],
   Cambric: [1.05, 0.09, [1], ['White', 'Ivory', 'Peach'], 7],
-  Lawn: [1.1, 0.07, [2], ['White', 'Mint', 'Lilac', 'Printed Floral'], 5],
-  Twill: [0.95, 0.2, [3, 6], ['Khaki', 'Black', 'Navy', 'Olive', 'Grey'], 12],
-  Denim: [1.0, 0.45, [5], ['Indigo', 'Dark Indigo', 'Stone Wash'], 11],
-  Canvas: [0.95, 0.5, [4], ['Natural', 'Khaki', 'Black'], 6],
-  Oxford: [1.0, 0.17, [6], ['White', 'Light Blue', 'Pink'], 9],
-  Chambray: [1.05, 0.15, [11], ['Grey', 'Blue Melange'], 5],
-  Satin: [1.1, 0.13, [7], ['Ivory', 'Champagne', 'Maroon', 'Black'], 9],
-  Georgette: [1.15, 0.08, [8], ['Black', 'Peach', 'Teal', 'Wine'], 7],
-  'Linen Suiting': [1.2, 0.22, [10], ['Beige', 'Natural', 'Sand'], 4],
-  'Rayon Print': [1.05, 0.12, [9], ['Red Floral', 'Blue Paisley', 'Yellow Print'], 11],
+  Lawn: [1.1, 0.07, [1], ['White', 'Mint', 'Lilac', 'Printed Floral'], 5],
+  Twill: [0.95, 0.2, [2, 5], ['Khaki', 'Black', 'Navy', 'Olive', 'Grey'], 12],
+  Denim: [1.0, 0.45, [4], ['Indigo', 'Dark Indigo', 'Stone Wash'], 11],
+  Canvas: [0.95, 0.5, [3], ['Natural', 'Khaki', 'Black'], 6],
+  Oxford: [1.0, 0.17, [5], ['White', 'Light Blue', 'Pink'], 9],
+  Chambray: [1.05, 0.15, [5], ['Grey', 'Blue Melange'], 5],
+  Satin: [1.1, 0.13, [6], ['Ivory', 'Champagne', 'Maroon', 'Black'], 9],
+  Georgette: [1.15, 0.08, [7], ['Black', 'Peach', 'Teal', 'Wine'], 7],
+  'Linen Suiting': [1.2, 0.22, [9], ['Beige', 'Natural', 'Sand'], 4],
+  'Rayon Print': [1.05, 0.12, [8], ['Red Floral', 'Blue Paisley', 'Yellow Print'], 11],
 };
 const FABRIC_NAMES = Object.keys(FABRICS);
 
@@ -123,10 +124,10 @@ const MACHINES = [
   ['DY-04', 'Soft-flow 4', 'DYEING'],
 ];
 
+// Ten suppliers to start with; the store adds more from the delivery form.
 const SUPPLIERS = [
-  'Vardhman Yarns', 'Nahar Spinning Mills', 'Sutlej Textiles', 'Trident Yarns', 'KPR Mill Yarn Division', 'Ambika Cotton Mills',
-  'Nitin Spinners', 'Sangam Yarn Co', 'Indo Count Yarns', 'Filatex Polyester', 'Reliance Polyester Yarn', 'Grasim Viscose',
-  'Jaya Shree Linen', 'Banswara Syntex', 'Surat Yarn Agency', 'Raghuvir Polyfils',
+  'Vardhman Yarns', 'Nahar Spinning Mills', 'Sutlej Textiles', 'Trident Yarns', 'Ambika Cotton Mills',
+  'Nitin Spinners', 'Filatex Polyester', 'Grasim Viscose', 'Jaya Shree Linen', 'Surat Yarn Agency',
 ];
 const BUYERS = [
   'Arvind Garments', 'Raymond Apparel', 'Welspun Home', 'Aditya Birla Fashion', 'Page Industries', 'Shahi Exports', 'Gokaldas Exports',
