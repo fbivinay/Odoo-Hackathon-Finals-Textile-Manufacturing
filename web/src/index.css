@@ -125,8 +125,11 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --t-fast: 130ms;
   --t-base: 240ms;
-  --lift: 1.03;
-  --lift-press: 1.045;
+  /* One hover lift for every card and figure box: grow 2%, rise 2px. Pressing goes a touch further. */
+  --lift: 1.02;
+  --lift-y: -2px;
+  --lift-press: 1.03;
+  --lift-press-y: -3px;
   --t-lift: 220ms;
 
   --radius-slab: 28px;
@@ -325,8 +328,27 @@ body::before {
 
 /* ---------------------------------------------------------- page headings -- */
 
+/* The page panel's scrollbar: thin, no track, so it sits on the panel's own background. */
+/* Firefox only. In Chrome, Brave and Safari these would switch off the custom bar below and bring
+   back the system one, which keeps its own margin from the edge. */
+@supports not selector(::-webkit-scrollbar) {
+  [data-scroll-root] {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+[data-scroll-root]::-webkit-scrollbar { width: 6px; }
+[data-scroll-root]::-webkit-scrollbar-track { background: transparent; margin-block: 10px; }
+/* Flush with the panel's right edge: no gap between the thumb and the border. */
+[data-scroll-root]::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 5px 0 0 5px;
+}
+[data-scroll-root]::-webkit-scrollbar-thumb:hover { background-color: var(--ink-3); }
+
+/* The panel already gives 24px at the top, so the heading needs only a little more. */
 .page-head {
-  padding-block: 1.4rem 1rem;
+  padding-block: 0.25rem 1rem;
 }
 .display {
   font-size: clamp(1.6rem, 3.2vw, 2.2rem);
@@ -448,6 +470,10 @@ body::before {
 .grid > .figure:nth-child(4) { animation-delay: calc(var(--enter-at) + 240ms); }
 .grid > .figure:nth-child(5) { animation-delay: calc(var(--enter-at) + 320ms); }
 .grid > .figure:nth-child(6) { animation-delay: calc(var(--enter-at) + 390ms); }
+/* Inside a figures panel the boxes arrive with the panel, as one piece. Running their own entrance
+   on top of the panel's made the frame and its boxes move at two different speeds. */
+.figures-panel .figure,
+.figures-panel .grid > .figure:nth-child(n) { animation: none; }
 .figure__label { font-size: 0.8rem; color: var(--ink-2); }
 .figure__value {
   margin-top: 0.2rem;
@@ -460,20 +486,29 @@ body::before {
   color: var(--ink);
 }
 @container (max-width: 14rem) { .figure__value { font-size: 1.45rem; } }
+/* Words instead of a number (e.g. a defect name): sized to the box's width so they always fit,
+   and cut with an ellipsis if they still can't. */
+.figure__value--long {
+  font-size: clamp(1.05rem, 9.5cqi, 1.9rem);
+  line-height: 1.28;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@container (max-width: 14rem) { .figure__value--long { font-size: 1.05rem; } }
 .figure__note { margin-top: 0.35rem; font-size: 0.7rem; color: var(--ink-3); }
 .figure--good .figure__value { color: var(--good); }
 .figure--watch .figure__value { color: var(--watch); }
 .figure--problem .figure__value { color: var(--problem); }
 @media (hover: hover) and (pointer: fine) {
   .figure:hover {
-    scale: 1.03;
-    translate: 0 -3px;
+    scale: var(--lift);
+    translate: 0 var(--lift-y);
     z-index: 1;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.95),
-      0 2px 4px rgba(11, 11, 12, 0.1),
-      0 16px 26px -8px rgba(11, 11, 12, 0.26),
-      0 36px 56px -26px rgba(11, 11, 12, 0.4);
+      0 2px 4px rgba(11, 11, 12, 0.09),
+      0 12px 22px -8px rgba(11, 11, 12, 0.22),
+      0 28px 44px -24px rgba(11, 11, 12, 0.32);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -658,7 +693,7 @@ main > * > :nth-child(n + 5) { animation-delay: calc(var(--enter-at) + 300ms); }
   .card:hover,
   .stat-card:hover {
     scale: var(--lift);
-    translate: 0 -3px;
+    translate: 0 var(--lift-y);
     box-shadow: var(--glass-edge), var(--glass-shadow-lift);
     z-index: 1;
   }
@@ -667,7 +702,7 @@ main > * > :nth-child(n + 5) { animation-delay: calc(var(--enter-at) + 300ms); }
 .card:active,
 .stat-card:active {
   scale: var(--lift-press);
-  translate: 0 -4px;
+  translate: 0 var(--lift-press-y);
   transition-duration: var(--t-fast);
 }
 
@@ -685,8 +720,17 @@ main > * > :nth-child(n + 5) { animation-delay: calc(var(--enter-at) + 300ms); }
   z-index: 9999;
   display: grid;
   place-items: center;
-  background: var(--ground);
+  /* The app's frame: a white surround with the page as an inset, bordered panel. */
+  background: var(--surface);
   animation: splash-out 400ms var(--ease) 1000ms forwards;
+}
+.splash::before {
+  content: "";
+  position: absolute;
+  inset: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--ground);
 }
 html[data-no-cover] .splash { display: none; }
 @keyframes splash-out {
@@ -699,6 +743,7 @@ html[data-no-cover] .splash { display: none; }
   flex-direction: column;
   align-items: center;
   gap: 0.45rem;
+  position: relative; /* above the panel drawn by .splash::before */
   transform: translateY(-6%);
   animation: splash-in 500ms var(--ease-out) both;
 }

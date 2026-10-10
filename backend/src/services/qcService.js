@@ -19,8 +19,14 @@ async function listRolls(query = {}) {
   const status = wanted.length > 1 ? { in: wanted } : wanted[0];
   // The QC queue skips rolls of cancelled orders: those are unsold stock.
   const queue = wanted.includes('PENDING_QC') ? { order: { status: { not: 'CANCELLED' } } } : {};
+  // ?q= matches the roll number, its order number, fabric, colour, buyer or machine.
+  const q = String(query.q || '').trim();
+  const has = { contains: q, mode: 'insensitive' };
+  const search = q ? { OR: [{ rollNo: has }, { machine: { code: has } }, { order: { OR: [{ orderNo: has }, { fabricType: has }, { colour: has }, { buyer: { name: has } }] } }] } : {};
+  // ?defect= keeps rolls that failed a check for that reason.
+  const defect = query.defect ? { qcRecords: { some: { defectType: String(query.defect) } } } : {};
   const rolls = await prisma.roll.findMany({
-    where: { status, orderId, machineId, createdAt: dateRange(from, to), ...queue },
+    where: { AND: [{ status, orderId, machineId, createdAt: dateRange(from, to), ...queue }, search, defect] },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     include: rollInclude,
     ...pageArgs(query),

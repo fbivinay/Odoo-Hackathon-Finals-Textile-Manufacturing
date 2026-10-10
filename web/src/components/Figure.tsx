@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { CountUp } from '@/components/CountUp'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
@@ -16,7 +17,7 @@ export function Figure({
 }: {
   label: string
   value: string
-  note?: string
+  note?: ReactNode // a short line; may colour a figure inside it
   tone?: 'good' | 'watch' | 'problem'
   loading?: boolean
   onClick?: () => void
@@ -28,7 +29,7 @@ export function Figure({
       {loading ? (
         <Skeleton className="mx-auto mt-2 h-9 w-32" />
       ) : (
-        <p className="figure__value">
+        <p className={cn('figure__value', value.length > 10 && 'figure__value--long')} title={value.length > 10 ? value : undefined}>
           <CountUp text={value} />
         </p>
       )}

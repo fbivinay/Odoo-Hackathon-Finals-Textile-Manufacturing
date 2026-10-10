@@ -1,5 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom'
-import { canOpen, homeFor } from '@/components/AppShell'
+import { canOpen, homeFor, ShellSkeleton } from '@/components/AppShell'
 import type { Role } from '@/types'
 import { useSession } from './session'
 
@@ -7,7 +7,8 @@ import { useSession } from './session'
 // `tab` is the sidebar path the route belongs to, so a tab granted to one employee opens too.
 export function ProtectedRoute({ roles, tab = '' }: { roles?: Role[]; tab?: string }) {
   const { user, loading } = useSession()
-  if (loading) return null
+  // On a reload the session takes a moment: hold the app's frame rather than a blank page.
+  if (loading) return roles ? null : <ShellSkeleton />
   if (!user) return <Navigate to="/sign-in" replace />
   if (user.mustChangePassword) return <Navigate to="/set-password" replace />
   if (roles && !canOpen(user, tab, roles)) return <Navigate to={homeFor(user)} replace />

@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { ClipboardCheck } from 'lucide-react'
+import { ClipboardCheck, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
-import { Field } from '@/components/Field'
+import { Field, selectClass } from '@/components/Field'
 import { Figure } from '@/components/Figure'
 import { LoadMore } from '@/components/LoadMore'
 import { PageHead } from '@/components/PageHead'
@@ -12,20 +12,21 @@ import { RollLink } from '@/components/RollTrace'
 import { Pill, label } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { dayFromToday, formatDateTime, formatQty } from '@/lib/format'
 import { api, ApiError } from '@/lib/api'
 import { useApi, usePaged } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
-import type { QcSummary, Roll, Stage } from '@/types'
+import type { Machine, QcSummary, Roll, Stage } from '@/types'
 
 const DEFECTS = ['Holes', 'Colour mismatch', 'Uneven weaving', 'Stains', 'Broken ends', 'Other']
 
-// What is waiting, what passed and what failed: one list each, in the same colours as their pills.
+// What is waiting, what passed and what failed: one list each, opened from its box at the top.
 const VIEWS = [
-  { key: 'waiting', label: 'Waiting', dot: 'bg-watch', status: 'PENDING_QC', empty: 'No rolls waiting. Nice.' },
-  { key: 'passed', label: 'Passed', dot: 'bg-good', status: 'PASSED,DISPATCHED', empty: 'No roll has passed yet.' },
-  { key: 'rejected', label: 'Rejected', dot: 'bg-problem', status: 'REJECTED', empty: 'No roll has been rejected.' },
+  { key: 'waiting', title: 'Waiting to be checked', status: 'PENDING_QC', empty: 'No rolls waiting. Nice.' },
+  { key: 'passed', title: 'Passed rolls', status: 'PASSED,DISPATCHED', empty: 'No roll has passed yet.' },
+  { key: 'rejected', title: 'Rejected rolls', status: 'REJECTED', empty: 'No roll has been rejected.' },
 ] as const
 type View = (typeof VIEWS)[number]['key']
 
@@ -47,7 +48,29 @@ export function QC() {
   const summary = useApi<QcSummary>('/qc/summary')
   const recent = useApi<QcSummary>(`/qc/summary?from=${dayFromToday(-WINDOW_DAYS)}`)
   const current = VIEWS.find((v) => v.key === view)!
-  const list = usePaged<Roll>(`/qc/rolls?status=${current.status}`, 50)
+  // Searched on the server, so it reaches every roll, not just the ones loaded so far.
+  const [search, setSearch] = useState('')
+  const [q, setQ] = useState('')
+  useEffect(() => {
+    const t = window.setTimeout(() => setQ(search.trim()), 250)
+    return () => window.clearTimeout(t)
+  }, [search])
+  // Rolls come off the dyeing line, so those are the machines to filter by.
+  const machines = useApi<Machine[]>('/machines')
+  const dyeing = (machines.data ?? []).filter((m) => m.type === 'DYEING')
+  const [machineId, setMachineId] = useState('')
+  const [defect, setDefect] = useState('')
+  // Passed rolls are either still in the store or already on a truck.
+  const [where, setWhere] = useState<'' | 'PASSED' | 'DISPATCHED'>('')
+  const filters = `${q ? `&q=${encodeURIComponent(q)}` : ''}${machineId ? `&machineId=${machineId}` : ''}${view === 'rejected' && defect ? `&defect=${encodeURIComponent(defect)}` : ''}`
+  const filtered = !!q || !!machineId || (view === 'rejected' && !!defect) || (view === 'passed' && !!where)
+  const clear = () => {
+    setSearch('')
+    setMachineId('')
+    setDefect('')
+    setWhere('')
+  }
+  const list = usePaged<Roll>(`/qc/rolls?status=${view === 'passed' && where ? where : current.status}${filters}`, 50)
   const counts = summary.data?.counts
   const countOf: Record<View, number | undefined> = {
     waiting: counts?.PENDING_QC,
@@ -70,8 +93,11 @@ export function QC() {
   // Recent figures: every pass, rework or reject re-reads them, so the rate moves as you work.
   const c = recent.data?.counts
   const passed = c ? c.PASSED + c.DISPATCHED : 0
-  const checkedCount = c ? passed + c.REWORK + c.REJECTED : 0
+  // Final results only, so the two rates total 100%. Rework isn't a verdict: that fabric is made
+  // again and judged as a new roll.
+  const checkedCount = c ? passed + c.REJECTED : 0
   const passRate = checkedCount ? Math.round((passed / checkedCount) * 1000) / 10 : null
+  const rejectRate = passRate == null ? null : Math.round((100 - passRate) * 10) / 10
   const topDefect = recent.data?.defectsByType.slice().sort((a, b) => b.count - a.count)[0]
 
   // Every list traces a roll to its order and machine. No column sorting: newest on top.
@@ -115,14 +141,14 @@ export function QC() {
     view === 'waiting'
       ? [
           ...base,
-          { id: 'made', header: 'Made', meta: { width: '20%' }, enableSorting: false, accessorFn: (r) => formatDateTime(r.createdAt) },
+          { id: 'made', header: 'Made', meta: { width: '18%' }, enableSorting: false, accessorFn: (r) => formatDateTime(r.createdAt) },
           {
             id: 'act',
             header: '',
-            meta: { width: '26%' },
+            meta: { width: '28%' },
             enableSorting: false,
             cell: ({ row: { original: r } }) => (
-              <div className="flex justify-end gap-1">
+              <div className="flex justify-end gap-3">
                 <Button size="xs" className="bg-good text-white hover:bg-good/90" disabled={passing === r.id} onClick={() => pass(r)}>
                   Pass
                 </Button>
@@ -146,49 +172,87 @@ export function QC() {
       {(summary.error || list.error) && <p className="text-sm text-problem">{summary.error || list.error}</p>}
 
       <section className="figures-panel">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Figure
-            label="Waiting for check"
+            label="Waiting to be checked"
             onClick={() => setView('waiting')}
             active={view === 'waiting'}
             tone={countOf.waiting ? 'watch' : undefined}
             value={rolls(countOf.waiting ?? 0)}
-            note={countOf.waiting ? 'Pass, rework or reject each one' : 'Nothing waiting'}
+            note={countOf.waiting ? 'Ready for inspection' : 'Nothing left to inspect'}
             loading={summary.loading}
           />
           <Figure
-            label="Pass rate"
+            label="Passed"
             onClick={() => setView('passed')}
             active={view === 'passed'}
             tone={passRate == null ? undefined : passRate >= 90 ? 'good' : passRate >= 75 ? 'watch' : 'problem'}
-            value={passRate == null ? '—' : `${passRate}%`}
-            note={`${passed.toLocaleString('en-IN')} of ${checkedCount.toLocaleString('en-IN')} checked · last ${WINDOW_DAYS} days`}
+            value={rolls(passed)}
+            note={
+              passRate == null ? (
+                `In the last ${WINDOW_DAYS} days`
+              ) : (
+                <>
+                  <span className="font-semibold text-good">{passRate}%</span> of {checkedCount.toLocaleString('en-IN')} checked in the last {WINDOW_DAYS} days
+                </>
+              )
+            }
             loading={recent.loading}
           />
-          <Figure label="Sent for rework" value={rolls(c?.REWORK ?? 0)} note={`Back to weaving or dyeing · last ${WINDOW_DAYS} days`} loading={recent.loading} />
           <Figure
             label="Rejected"
             onClick={() => setView('rejected')}
             active={view === 'rejected'}
             tone={c?.REJECTED ? 'problem' : undefined}
             value={rolls(c?.REJECTED ?? 0)}
-            note={topDefect ? `Most common: ${topDefect.defectType.toLowerCase()} · last ${WINDOW_DAYS} days` : `Last ${WINDOW_DAYS} days`}
+            note={
+              <>
+                {rejectRate != null && (
+                  <>
+                    <span className="font-semibold text-problem">{rejectRate}%</span> of {checkedCount.toLocaleString('en-IN')} checked in the last {WINDOW_DAYS} days
+                  </>
+                )}
+                {topDefect && ` · mostly ${topDefect.defectType.toLowerCase()}`}
+              </>
+            }
             loading={recent.loading}
           />
         </div>
       </section>
 
-      <div className="flex flex-wrap gap-1">
-        {VIEWS.map((v) => (
-          <Button key={v.key} size="sm" variant={v.key === view ? 'secondary' : 'ghost'} className="gap-1.5" onClick={() => setView(v.key)}>
-            <span className={`size-2 rounded-full ${v.dot}`} />
-            {v.label}
-            <span className="text-xs text-muted-foreground tabular-nums">{countOf[v.key]?.toLocaleString('en-IN') ?? '–'}</span>
-          </Button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="section-head">{current.title}</h2>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input type="search" aria-label="Search rolls" placeholder="Search roll, order or fabric" className="bg-white pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <select aria-label="Filter by machine" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={machineId} onChange={(e) => setMachineId(e.target.value)}>
+            <option value="">All machines</option>
+            {dyeing.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.code}
+              </option>
+            ))}
+          </select>
+          {view === 'passed' && (
+            <select aria-label="Filter by where it is now" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={where} onChange={(e) => setWhere(e.target.value as '' | 'PASSED' | 'DISPATCHED')}>
+              <option value="">All status</option>
+              <option value="PASSED">In store</option>
+              <option value="DISPATCHED">Dispatched</option>
+            </select>
+          )}
+          {view === 'rejected' && (
+            <select aria-label="Filter by defect" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-40')} value={defect} onChange={(e) => setDefect(e.target.value)}>
+              <option value="">All defects</option>
+              {DEFECTS.map((d) => (
+                <option key={d}>{d}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
-
-      <DataTable key={view} columns={columns} data={list.rows} loading={list.loading} empty={<EmptyState icon={ClipboardCheck} line={current.empty} />} />
+      <DataTable key={view} columns={columns} data={list.rows} loading={list.loading} empty={filtered ? <EmptyState icon={Search} line="No roll matches these filters." actionLabel="Clear filters" onAction={clear} /> : <EmptyState icon={ClipboardCheck} line={current.empty} />} />
       <LoadMore hasMore={list.hasMore} more={list.more} />
 
       {checking && <CheckDialog roll={checking.roll} result={checking.result} onClose={() => setChecking(null)} />}

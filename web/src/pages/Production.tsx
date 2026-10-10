@@ -1,12 +1,13 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/DataTable'
-import { Factory, Plus } from 'lucide-react'
+import { Factory, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { actsAs } from '@/components/AppShell'
 import { api, ApiError } from '@/lib/api'
 import { EmptyState } from '@/components/EmptyState'
+import { Figure } from '@/components/Figure'
 import { PageHead } from '@/components/PageHead'
 import { Field, selectClass } from '@/components/Field'
 import { StatusPill, label } from '@/components/StatusPill'
@@ -61,10 +62,20 @@ export function Production() {
   const [adding, setAdding] = useState(false)
   const board = useApi<Board>('/production/board')
   const [filter, setFilter] = useState(0)
+  // Picking the box that is already on goes back to every machine.
+  const pick = (i: number) => setFilter((f) => (f === i ? 0 : i))
+  // Matches the machine, its stage, or the order, fabric and operator on it.
+  const [search, setSearch] = useState('')
+  const q = search.trim().toLowerCase()
+  const found = (m: BoardMachine) =>
+    !q || [m.code, m.name, label(m.type), m.currentJob?.order.orderNo, m.currentJob?.order.fabricType, m.currentJob?.worker?.name].some((v) => v?.toLowerCase().includes(q))
+  const shown = (m: BoardMachine) => FILTERS[filter].match(m) && found(m)
   // Keep the id, not the row, so the popup shows fresh numbers after each action.
   const [openId, setOpenId] = useState<string | null>(null)
   const machines = board.data?.machines ?? []
   const selected = machines.find((m) => m.id === openId) ?? null
+  const count = (i: number) => machines.filter(FILTERS[i].match).length
+  const plural = (n: number) => `${n} ${n === 1 ? 'machine' : 'machines'}`
 
   // No column sorting: machines stay in code order.
   // Four things per machine: what it is, what is on it, how far along, and today's output.
@@ -84,7 +95,7 @@ export function Production() {
     {
       id: 'order',
       header: 'Order',
-      meta: { width: '29%' },
+      meta: { width: '25%' },
       enableSorting: false,
       accessorFn: (m) => m.currentJob?.order.orderNo ?? '',
       cell: ({ row: { original: m } }) =>
@@ -113,7 +124,7 @@ export function Production() {
     {
       accessorKey: 'producedToday',
       header: 'Today',
-      meta: { width: '14%' },
+      meta: { width: '15%' },
       enableSorting: false,
       cell: ({ row: { original: m } }) => {
         const cap = capacityOf(m)
@@ -129,7 +140,7 @@ export function Production() {
     {
       id: 'action',
       header: '',
-      meta: { width: '13%' },
+      meta: { width: '16%' },
       enableSorting: false,
       cell: ({ row: { original: m } }) => (
         <div className="flex justify-end">
@@ -157,37 +168,79 @@ export function Production() {
       />
       {board.error && <p className="text-sm text-problem">{board.error}</p>}
 
-      <div className="flex flex-wrap gap-1">
-        {FILTERS.map((f, i) => (
-          <Button key={f.label} size="sm" variant={i === filter ? 'secondary' : 'ghost'} className="gap-1.5" onClick={() => setFilter(i)}>
-            {f.dot && <span className={`size-2 rounded-full ${f.dot}`} />}
-            {f.label}
-            <span className="text-xs text-muted-foreground">{machines.filter(f.match).length}</span>
-          </Button>
-        ))}
+      {/* The floor at a glance. Each box filters the lists below; click it again to see every machine. */}
+      <section className="figures-panel">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Figure
+            label="Running"
+            onClick={() => pick(1)}
+            active={filter === 1}
+            tone={count(1) ? 'good' : undefined}
+            value={plural(count(1))}
+            note={`Out of ${machines.length} on the floor`}
+            loading={board.loading}
+          />
+          <Figure
+            label="Idle"
+            onClick={() => pick(2)}
+            active={filter === 2}
+            tone={count(2) ? 'watch' : undefined}
+            value={plural(count(2))}
+            note={count(2) ? 'Free for an order' : 'Every machine is busy'}
+            loading={board.loading}
+          />
+          <Figure
+            label="Down"
+            onClick={() => pick(3)}
+            active={filter === 3}
+            tone={count(3) ? 'problem' : undefined}
+            value={plural(count(3))}
+            note={count(3) ? 'Broken down or under maintenance' : 'All in service'}
+            loading={board.loading}
+          />
+        </div>
+      </section>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <h2 className="section-head">{filter === 0 ? 'All machines' : `${FILTERS[filter].label} machines`}</h2>
+          {filter !== 0 && (
+            <Button size="xs" variant="ghost" onClick={() => setFilter(0)}>
+              Show all
+            </Button>
+          )}
+        </div>
+        <div className="relative w-full sm:w-72">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input type="search" aria-label="Search machines" placeholder="Search machine, order or operator" className="bg-white pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
       </div>
 
       {/* One block per stage, in the order the fabric moves through the mill. */}
       {STAGES.map((stage) => {
         const all = machines.filter((m) => m.type === stage)
-        const rows = all.filter(FILTERS[filter].match)
+        const rows = all.filter(shown)
         if (!board.loading && rows.length === 0) return null
         return (
           <section key={stage} className="space-y-2">
-            <h2 className="flex items-baseline gap-2 text-sm font-semibold">
+            <h3 className="flex items-baseline gap-2 text-sm font-medium">
               {label(stage)}
               <span className="text-xs font-normal text-muted-foreground">
                 {all.filter((m) => m.status === 'RUNNING').length} of {all.length} running · {formatQty(all.reduce((sum, m) => sum + m.producedToday, 0), unitFor(stage))} made today
               </span>
-            </h2>
+            </h3>
             <DataTable columns={columns} data={rows} loading={board.loading} />
           </section>
         )
       })}
 
-      {!board.loading && machines.filter(FILTERS[filter].match).length === 0 && (
+      {!board.loading && machines.filter(shown).length === 0 && (
         <div className="data-table-wrap">
-          <EmptyState icon={Factory} line={['No machines set up yet.', 'No machine is running.', 'No machine is idle. All are busy or down.', 'No machine is down.'][filter]} />
+          {q ? (
+            <EmptyState icon={Search} line={`No machine matches "${search.trim()}".`} actionLabel="Clear search" onAction={() => setSearch('')} />
+          ) : (
+            <EmptyState icon={Factory} line={['No machines set up yet.', 'No machine is running.', 'No machine is idle. All are busy or down.', 'No machine is down.'][filter]} />
+          )}
         </div>
       )}
 
@@ -279,7 +332,7 @@ function Progress({ m, wide = false }: { m: BoardMachine; wide?: boolean }) {
   const job = m.currentJob!
   const unit = unitFor(m.type)
   return (
-    <div className={cn('space-y-1', !wide && 'w-40')}>
+    <div className={cn('space-y-1', !wide && 'w-36')}>
       <div className="h-1.5 overflow-hidden rounded-full bg-brand/10">
         <div className="h-full rounded-full bg-brand transition-[width] duration-700 ease-out" style={{ width: `${job.percent}%` }} />
       </div>

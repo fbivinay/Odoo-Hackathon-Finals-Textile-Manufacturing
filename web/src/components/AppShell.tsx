@@ -1,8 +1,9 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ClipboardCheck, Factory, FlaskConical, Landmark, LayoutDashboard, Lightbulb, Menu, Package, Recycle, ShoppingCart, SlidersHorizontal, Truck, UserCog, Users } from 'lucide-react'
-import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { Suspense, useEffect, useRef, useState, type ComponentType } from 'react'
 import { Assistant } from '@/components/Assistant'
 import { Logo } from '@/components/Logo'
+import { Skeleton } from '@/components/ui/skeleton'
 import { SettingsMenu } from '@/components/SettingsMenu'
 import { useSession } from '@/auth/session'
 import { Button } from '@/components/ui/button'
@@ -105,6 +106,52 @@ function SidebarNav({ user, onNavigate, onSignOut }: { user: User; onNavigate?: 
   )
 }
 
+// A page that is still loading: a title and a couple of blocks, where the real ones will be.
+export function PageSkeleton() {
+  return (
+    <div className="space-y-5" aria-hidden="true">
+      <div className="space-y-2 pt-1 pb-3">
+        <Skeleton className="h-3 w-32" />
+        <Skeleton className="h-9 w-64" />
+      </div>
+      <Skeleton className="h-36 w-full rounded-2xl" />
+      <Skeleton className="h-64 w-full rounded-2xl" />
+    </div>
+  )
+}
+
+// The frame with nothing in it yet, shown while the session is being read on a reload. It has the
+// same sidebar width and inset panel as the real shell, so nothing jumps when the app arrives.
+export function ShellSkeleton() {
+  return (
+    <div className="flex h-dvh overflow-hidden bg-white" aria-hidden="true">
+      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col md:flex">
+        <div className="flex h-14 items-center gap-2 px-5">
+          <div className="flex h-6 w-6 items-center justify-center rounded bg-brand text-white">
+            <Logo className="size-3.5" />
+          </div>
+          <div className="leading-tight">
+            <p className="text-sm font-medium">Everest</p>
+            <p className="text-[11px] text-muted-foreground">Textile Mills</p>
+          </div>
+        </div>
+        <div className="flex-1 space-y-2 p-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full rounded-lg" />
+          ))}
+        </div>
+      </aside>
+      <div className="flex min-w-0 flex-1 flex-col md:py-4 md:pr-4 md:pl-60">
+        <div className="min-h-0 flex-1 overflow-hidden bg-ground md:rounded-2xl md:border md:border-border">
+          <div className="mx-auto w-full max-w-7xl p-4 sm:p-6">
+            <PageSkeleton />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AppShell() {
   const { user, signOut } = useSession()
   const navigate = useNavigate()
@@ -159,7 +206,7 @@ export function AppShell() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex min-w-0 flex-1 flex-col md:py-3 md:pr-3 md:pl-60 print:p-0">
+      <div className="flex min-w-0 flex-1 flex-col md:py-4 md:pr-4 md:pl-60 print:p-0">
         {/* Phones have no sidebar, so a slim bar carries the menu button. */}
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3 md:hidden print:hidden">
           <Button variant="ghost" size="icon-sm" onClick={() => setMobileNavOpen(true)}>
@@ -169,11 +216,17 @@ export function AppShell() {
           <span className="text-sm font-medium">Everest</span>
         </header>
 
-        <div ref={panel} data-scroll-root className="min-h-0 flex-1 overflow-y-auto bg-ground md:rounded-2xl md:border md:border-border print:overflow-visible print:rounded-none print:border-0">
-          {/* Extra room at the bottom so the last row can scroll clear of the Ask Everest button. */}
-          <main className="mx-auto w-full max-w-7xl p-4 pb-24 sm:p-6 sm:pb-24">
-            <Outlet />
-          </main>
+        {/* The panel clips; the layer inside it scrolls. That keeps the scrollbar within the rounded corners. */}
+        <div className="min-h-0 flex-1 overflow-hidden bg-ground md:rounded-2xl md:border md:border-border print:overflow-visible print:rounded-none print:border-0">
+          <div ref={panel} data-scroll-root className="h-full overflow-y-auto print:h-auto print:overflow-visible">
+            {/* Extra room at the bottom so the last row can scroll clear of the Ask Everest button. */}
+            <main className="mx-auto w-full max-w-7xl p-4 pb-24 sm:p-6 sm:pb-24">
+              {/* A screen loading for the first time fills the panel; the frame around it stays put. */}
+              <Suspense fallback={<PageSkeleton />}>
+                <Outlet />
+              </Suspense>
+            </main>
+          </div>
         </div>
       </div>
 

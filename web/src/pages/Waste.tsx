@@ -1,20 +1,22 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Recycle } from 'lucide-react'
+import { Recycle, Search } from 'lucide-react'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { selectClass } from '@/components/Field'
+import { Figure } from '@/components/Figure'
 import { PageHead } from '@/components/PageHead'
 import { RollLink } from '@/components/RollTrace'
-import { KpiCard } from '@/components/tremor/KpiCard'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/auth/session'
 import { useDataVersion } from '@/lib/changes'
-import { api, ApiError } from '@/lib/api'
+import { ApiError } from '@/lib/api'
 import { fetchAll } from '@/lib/useApi'
-import { dayFromToday, formatDayMonth, formatINR, formatMoney, formatQty } from '@/lib/format'
-import { costPerMetreOf, rate, summariseWaste, type Bucket, type WasteRoll } from '@/lib/waste'
+import { dayFromToday, formatDateTime, formatINR, formatMoney, formatQty } from '@/lib/format'
+import { cn } from '@/lib/utils'
+import { costPerMetreOf, summariseWaste, type Bucket, type WasteRoll } from '@/lib/waste'
 import type { OrderCost } from '@/types'
 
 const PERIODS = [
@@ -23,32 +25,39 @@ const PERIODS = [
   { key: '90', label: 'Last 90 days', days: 90 },
   { key: '365', label: 'Last 12 months', days: 365 },
 ]
+const PAGE = 20
 
-const istIso = (iso: string) => new Date(Date.parse(iso) + 5.5 * 3600 * 1000).toISOString()
+// A rejected roll as the list shows it.
+type Rejected = WasteRoll & { order: WasteRoll['order'] & { colour?: string | null } }
+const defectOf = (r: WasteRoll) => r.qcRecords.find((q) => q.result === 'REJECT')
+const rollsOf = (n: number) => `${n.toLocaleString('en-IN')} ${n === 1 ? 'roll' : 'rolls'}`
 
-interface JobInfo {
-  shift: string
-  operator: string
-  stage: string
-}
-
+// Fabric that failed quality check: how much, what it cost, and where it came from, so a defect
+// can be traced to its cause. Reworked fabric is not waste and is not counted here.
 export function Waste() {
   const { user } = useSession()
+  const isOwner = user?.role === 'OWNER'
   const [period, setPeriod] = useState('30')
   const days = PERIODS.find((p) => p.key === period)!.days
-  const [rolls, setRolls] = useState<WasteRoll[] | null>(null)
+  const [rolls, setRolls] = useState<Rejected[] | null>(null)
   const [costs, setCosts] = useState<Map<string, number> | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [jobInfo, setJobInfo] = useState<Map<string, JobInfo>>(new Map())
-  const isOwner = user?.role === 'OWNER'
+  const [search, setSearch] = useState('')
+  // The list can be narrowed to one defect, one machine, or both.
+  const [defect, setDefect] = useState('')
+  const [machine, setMachine] = useState('')
+  // Cost of waste box: every rejected roll, costliest first instead of newest first.
+  const [byCost, setByCost] = useState(false)
+  const listTop = useRef<HTMLDivElement>(null)
+  const toList = () => listTop.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const [showAll, setShowAll] = useState(false)
   const version = useDataVersion()
 
   useEffect(() => {
     let live = true
     setError(null)
-    fetchAll<WasteRoll>(`/qc/rolls?from=${dayFromToday(-days + 1)}`)
-      // Dates are bucketed by the mill's day (IST), not UTC.
-      .then((r) => live && setRolls(r.map((x) => ({ ...x, createdAt: istIso(x.createdAt) }))))
+    fetchAll<Rejected>(`/qc/rolls?from=${dayFromToday(-days)}`)
+      .then((r) => live && setRolls(r))
       .catch((e) => live && setError(e instanceof ApiError ? e.message : 'Could not load rolls.'))
     return () => {
       live = false
@@ -67,40 +76,74 @@ export function Waste() {
     }
   }, [days, isOwner, version])
 
-  const today = istIso(new Date().toISOString()).slice(0, 10)
-  const summary = useMemo(() => (rolls ? summariseWaste(rolls, costs ?? new Map(), { trend: days <= 30 ? 'day' : 'month' }) : null), [rolls, costs, days])
-  const todays = useMemo(() => (rolls ? summariseWaste(rolls.filter((r) => r.createdAt.slice(0, 10) === today), costs ?? new Map()) : null), [rolls, costs, today])
-  const topJobs = useMemo(() => summary?.byJob.slice(0, 10) ?? [], [summary])
-
-  // Shift and operator for the jobs on the leaderboard, from each job's first roll trace.
-  useEffect(() => {
-    const missing = topJobs.filter((j) => !jobInfo.has(j.key))
-    if (missing.length === 0) return
-    let live = true
-    Promise.all(
-      missing.map((j) =>
-        api<{ job: { shift: string; stage: string; worker: { name: string } | null } | null }>(`/qc/rolls/${j.rollIds[0]}`)
-          .then((t) => [j.key, { shift: t.job?.shift ?? '—', operator: t.job?.worker?.name ?? '—', stage: t.job?.stage ?? '—' }] as const)
-          .catch(() => [j.key, { shift: '—', operator: '—', stage: '—' }] as const),
-      ),
-    ).then((rows) => live && setJobInfo((m) => new Map([...m, ...rows])))
-    return () => {
-      live = false
-    }
-  }, [topJobs, jobInfo])
-
+  const s = useMemo(() => (rolls ? summariseWaste(rolls, costs ?? new Map()) : null), [rolls, costs])
+  const rejected = useMemo(() => (rolls ?? []).filter((r) => r.status === 'REJECTED'), [rolls])
+  // The same rate Quality check shows: rejected rolls out of the rolls with a final result.
+  const passedCount = (rolls ?? []).filter((r) => r.status === 'PASSED' || r.status === 'DISPATCHED').length
+  const decided = passedCount + rejected.length
+  const rejectRate = decided ? Math.round((100 - Math.round((passedCount / decided) * 1000) / 10) * 10) / 10 : null
+  const byDefect = (s?.byDefect ?? []).filter((b) => b.rejected > 0).sort((a, b) => b.rejected - a.rejected)
+  const byMachine = (s?.byMachine ?? []).filter((b) => b.rejected > 0).sort((a, b) => b.rejected - a.rejected)
   const loading = !rolls && !error
-  const s = summary
-  const costNote = !isOwner ? 'Cost is visible to the owner only' : s && s.costedShare < 1 ? `${Math.round(s.costedShare * 100)}% of rejected metres have a cost basis` : 'Yarn + labour per metre made'
+  const costOf = (r: WasteRoll) => (costs?.get(r.orderId) ?? 0) * Number(r.qty)
+
+  const q = search.trim().toLowerCase()
+  const matches = rejected.filter(
+    (r) =>
+      (!defect || (defectOf(r)?.defectType ?? 'Unspecified') === defect) &&
+      (!machine || r.machine.code === machine) &&
+      (!q || [r.rollNo, r.order.orderNo, r.order.fabricType, r.order.buyer?.name, r.machine.code, defectOf(r)?.defectType].some((v) => v?.toLowerCase().includes(q))),
+  )
+  const ordered = byCost ? [...matches].sort((a, b) => costOf(b) - costOf(a)) : matches
+  const rows = showAll ? ordered : ordered.slice(0, PAGE)
+  const filtered = !!q || !!defect || !!machine
+  const clear = () => {
+    setSearch('')
+    setDefect('')
+    setMachine('')
+    setByCost(false)
+  }
+
+  const columns: ColumnDef<Rejected>[] = [
+    {
+      accessorKey: 'rollNo',
+      header: 'Roll',
+      meta: { width: '16%' },
+      enableSorting: false,
+      cell: ({ row: { original: r } }) => (
+        <div className="leading-tight">
+          <RollLink id={r.id} rollNo={r.rollNo} />
+          <p className="text-xs text-muted-foreground tabular-nums">{formatQty(r.qty)}</p>
+        </div>
+      ),
+    },
+    {
+      id: 'order',
+      header: 'Order',
+      meta: { width: '22%' },
+      enableSorting: false,
+      cell: ({ row: { original: r } }) => (
+        <div className="leading-tight">
+          <p className="font-medium">{r.order.orderNo}</p>
+          <p className="truncate text-xs text-muted-foreground">{[r.order.fabricType, r.order.colour].filter(Boolean).join(' · ')}</p>
+        </div>
+      ),
+    },
+    { id: 'machine', header: 'Machine', meta: { width: '11%' }, enableSorting: false, accessorFn: (r) => r.machine.code },
+    { id: 'defect', header: 'Defect', meta: { width: '17%' }, enableSorting: false, accessorFn: (r) => defectOf(r)?.defectType ?? '—' },
+    { id: 'when', header: 'Rejected', meta: { width: '18%' }, enableSorting: false, accessorFn: (r) => (defectOf(r) ? formatDateTime(defectOf(r)!.checkedAt) : '—') },
+    ...(isOwner
+      ? [{ id: 'cost', header: 'Cost', meta: { width: '16%' }, enableSorting: false, cell: ({ row: { original: r } }: { row: { original: Rejected } }) => <span className="tabular-nums">{costOf(r) > 0 ? formatINR(costOf(r)) : '—'}</span> } as ColumnDef<Rejected>]
+      : []),
+  ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHead
-        eyebrow="Production"
-        title="Waste and rework"
-        lede="Fabric that failed QC or went back for rework, traced to the job, machine and stage it came from. All quantities are metres of finished fabric."
+        eyebrow="Rejected fabric"
+        title="Waste"
         actions={
-          <select aria-label="Period" className={`${selectClass} w-40 bg-surface`} value={period} onChange={(e) => setPeriod(e.target.value)}>
+          <select aria-label="Period" className={cn(selectClass, 'w-40 bg-white')} value={period} onChange={(e) => setPeriod(e.target.value)}>
             {PERIODS.map((p) => (
               <option key={p.key} value={p.key}>
                 {p.label}
@@ -111,147 +154,171 @@ export function Waste() {
       />
       {error && <p className="text-sm text-problem">{error}</p>}
 
-      <section className="space-y-3">
-        <h2 className="section-head">Today</h2>
-        <div className="grid gap-4 sm:grid-cols-4">
-          <KpiCard label="Rolled today" value={formatQty(todays?.produced ?? 0)} hint={todays ? `${formatQty(todays.pendingQc)} still waiting for QC` : undefined} loading={loading} />
-          <KpiCard label="Rejected today" tone={todays?.rejected ? 'problem' : undefined} value={formatQty(todays?.rejected ?? 0)} hint={todays?.rejectPct != null ? `${todays.rejectPct}% of checked` : 'Nothing checked yet'} loading={loading} />
-          <KpiCard label="Sent to rework today" tone={todays?.reworked ? 'watch' : undefined} value={formatQty(todays?.reworked ?? 0)} loading={loading} />
-          <KpiCard label="Rejected fabric cost today" value={isOwner ? formatMoney(todays?.rejectCost ?? 0) : '—'} hint={isOwner ? undefined : 'Owner only'} loading={loading || (isOwner && !costs)} />
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="section-head">{PERIODS.find((p) => p.key === period)!.label}</h2>
-        <div className="grid gap-4 sm:grid-cols-4">
-          <KpiCard label="Fabric checked" value={formatQty(s?.checked ?? 0)} hint={s ? `${formatQty(s.produced)} rolled, ${formatQty(s.pendingQc)} waiting` : undefined} loading={loading} />
-          <KpiCard label="Rejected" tone="problem" value={s?.rejectPct != null ? `${s.rejectPct}%` : '—'} hint={s ? `${formatQty(s.rejected)} written off` : undefined} loading={loading} />
-          <KpiCard
-            label="Rework"
-            tone="watch"
-            value={s?.reworkPct != null ? `${s.reworkPct}%` : '—'}
-            hint={s ? `${formatQty(s.reworkRecovered)} recovered · ${formatQty(s.reworkOpen)} open · ${formatQty(s.reworkThenRejected)} later rejected` : undefined}
+      <section className="figures-panel">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Figure
+            label="Rejected"
+            onClick={clear}
+            active={!filtered && !byCost}
+            tone={rejected.length ? 'problem' : undefined}
+            value={rollsOf(rejected.length)}
+            note={
+              s && rejectRate != null ? (
+                <>
+                  {formatQty(s.rejected)} · <span className="font-semibold text-problem">{rejectRate}%</span> of {decided.toLocaleString('en-IN')} rolls checked
+                </>
+              ) : (
+                'Nothing checked in this period'
+              )
+            }
             loading={loading}
           />
-          <KpiCard label="Avoidable loss" value={isOwner && s ? formatMoney(s.rejectCost) : '—'} hint={costNote} loading={loading || (isOwner && !costs)} />
+          <Figure
+            label="Cost of waste"
+            // One view at a time: this one is all rolls, costliest first. Clicking it again goes back to normal.
+            onClick={
+              isOwner
+                ? () => {
+                    const on = !byCost
+                    clear()
+                    setByCost(on)
+                  }
+                : undefined
+            }
+            active={byCost}
+            value={isOwner ? formatMoney(s?.rejectCost ?? 0) : '—'}
+            note={isOwner ? `Lost in the ${PERIODS.find((p) => p.key === period)!.label.toLowerCase()}` : 'Visible to the owner only'}
+            loading={loading || (isOwner && !costs)}
+          />
+          <Figure
+            label="Main cause"
+            onClick={
+              byDefect[0]
+                ? () => {
+                    const on = defect !== byDefect[0].label
+                    clear()
+                    if (on) setDefect(byDefect[0].label)
+                  }
+                : undefined
+            }
+            active={!!byDefect[0] && defect === byDefect[0].label}
+            value={byDefect[0]?.label ?? 'None'}
+            note={byDefect[0] ? `${formatQty(byDefect[0].rejected)}${byMachine[0] ? ` · most from ${byMachine[0].label}` : ''}` : 'No rejects in this period'}
+            loading={loading}
+          />
         </div>
       </section>
 
-      <section className="card space-y-3">
-        <h2 className="section-head">Rejects and rework over time</h2>
-        {loading ? (
-          <Skeleton className="h-64" />
-        ) : !s || s.byMonth.length === 0 ? (
-          <EmptyState icon={Recycle} line="No rolls in this period." />
-        ) : (
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={s.byMonth.map((b) => ({ ...b, rate: rate(b.rejected, b.checked) ?? 0, name: b.key.length === 10 ? formatDayMonth(b.key) : b.key }))} margin={{ left: 0, right: 8, top: 8 }}>
-                <CartesianGrid vertical={false} stroke="#e3e3e6" />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
-                <YAxis yAxisId="m" tickLine={false} axisLine={false} fontSize={12} width={56} />
-                <YAxis yAxisId="pct" orientation="right" tickLine={false} axisLine={false} fontSize={12} width={36} unit="%" />
-                <Tooltip
-                  contentStyle={{ borderRadius: 12, border: '1px solid #e3e3e6', fontSize: 12 }}
-                  formatter={(v, n) => (n === 'rate' ? [`${v}%`, 'Reject rate'] : [formatQty(Number(v)), n === 'rejected' ? 'Rejected' : 'Reworked'])}
-                />
-                <Bar yAxisId="m" dataKey="rejected" stackId="w" fill="#a82e22" radius={[0, 0, 0, 0]} />
-                <Bar yAxisId="m" dataKey="reworked" stackId="w" fill="#c9b3c2" radius={[6, 6, 0, 0]} />
-                <Line yAxisId="pct" dataKey="rate" type="monotone" stroke="#714b67" strokeWidth={2} dot={{ r: 2 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
+      <div ref={listTop} className="flex scroll-mt-4 flex-wrap items-center justify-between gap-2">
+        <h2 className="section-head">
+          Rejected rolls
+          {byCost && <span className="ml-2 text-xs font-normal text-muted-foreground">costliest first</span>}
+        </h2>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <div className="relative w-full sm:w-64">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input type="search" aria-label="Search rejected rolls" placeholder="Search roll or order" className="bg-white pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-        )}
-      </section>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Breakdown title="By stage the defect started in" note="Holes, uneven weaving and broken ends come from the loom; colour faults and stains from the dye house." rows={s?.byStage} loading={loading} showRate={false} isOwner={isOwner} />
-        <Breakdown title="By defect" rows={s?.byDefect} loading={loading} showRate={false} isOwner={isOwner} />
-        <Breakdown title="By dyeing machine the roll came off" rows={s?.byMachine} loading={loading} showRate isOwner={isOwner} />
-        <Breakdown title="By fabric" rows={s?.byFabric} loading={loading} showRate isOwner={isOwner} />
+          <select aria-label="Filter by defect" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-40')} value={defect} onChange={(e) => setDefect(e.target.value)}>
+            <option value="">All defects</option>
+            {byDefect.map((b) => (
+              <option key={b.key} value={b.label}>
+                {b.label}
+              </option>
+            ))}
+          </select>
+          <select aria-label="Filter by machine" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={machine} onChange={(e) => setMachine(e.target.value)}>
+            <option value="">All machines</option>
+            {byMachine.map((b) => (
+              <option key={b.key} value={b.label}>
+                {b.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={loading}
+        empty={
+          filtered ? (
+            <EmptyState icon={Search} line="No rejected roll matches these filters." actionLabel="Clear filters" onAction={clear} />
+          ) : (
+            <EmptyState icon={Recycle} line="Nothing was rejected in this period." />
+          )
+        }
+      />
+      {matches.length > PAGE && (
+        <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
+          <span>
+            Showing {rows.length} of {matches.length}
+          </span>
+          <Button size="xs" variant="outline" onClick={() => setShowAll(!showAll)}>
+            {showAll ? `Show first ${PAGE}` : 'Show all'}
+          </Button>
+        </div>
+      )}
 
-      <section className="space-y-3">
-        <h2 className="section-head">Highest-waste production jobs</h2>
-        <JobsTable rows={topJobs} info={jobInfo} loading={loading} isOwner={isOwner} />
-      </section>
-
-      <section className="card space-y-2 text-xs text-ink-2">
-        <h2 className="text-sm font-medium text-ink">How these figures are worked out</h2>
-        <p>Reject % = rejected metres ÷ checked metres × 100. Rework % uses the same base. Rolls still waiting for QC are not in either rate.</p>
-        <p>A roll reworked and later rejected is counted once, in rejected; the rework line shows it separately but it is not added twice.</p>
-        <p>Cost = rejected metres × the order's cost per metre made (yarn issued + labour, divided by every metre the order produced). Power, dyes and overheads are not recorded, so this understates the true loss.</p>
-        <p>
-          Not shown: physical material waste (yarn, dye, chemicals in kg or litres). Production records give yarn issued and spun but no waste quantity, category, reason or
-          operator, and spun output equals yarn issued in every record. Weaving's planned 6% overrun is grey-fabric surplus, not waste. Recording real waste needs a
-          backend endpoint (see the report).
-        </p>
-      </section>
+      {/* Where the waste comes from. Picking a bar filters the list above and takes you back to it. */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Breakdown
+          title="By defect"
+          rows={byDefect}
+          loading={loading}
+          picked={defect}
+          onPick={(b) => {
+            setDefect(defect === b.label ? '' : b.label)
+            toList()
+          }}
+        />
+        <Breakdown
+          title="By machine"
+          rows={byMachine}
+          loading={loading}
+          picked={machine}
+          onPick={(b) => {
+            setMachine(machine === b.label ? '' : b.label)
+            toList()
+          }}
+        />
+      </div>
     </div>
   )
 }
 
-function Breakdown({ title, note, rows, loading, showRate, isOwner }: { title: string; note?: string; rows?: Bucket[]; loading: boolean; showRate: boolean; isOwner: boolean }) {
-  const max = Math.max(1, ...(rows ?? []).map((r) => r.rejected + r.reworked))
+// Where the rejected metres come from. Click a row to see just those rolls in the list.
+function Breakdown({ title, rows, loading, picked, onPick }: { title: string; rows: Bucket[]; loading: boolean; picked: string; onPick: (b: Bucket) => void }) {
+  const max = Math.max(1, ...rows.map((r) => r.rejected))
   return (
-    <section className="card space-y-3">
-      <div>
-        <h2 className="section-head">{title}</h2>
-        {note && <p className="mt-0.5 text-xs text-ink-3">{note}</p>}
-      </div>
+    <section className="data-table-wrap space-y-3 p-4">
+      <h2 className="section-head">{title}</h2>
       {loading ? (
-        <Skeleton className="h-40" />
-      ) : !rows || rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing rejected or reworked in this period.</p>
+        <Skeleton className="h-32" />
+      ) : rows.length === 0 ? (
+        <p className="py-4 text-sm text-muted-foreground">Nothing rejected in this period.</p>
       ) : (
-        <ul className="space-y-2">
-          {rows.slice(0, 8).map((r) => (
-            <li key={r.key} className="space-y-1">
-              <div className="flex justify-between gap-3 text-sm">
-                <span>{r.label}</span>
-                <span className="tabular-nums text-ink-2">
-                  {formatQty(r.rejected)} rejected · {formatQty(r.reworked)} rework
-                  {showRate && r.checked > 0 && <span className="ml-1 text-ink-3">({rate(r.rejected, r.checked)}%)</span>}
-                  {isOwner && r.rejectCost > 0 && <span className="ml-1 text-ink-3">· {formatINR(r.rejectCost)}</span>}
+        <ul className="space-y-1">
+          {rows.slice(0, 6).map((r) => (
+            <li key={r.key}>
+              <button
+                type="button"
+                aria-pressed={picked === r.label}
+                onClick={() => onPick(r)}
+                className={cn('w-full space-y-1 rounded-lg px-2 py-1.5 text-left transition-colors outline-none hover:bg-zinc-50 focus-visible:ring-3 focus-visible:ring-ring/50', picked === r.label && 'bg-brand-tint hover:bg-brand-tint')}
+              >
+                <span className="flex justify-between gap-3 text-sm">
+                  <span className={cn(picked === r.label && 'font-medium text-brand')}>{r.label}</span>
+                  <span className="text-ink-2 tabular-nums">{formatQty(r.rejected)}</span>
                 </span>
-              </div>
-              <div className="flex h-1.5 overflow-hidden rounded-full bg-ink/5">
-                <div className="h-full bg-problem" style={{ width: `${(r.rejected / max) * 100}%` }} />
-                <div className="h-full bg-brand-soft" style={{ width: `${(r.reworked / max) * 100}%` }} />
-              </div>
+                <span className="block h-1.5 overflow-hidden rounded-full bg-ink/5">
+                  <span className="block h-full rounded-full bg-problem" style={{ width: `${(r.rejected / max) * 100}%` }} />
+                </span>
+              </button>
             </li>
           ))}
         </ul>
       )}
     </section>
   )
-}
-
-type JobRow = ReturnType<typeof summariseWaste>['byJob'][number]
-
-function JobsTable({ rows, info, loading, isOwner }: { rows: JobRow[]; info: Map<string, JobInfo>; loading: boolean; isOwner: boolean }) {
-  const columns: ColumnDef<JobRow>[] = [
-    { id: 'order', header: 'Order', accessorFn: (j) => j.orderNo },
-    { id: 'machine', header: 'Machine', accessorFn: (j) => j.machine },
-    { id: 'shift', header: 'Shift', accessorFn: (j) => info.get(j.key)?.shift ?? '…', cell: ({ getValue }) => String(getValue()).charAt(0) + String(getValue()).slice(1).toLowerCase() },
-    { id: 'operator', header: 'Operator', accessorFn: (j) => info.get(j.key)?.operator ?? '…' },
-    { id: 'checked', header: 'Checked', accessorFn: (j) => j.checked, cell: ({ getValue }) => formatQty(Number(getValue())) },
-    { id: 'rejected', header: 'Rejected', accessorFn: (j) => j.rejected, cell: ({ getValue }) => <span className="text-problem">{formatQty(Number(getValue()))}</span> },
-    { id: 'reworked', header: 'Rework', accessorFn: (j) => j.reworked, cell: ({ getValue }) => formatQty(Number(getValue())) },
-    ...(isOwner ? [{ id: 'cost', header: 'Cost', accessorFn: (j: JobRow) => j.rejectCost, cell: ({ getValue }: { getValue: () => unknown }) => (Number(getValue()) > 0 ? formatINR(Number(getValue())) : '—') } as ColumnDef<JobRow>] : []),
-    {
-      id: 'rolls',
-      header: 'Rolls (open trace)',
-      enableSorting: false,
-      cell: ({ row: { original: j } }) => (
-        <span className="flex flex-wrap gap-x-2">
-          {j.rollIds.slice(0, 4).map((id, i) => (
-            <RollLink key={id} id={id} rollNo={`#${i + 1}`} />
-          ))}
-          {j.rollIds.length > 4 && <span className="text-xs text-ink-3">+{j.rollIds.length - 4}</span>}
-        </span>
-      ),
-    },
-  ]
-  return <DataTable columns={columns} data={rows} loading={loading} empty={<EmptyState icon={Recycle} line="No job lost fabric in this period." />} />
 }
