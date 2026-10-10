@@ -15,7 +15,7 @@ const IST = 5.5 * H;
 // and yarn already in the store; the two warm-up months carry over as opening work in progress.
 const START = Date.UTC(2022, 9, 1) - IST; // 2022-10-01 00:00 IST
 const SHIFT_HOURS = 8;
-const SEED = 20230101;
+const SEED = 20230104;
 
 // ---------- seeded randomness ----------
 
@@ -129,13 +129,10 @@ const SUPPLIERS = [
   'Vardhman Yarns', 'Nahar Spinning Mills', 'Sutlej Textiles', 'Trident Yarns', 'Ambika Cotton Mills',
   'Nitin Spinners', 'Filatex Polyester', 'Grasim Viscose', 'Jaya Shree Linen', 'Surat Yarn Agency',
 ];
+// Ten buyers to start with; more are added from the New order form.
 const BUYERS = [
-  'Arvind Garments', 'Raymond Apparel', 'Welspun Home', 'Aditya Birla Fashion', 'Page Industries', 'Shahi Exports', 'Gokaldas Exports',
-  'Bombay Dyeing Retail', 'Siyaram Silk Mills', 'Mafatlal Fabrics', 'Fabindia Sourcing', 'Westside Sourcing', 'Max Fashion Sourcing',
-  'Pantaloons Sourcing', 'Biba Apparels', 'W for Woman', 'Peter England Supply', 'Louis Philippe Supply', 'Kewal Kiran Clothing',
-  'Spykar Lifestyle', 'Killer Jeans', 'Mufti Menswear', 'Zodiac Clothing', 'Cotton King', 'Indian Terrain', 'Being Human Clothing',
-  'Jaipur Kurti House', 'Global Desi Supply', 'Anokhi Prints', 'Surat Saree Traders', 'Mumbai Uniform Co', 'Delhi School Uniforms',
-  'Tirupur Knit Exports', 'Ludhiana Hosiery Exports', 'Bengaluru Apparel Hub', 'Chennai Linen House',
+  'Arvind Garments', 'Raymond Apparel', 'Welspun Home', 'Aditya Birla Fashion', 'Page Industries',
+  'Shahi Exports', 'Gokaldas Exports', 'Fabindia Sourcing', 'Westside Sourcing', 'Siyaram Silk Mills',
 ];
 const FIRST = ['Ramesh', 'Suresh', 'Anita', 'Imran', 'Lakshmi', 'Mohan', 'Kavita', 'Rajesh', 'Sunita', 'Arjun', 'Pooja', 'Vijay', 'Meena', 'Sanjay', 'Farida', 'Prakash', 'Geeta', 'Dinesh', 'Rekha', 'Harish', 'Nirmala', 'Ashok', 'Shabana', 'Kiran', 'Bharat', 'Usha', 'Mahesh', 'Savita', 'Naresh', 'Jyoti'];
 const LAST = ['Patel', 'Yadav', 'Kumari', 'Shaikh', 'Devi', 'Singh', 'Chauhan', 'Prajapati', 'Rathod', 'Solanki', 'Parmar', 'Desai', 'Pandey', 'Mishra', 'Khan', 'Vasava', 'Gohil', 'Bhatt'];

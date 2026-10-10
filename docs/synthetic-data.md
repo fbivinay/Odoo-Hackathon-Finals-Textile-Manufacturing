@@ -46,18 +46,18 @@ The stream writes only through the API, so the backend's own rules keep data con
 
 | Model | Nov–Dec 2022 | 2023 | 2024 | 2025 | 2026 (to 10 Oct) | Total |
 |---|---|---|---|---|---|---|
-| Order | 91 | 627 | 631 | 682 | 625 | 2656 |
-| MaterialInward | 103 | 751 | 764 | 813 | 648 | 3079 |
-| MaterialIssue | 87 | 615 | 614 | 667 | 556 | 2539 |
-| ProductionJob | 1368 | 9792 | 9907 | 10971 | 8766 | 40804 |
-| Roll | 218 | 1710 | 1729 | 1877 | 1514 | 7048 |
-| QCRecord | 229 | 1805 | 1839 | 1988 | 1596 | 7457 |
-| Dispatch | 70 | 627 | 630 | 681 | 550 | 2558 |
-| Invoice | 70 | 627 | 630 | 681 | 550 | 2558 |
-| Payment | 20 | 693 | 711 | 742 | 610 | 2776 |
-| Attendance | 3286 | 19454 | 20182 | 19921 | 15730 | 78573 |
+| Order | 152 | 615 | 683 | 681 | 646 | 2777 |
+| MaterialInward | 159 | 693 | 746 | 722 | 601 | 2921 |
+| MaterialIssue | 148 | 602 | 674 | 657 | 568 | 2649 |
+| ProductionJob | 2262 | 9535 | 10426 | 10424 | 8841 | 41488 |
+| Roll | 383 | 1676 | 1877 | 1882 | 1563 | 7381 |
+| QCRecord | 387 | 1770 | 1985 | 1978 | 1661 | 7781 |
+| Dispatch | 135 | 616 | 682 | 680 | 559 | 2672 |
+| Invoice | 135 | 616 | 682 | 680 | 559 | 2672 |
+| Payment | 73 | 675 | 775 | 756 | 634 | 2913 |
+| Attendance | 4898 | 18916 | 19714 | 20141 | 15730 | 79399 |
 
-Masters: 8 users, 10 suppliers, 36 buyers, 10 yarns (the store can add more), 72 workers and 17 machines.
+Masters: 8 users, 10 suppliers, 10 buyers, 10 yarns, 72 workers and 17 machines. Suppliers, buyers and yarns are a starter set of 10 each; more are added from the app's forms. Seed is 20230104 (the first seed where the 10-buyer book passes the no-loss-month check).
 
 Invoiced per year: ₹10.98 Cr in 2023, ₹11.71 Cr in 2024, ₹14.05 Cr in 2025 and ₹11.27 Cr in 2026 to 10 Oct. Every month makes a profit after yarn and wages, from about 4% in the leanest month to 35–40% in the best; 15–30% is typical. Energy, dyes and overheads aren't in the schema, so this is a gross figure.
 
