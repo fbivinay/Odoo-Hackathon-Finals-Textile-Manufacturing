@@ -271,6 +271,9 @@ function handle(path: string, method: string, body: Record<string, any>): unknow
   }
   if (me.mustChangePassword) fail('PASSWORD_CHANGE_REQUIRED', 'Set a new password to continue')
 
+  // The real assistant needs the backend; mock mode only shows the chat working.
+  if (is('POST', '/assistant/chat')) return { reply: 'This is the demo build, so I am not connected to live data. Run the backend to ask real questions.', lookups: [] }
+
   // employees
   if (seg[0] === 'users' && me.role !== 'OWNER') fail('FORBIDDEN', 'You do not have access to this resource')
   if (is('GET', '/users')) return [...users].sort((a, b) => Number(b.isActive) - Number(a.isActive)) // deactivated last

@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
 const { unauthorized, forbidden } = require('../lib/errors');
-const { rolesOf } = require('../lib/tabs');
+const { rolesOf, tabsOf } = require('../lib/tabs');
 const asyncHandler = require('./asyncHandler');
 
 const PASSWORD_CHANGE_PATHS = ['/api/me', '/api/auth/change-password'];
@@ -30,7 +30,7 @@ const requireAuth = asyncHandler(async (req, res, next) => {
     throw forbidden('Set a new password to continue', 'PASSWORD_CHANGE_REQUIRED');
   }
 
-  req.user = { id: user.id, role: user.role, roles: rolesOf(user), name: user.name };
+  req.user = { id: user.id, role: user.role, roles: rolesOf(user), tabs: tabsOf(user), name: user.name };
   next();
 });
 
@@ -42,4 +42,12 @@ const requireRole = (...roles) => (req, res, next) => {
   next();
 };
 
-module.exports = { requireAuth, requireRole };
+// For data that belongs to one screen rather than a role: the owner, or anyone who can open that tab.
+const requireTab = (tab) => (req, res, next) => {
+  if (req.user?.role !== 'OWNER' && !req.user?.tabs.includes(tab)) {
+    throw forbidden('You do not have access to this resource');
+  }
+  next();
+};
+
+module.exports = { requireAuth, requireRole, requireTab };

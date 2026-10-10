@@ -13,6 +13,7 @@ const qcRouter = require('./routes/qc');
 const dispatchRouter = require('./routes/dispatch');
 const workforceRouter = require('./routes/workforce');
 const reportsRouter = require('./routes/reports');
+const assistantRouter = require('./routes/assistant');
 const { notFoundHandler, errorHandler } = require('./middleware/errors');
 
 const app = express();
@@ -24,6 +25,8 @@ app.use(
     credentials: true,
   })
 );
+// Chat messages can carry photos, so this one route takes a bigger body than the rest.
+app.use('/api/assistant', express.json({ limit: '18mb' }), assistantRouter);
 app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ ok: true, data: { status: 'up' } }));

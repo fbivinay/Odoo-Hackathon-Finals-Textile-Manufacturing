@@ -33,7 +33,7 @@ They answer `{ ok, data: [...], meta: { count, nextCursor } }`. Pass `nextCursor
 | PATCH | `/users/:id` | OWNER | any of `{ name, role, isActive, password, extraTabs }`; a new password forces a change at next sign-in |
 | POST | `/auth/change-password` | | `{ newPassword, currentPassword? }` — current one not needed while `mustChangePassword` |
 
-`extraTabs` (also accepted by `POST /users`) is a list of sidebar paths granted to that one person on top of their role: `/materials`, `/raw-materials`, `/orders`, `/production`, `/planning`, `/qc`, `/waste`, `/dispatch`. A tab brings the write access it needs (e.g. `/qc` lets them inspect rolls).
+`extraTabs` (also accepted by `POST /users`) is a list of sidebar paths granted to that one person on top of their role: `/materials`, `/raw-materials`, `/orders`, `/production`, `/planning`, `/qc`, `/waste`, `/dispatch`, `/clients`. A tab brings the write access it needs (e.g. `/qc` lets them inspect rolls).
 
 While `mustChangePassword` is true every other endpoint answers 403 `PASSWORD_CHANGE_REQUIRED`; only `/me` and `/auth/change-password` work.
 
@@ -131,7 +131,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/dashboard/summary` | | orders, low stock, machines, QC, finished stock, receivables |
-| GET | `/reports/order-costs` | OWNER | `?id=&status=&buyerId=` + paging; per order: material, labour, total, cost per unit and per roll, margin |
+| GET | `/reports/order-costs` | OWNER or Clients access | `?id=&status=&buyerId=` + paging; per order: material, labour, total, cost per unit and per roll, margin |
 | GET | `/planning/schedule` | | `?days=90` (1–365) forward plan, see below |
 | GET | `/reports/machine-output` | OWNER | `?month=` → per machine total + `daily[]` series |
 | GET | `/reports/pnl` | OWNER | `?month=` → bills, wages, invoiced, payments, `profit`, `cashFlow` |
@@ -159,3 +159,16 @@ Assumptions: an order short of yarn can't start for 7 days (delivery lead time),
 | 403 | `FORBIDDEN` |
 | 404 | `NOT_FOUND` |
 | 409 | `CONFLICT`, `INSUFFICIENT_STOCK`, `MACHINE_BUSY`, `ROLLS_NOT_AVAILABLE` |
+
+## Assistant (AI chat)
+
+| Method | Path | Role | Notes |
+|---|---|---|---|
+| POST | `/assistant/chat` | any signed-in | `{ messages: [{ role: 'user'|'assistant', text, images?: [{ mediaType, data }] }] }` → `{ reply, lookups }` |
+
+- The browser keeps the conversation and sends it whole each time; the last message must be the user's.
+- Images: base64 without the `data:` prefix, JPEG/PNG/WebP/GIF, at most 3 per message and about 4 MB each. Only the newest message's images are read.
+- Read-only. It answers from the same services as the screens, limited to the tabs that person can open (role + additional access); owner-only figures stay with the owner. Anything outside the mill system gets a fixed "ask about the system" reply.
+- 15 questions a minute per person. Needs `GEMINI_API_KEY` (free, from aistudio.google.com) in `backend/.env`; without it the endpoint answers 503 `ASSISTANT_OFF`. `AI_MODEL` picks the Gemini model (default `gemini-flash-lite-latest`).
+- Call it with `api(path, { method: 'POST', quiet: true, body })` so a chat message does not re-fetch every screen.
+

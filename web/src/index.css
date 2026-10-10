@@ -4,6 +4,10 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
+/* The app has one light theme. Without this, shadcn's `dark:` styles follow the visitor's OS setting
+   and grey out inputs on a Mac in dark mode; now they only apply under a `.dark` class, which we never set. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ============================================================================
    Everest design system, ported from the Kasauti (MPLADS monitor) theme.
 
@@ -765,4 +769,60 @@ html[data-no-cover] .splash { display: none; }
   background-repeat: no-repeat;
   background-position: right 0.5rem center;
   background-size: 1rem;
+}
+
+/* Ask Everest launcher: a slow aurora halo behind the button, plus two soft rings that
+   ripple out until the assistant has been opened once. Brand purple with a hint of the
+   summit yellow; all of it stands still for people who ask for reduced motion. */
+.ask-halo {
+  position: absolute;
+  inset: -5px;
+  border-radius: 9999px;
+  background: conic-gradient(from 0deg, var(--brand), var(--brand-soft), #facc15, var(--brand-soft), var(--brand));
+  filter: blur(7px);
+  opacity: 0.75;
+  animation: ask-spin 7s linear infinite;
+  transition: opacity 0.2s, inset 0.2s;
+}
+/* The smaller copy behind the logo in the open panel's header. */
+.ask-halo--sm {
+  inset: -3px;
+  filter: blur(4px);
+}
+.ask-launcher:hover .ask-halo {
+  inset: -8px;
+  opacity: 1;
+}
+.ask-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid var(--brand);
+  opacity: 0;
+  animation: ask-ripple 3.2s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+}
+.ask-ring + .ask-ring {
+  animation-delay: 0.9s;
+}
+@keyframes ask-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ask-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  60%,
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-halo,
+  .ask-ring {
+    animation: none;
+  }
 }

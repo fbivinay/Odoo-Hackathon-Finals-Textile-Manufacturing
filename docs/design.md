@@ -12,7 +12,7 @@ What the app looks like and which colours to use. Tokens live in `web/src/index.
 | Purple tint | `#f3edf1` | `bg-brand-tint` | Active menu item background |
 | Deep purple | `#3d2838` | `bg-brand-deep` | Dark end of the sign-in panel gradient |
 | Soft purple | `#c9b3c2` | `bg-brand-soft` | Unselected chart bars, lightest stage shade |
-| Summit yellow | `#facc15` | `yellow-400` | Top bar of the logo. Nowhere else. |
+| Summit yellow | `#facc15` | `yellow-400` | Top bar of the logo, including inside the assistant's mark. Nowhere else. |
 
 ### Neutrals
 
@@ -60,7 +60,7 @@ Adding a page: add one entry to `NAV` in `web/src/components/AppShell.tsx` (path
 |---|---|
 | Headline | Every thread, accounted for. |
 | Subline | One system for the whole mill. |
-| Role names | Owner, Store, Production, Quality Control, Dispatch |
+| Role names | Owner, Store Manager, Production Supervisor, Quality Inspector, Dispatch Manager |
 
 Keep labels short: two or three words, no full sentences on buttons or menu items.
 
@@ -69,5 +69,6 @@ Keep labels short: two or three words, no full sentences on buttons or menu item
 | File | Use |
 |---|---|
 | `web/src/components/Logo.tsx` | In-app mark; always on an Odoo purple tile, white bars, yellow top bar |
+| `AskEverestLogo` in the same file | The assistant's mark: the logo's bars inside a chat bubble, white with the yellow top bar, on an Odoo purple circle |
 | `web/public/favicon.svg` | Browser tab |
 | `web/public/logo.svg` | Full logo with wordmark, for slides and the README |

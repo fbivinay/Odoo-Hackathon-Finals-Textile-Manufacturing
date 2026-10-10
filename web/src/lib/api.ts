@@ -27,7 +27,8 @@ export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== 'false'
 // Fired when a signed-in request is refused because the account changed underneath it.
 export const SESSION_STALE = 'everest:session-stale'
 
-type Init = Omit<RequestInit, 'body'> & { body?: unknown }
+// `quiet`: a POST that only reads (the chat assistant) and should not make every screen re-fetch.
+type Init = Omit<RequestInit, 'body'> & { body?: unknown; quiet?: boolean }
 
 export async function api<T>(path: string, init: Init = {}): Promise<T> {
   return (await apiPage<T>(path, init)).data
@@ -37,7 +38,7 @@ export async function api<T>(path: string, init: Init = {}): Promise<T> {
 export async function apiPage<T>(path: string, init: Init = {}): Promise<{ data: T; meta?: PageMeta }> {
   const result = await request<T>(path, init)
   // A successful write can change what any other section shows.
-  if (init.method && init.method !== 'GET') dataChanged()
+  if (init.method && init.method !== 'GET' && !init.quiet) dataChanged()
   return result
 }
 
@@ -51,7 +52,7 @@ async function request<T>(path: string, init: Init): Promise<{ data: T; meta?: P
     }
   }
 
-  const { body, headers, ...rest } = init
+  const { body, headers, quiet: _quiet, ...rest } = init
   const token = getToken()
   const isForm = body instanceof FormData
 

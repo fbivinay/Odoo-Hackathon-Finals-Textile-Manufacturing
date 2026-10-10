@@ -1,7 +1,9 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { CalendarRange, ClipboardCheck, Factory, FlaskConical, LayoutDashboard, LogOut, Menu, Package, Recycle, ShoppingCart, Truck, UserCog, Users } from 'lucide-react'
+import { CalendarRange, ClipboardCheck, Factory, FlaskConical, LayoutDashboard, Menu, Package, Recycle, ShoppingCart, Truck, UserCog, Users } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
+import { Assistant } from '@/components/Assistant'
 import { Logo } from '@/components/Logo'
+import { SettingsMenu } from '@/components/SettingsMenu'
 import { useSession } from '@/auth/session'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -32,8 +34,8 @@ export const NAV: NavItem[] = [
 
 type Access = Pick<User, 'role' | 'extraTabs'>
 
-// Owner-only tabs can't be handed out; the rest can be granted to one employee on top of their role.
-export const GRANTABLE = NAV.filter((n) => n.roles.length > 0)
+// Overview and Employees stay with the owner; every other tab can be granted to one employee on top of their role.
+export const GRANTABLE = NAV.filter((n) => n.to !== '/dashboard' && n.to !== '/employees')
 // The role whose rights a granted tab carries, mirroring backend/src/lib/tabs.js.
 const TAB_ROLE: Record<string, Role> = { '/materials': 'STORE', '/raw-materials': 'STORE', '/orders': 'STORE', '/production': 'PRODUCTION', '/qc': 'QC', '/dispatch': 'DISPATCH' }
 
@@ -44,7 +46,7 @@ export const homeFor = (u: Access) => navFor(u)[0].to
 export const actsAs = (u: Access | null, ...roles: Role[]) =>
   !!u && (u.role === 'OWNER' || roles.includes(u.role) || (u.extraTabs ?? []).some((t) => roles.includes(TAB_ROLE[t])))
 
-export const ROLE_LABEL: Record<Role, string> = { OWNER: 'Owner', STORE: 'Store', PRODUCTION: 'Production', QC: 'Quality Control', DISPATCH: 'Dispatch' }
+export const ROLE_LABEL: Record<Role, string> = { OWNER: 'Owner', STORE: 'Store Manager', PRODUCTION: 'Production Supervisor', QC: 'Quality Inspector', DISPATCH: 'Dispatch Manager' }
 
 export function Wordmark() {
   return (
@@ -60,7 +62,7 @@ export function Wordmark() {
   )
 }
 
-function SidebarNav({ user, onNavigate, onSignOut }: { user: Access; onNavigate?: () => void; onSignOut: () => void }) {
+function SidebarNav({ user, onNavigate, onSignOut }: { user: User; onNavigate?: () => void; onSignOut: () => void }) {
   return (
     <>
       <div className="flex h-14 items-center gap-2 border-b border-border px-5">
@@ -93,15 +95,7 @@ function SidebarNav({ user, onNavigate, onSignOut }: { user: Access; onNavigate?
       </nav>
 
       <div className="border-t border-border p-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start gap-2.5 rounded-lg text-zinc-600 hover:scale-100"
-          onClick={onSignOut}
-        >
-          <LogOut className="size-4" />
-          Log out
-        </Button>
+        <SettingsMenu user={user} onSignOut={onSignOut} />
       </div>
     </>
   )
@@ -167,10 +161,14 @@ export function AppShell() {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6">
+        {/* Extra room at the bottom so the last row can scroll clear of the Ask Everest button. */}
+        <main className="mx-auto w-full max-w-7xl flex-1 p-4 pb-24 sm:p-6 sm:pb-24">
           <Outlet />
         </main>
       </div>
+
+      {/* Hidden while a first-time password is still pending: nothing answers until it is set. */}
+      {!user.mustChangePassword && <Assistant user={user} tabs={navFor(user).map((n) => n.to)} />}
     </div>
   )
 }

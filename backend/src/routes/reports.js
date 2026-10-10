@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const handle = require('../middleware/handle');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, requireTab } = require('../middleware/auth');
 const reportService = require('../services/reportService');
 const planningService = require('../services/planningService');
 
@@ -11,7 +11,8 @@ const owner = requireRole();
 
 router.get('/dashboard/summary', handle(() => reportService.summary()));
 router.get('/planning/schedule', handle((req) => planningService.schedule(req.query)));
-router.get('/reports/order-costs', owner, handle((req) => reportService.orderCosts(req.query)));
+// The Clients screen is built on order costs, so whoever is given that tab can read them.
+router.get('/reports/order-costs', requireTab('/clients'), handle((req) => reportService.orderCosts(req.query)));
 router.get('/reports/machine-output', owner, handle((req) => reportService.machineOutput(req.query)));
 router.get('/reports/pnl', owner, handle((req) => reportService.pnl(req.query)));
 

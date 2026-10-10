@@ -78,7 +78,7 @@ export default function App() {
                 <Route element={<ProtectedRoute roles={['STORE', 'PRODUCTION', 'DISPATCH']} tab="/orders" />}>
                   <Route path="/orders/:id" element={<OrderDetail />} />
                 </Route>
-                <Route element={<ProtectedRoute roles={[]} />}>
+                <Route element={<ProtectedRoute roles={[]} tab="/clients" />}>
                   <Route path="/clients/:id" element={<Customer />} />
                 </Route>
                 <Route path="/inventory" element={<Navigate to="/raw-materials" replace />} />

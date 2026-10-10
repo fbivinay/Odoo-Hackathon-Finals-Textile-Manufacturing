@@ -17,6 +17,7 @@ export interface User {
   email: string
   role: Role
   extraTabs?: string[] // sidebar tabs granted on top of the role, e.g. ['/waste']
+  createdAt?: string // when the owner added this login; shown as the joining date
   mustChangePassword?: boolean // owner-issued password: must be changed before anything else
 }
 
@@ -25,6 +26,16 @@ export interface Employee extends User {
   isActive: boolean
   mustChangePassword: boolean
   createdAt: string
+}
+
+// One turn of the assistant chat. Images ride as base64 and only on the user's side.
+export interface ChatImage {
+  mediaType: string
+  data: string
+}
+export interface ChatReply {
+  reply: string
+  lookups: string[]
 }
 
 export interface AuthResponse {

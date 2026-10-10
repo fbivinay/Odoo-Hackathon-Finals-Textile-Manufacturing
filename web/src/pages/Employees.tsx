@@ -64,11 +64,14 @@ export function Employees() {
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
   const [search, setSearch] = useState('')
+  const [role, setRole] = useState<Role | 'ALL'>('ALL')
 
   // Matches name, email, role or an additional access, e.g. "store" or "waste".
   const q = search.trim().toLowerCase()
   const rows = (employees.data ?? []).filter(
-    (e) => !q || [e.name, e.email, ROLE_LABEL[e.role], ...keepExtras(e.role, e.extraTabs ?? []).map(tabLabel)].some((v) => v.toLowerCase().includes(q)),
+    (e) =>
+      (role === 'ALL' || e.role === role) &&
+      (!q || [e.name, e.email, ROLE_LABEL[e.role], ...keepExtras(e.role, e.extraTabs ?? []).map(tabLabel)].some((v) => v.toLowerCase().includes(q))),
   )
 
   // No column sorting: the list keeps its own order (latest on top, deactivated last).
@@ -139,9 +142,19 @@ export function Employees() {
         }
       />
 
-      <div className="relative max-w-xs">
-        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input id="employee-search" type="search" aria-label="Search employees" placeholder="Search name, email or role" className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input id="employee-search" type="search" aria-label="Search employees" placeholder="Search name, email or role" className="bg-white pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <select id="role-filter" aria-label="Filter by role" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-44')} value={role} onChange={(e) => setRole(e.target.value as Role | 'ALL')}>
+          <option value="ALL">All roles</option>
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {ROLE_LABEL[r]}
+            </option>
+          ))}
+        </select>
       </div>
 
       {employees.error && <p className="text-sm text-problem">{employees.error}</p>}
@@ -150,8 +163,16 @@ export function Employees() {
         data={rows}
         loading={employees.loading}
         empty={
-          q ? (
-            <EmptyState icon={Search} line={`No employee matches "${search.trim()}".`} actionLabel="Clear search" onAction={() => setSearch('')} />
+          q || role !== 'ALL' ? (
+            <EmptyState
+              icon={Search}
+              line={q ? `No employee matches "${search.trim()}".` : `No ${ROLE_LABEL[role as Role]} yet.`}
+              actionLabel="Clear filters"
+              onAction={() => {
+                setSearch('')
+                setRole('ALL')
+              }}
+            />
           ) : (
             <EmptyState icon={UserPlus} line="No employees yet." actionLabel="New employee" onAction={() => setAdding(true)} />
           )
@@ -265,8 +286,8 @@ function EditEmployeeDialog({ e, self, onClose, onSaved }: { e: Employee; self: 
           <DialogDescription>{e.email}</DialogDescription>
         </DialogHeader>
         <form id="edit-employee" onSubmit={submit} className="grid gap-4">
-          <Field label="Role" htmlFor="role">
-            <select id="role" className={selectClass} disabled={self} value={role} onChange={(ev) => setRole(ev.target.value as Role)}>
+          <Field label="Role" htmlFor="role" hint={self ? "You can't change your own role." : undefined}>
+            <select id="role" className={cn(selectClass, 'disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-muted-foreground')} disabled={self} value={role} onChange={(ev) => setRole(ev.target.value as Role)}>
               {ROLES.map((r) => (
                 <option key={r} value={r}>
                   {ROLE_LABEL[r]}

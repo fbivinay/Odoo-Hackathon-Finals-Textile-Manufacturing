@@ -16,7 +16,7 @@ async function signin({ email, password }) {
 
   return {
     token,
-    user: { id: user.id, email: user.email, role: user.role, name: user.name, mustChangePassword: user.mustChangePassword, extraTabs: user.extraTabs },
+    user: { id: user.id, email: user.email, role: user.role, name: user.name, mustChangePassword: user.mustChangePassword, extraTabs: user.extraTabs, createdAt: user.createdAt },
   };
 }
 
