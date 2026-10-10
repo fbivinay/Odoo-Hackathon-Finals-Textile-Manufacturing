@@ -48,6 +48,8 @@ backend/src/
 
 - Routes never touch Prisma; services never touch `req`/`res`. Wrap route functions in `handle()`.
 - Endpoint list for the frontend: `docs/api.md`. Update it whenever a route or shape changes.
+- Synthetic datasets: format and rules in `docs/data-format.md`; load with `npm run data:import -- data/<name> --reset`.
+- Schema changes need a heads-up to the teammate first: datasets are built against it.
 - Order status is derived by `orderService.syncStatus`; call it after any job, roll, QC or dispatch change.
 - Every response: `{ ok: true, data }` or `{ ok: false, error, message }`.
 - Throw `badRequest/notFound/conflict/...` from `lib/errors`.

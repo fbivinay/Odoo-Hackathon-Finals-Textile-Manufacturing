@@ -1,0 +1,83 @@
+[
+ {
+  "id": "cmv1y3adq004i102z5jimtlhu",
+  "rollId": "cmv1y3adi0049102zb393vjeq",
+  "inspectorId": "cmv1y3a9j0003102zp3ux7nkg",
+  "result": "PASS",
+  "defectType": null,
+  "notes": null,
+  "checkedAt": "2026-10-10T05:19:49.070Z"
+ },
+ {
+  "id": "cmv1y3adu004l102zmf3yz6dn",
+  "rollId": "cmv1y3adl004c102zkeap9kh9",
+  "inspectorId": "cmv1y3a9j0003102zp3ux7nkg",
+  "result": "PASS",
+  "defectType": null,
+  "notes": null,
+  "checkedAt": "2026-10-10T05:19:49.074Z"
+ },
+ {
+  "id": "cmv1y3adw004o102z97n8jbfd",
+  "rollId": "cmv1y3adn004f102zvtxbnc1q",
+  "inspectorId": "cmv1y3a9j0003102zp3ux7nkg",
+  "result": "PASS",
+  "defectType": null,
+  "notes": null,
+  "checkedAt": "2026-10-10T05:19:49.077Z"
+ },
+ {
+  "id": "cmv1y3af8005z102z2sltbawq",
+  "rollId": "cmv1y3aew005k102z64whzzkm",
+  "inspectorId": "cmv1y3a9j0003102zp3ux7nkg",
+  "result": "PASS",
+  "defectType": null,
+  "notes": null,
+  "checkedAt": "2026-10-10T05:19:49.125Z"
+ },
+ {
+  "id": "cmv1y3afc0062102zdo69192x",
+  "rollId": "cmv1y3aez005n102zhz6if1xz",
+  "inspectorId": "cmv1y3a9j0003102zp3ux7nkg",
+  "result": "PASS",
+  "defectType": null,
+  "notes": null,
+  "checkedAt": "2026-10-10T05:19:49.128Z"
+ },
+ {
+  "id": "cmv1y3aff0065102zfvdv3dyc",
+  "rollId": "cmv1y3af2005q102zj91q5yfr",
+  "inspectorId": "cmv1y3a9j0003102zp3ux7nkg",
+  "result": "PASS",
+  "defectType": null,
+  "notes": null,
+  "checkedAt": "2026-10-10T05:19:49.131Z"
+ },
+ {
+  "id": "cmv1y3afh0068102ztmzb2thq",
+  "rollId": "cmv1y3af4005t102zowf17j12",
+  "inspectorId": "cmv1y3a9j0003102zp3ux7nkg",
+  "result": "PASS",
+  "defectType": null,
+  "notes": null,
+  "checkedAt": "2026-10-10T05:19:49.134Z"
+ },
+ {
+  "id": "cmv1y3afk006b102zptbtp80g",
+  "rollId": "cmv1y3af6005w102zhlmxgppk",
+  "inspectorId": "cmv1y3a9j0003102zp3ux7nkg",
+  "result": "REJECT",
+  "defectType": "Colour mismatch",
+  "notes": "Shade lighter than sample",
+  "checkedAt": "2026-10-10T05:19:49.137Z"
+ },
+ {
+  "id": "cmv1y3ag50071102zv1dorueu",
+  "rollId": "cmv1y3afz006s102z3i1q8pf7",
+  "inspectorId": "cmv1y3a9j0003102zp3ux7nkg",
+  "result": "REWORK",
+  "defectType": "Uneven weaving",
+  "notes": null,
+  "checkedAt": "2026-10-10T05:19:49.157Z"
+ }
+]

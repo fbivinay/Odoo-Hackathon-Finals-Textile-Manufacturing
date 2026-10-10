@@ -1,0 +1,58 @@
+[
+ {
+  "id": "cmv1y3a9k0005102zhaofy5b1",
+  "code": "SP-01",
+  "name": "Spinning Frame 1",
+  "type": "SPINNING",
+  "status": "RUNNING",
+  "createdAt": "2026-10-10T05:19:48.921Z"
+ },
+ {
+  "id": "cmv1y3a9m0006102z9bqnkplz",
+  "code": "SP-02",
+  "name": "Spinning Frame 2",
+  "type": "SPINNING",
+  "status": "IDLE",
+  "createdAt": "2026-10-10T05:19:48.922Z"
+ },
+ {
+  "id": "cmv1y3a9n0007102zlr594h7y",
+  "code": "WV-01",
+  "name": "Loom 1",
+  "type": "WEAVING",
+  "status": "RUNNING",
+  "createdAt": "2026-10-10T05:19:48.923Z"
+ },
+ {
+  "id": "cmv1y3a9o0008102za7txwqsd",
+  "code": "WV-02",
+  "name": "Loom 2",
+  "type": "WEAVING",
+  "status": "IDLE",
+  "createdAt": "2026-10-10T05:19:48.924Z"
+ },
+ {
+  "id": "cmv1y3a9o0009102zhungxmk9",
+  "code": "WV-03",
+  "name": "Loom 3",
+  "type": "WEAVING",
+  "status": "IDLE",
+  "createdAt": "2026-10-10T05:19:48.925Z"
+ },
+ {
+  "id": "cmv1y3a9p000a102z58qbg81r",
+  "code": "DY-01",
+  "name": "Dyeing Vat 1",
+  "type": "DYEING",
+  "status": "IDLE",
+  "createdAt": "2026-10-10T05:19:48.926Z"
+ },
+ {
+  "id": "cmv1y3a9q000b102zri5n7eqs",
+  "code": "DY-02",
+  "name": "Dyeing Vat 2",
+  "type": "DYEING",
+  "status": "BREAKDOWN",
+  "createdAt": "2026-10-10T05:19:48.926Z"
+ }
+]

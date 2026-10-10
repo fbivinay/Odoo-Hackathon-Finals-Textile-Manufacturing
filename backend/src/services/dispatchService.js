@@ -125,12 +125,13 @@ async function addPayment(invoiceId, { amount, method }) {
     if (!invoice) throw notFound('Invoice not found');
 
     const balance = Number(invoice.amount) - sumAmount(invoice.payments);
-    if (amount > balance) throw badRequest(`Payment exceeds the balance of ${balance}`);
+    const value = Number(amount);
+    if (value > balance) throw badRequest(`Payment exceeds the balance of ${balance}`);
 
-    await tx.payment.create({ data: { invoiceId, amount, method } });
+    await tx.payment.create({ data: { invoiceId, amount: value, method } });
     const updated = await tx.invoice.update({
       where: { id: invoiceId },
-      data: { status: amount === balance ? 'PAID' : 'PARTIAL' },
+      data: { status: value === balance ? 'PAID' : 'PARTIAL' },
       include: invoiceInclude,
     });
     return withBalance(updated);

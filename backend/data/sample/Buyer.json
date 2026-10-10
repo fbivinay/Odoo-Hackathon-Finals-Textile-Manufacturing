@@ -1,0 +1,23 @@
+[
+ {
+  "id": "cmv1y3aad000e102zldpxcapv",
+  "name": "Arvind Garments",
+  "phone": "9876500011",
+  "email": "orders@arvindgarments.in",
+  "createdAt": "2026-10-10T05:19:48.950Z"
+ },
+ {
+  "id": "cmv1y3aad000f102z6r6qaqdp",
+  "name": "Bluebird Exports",
+  "phone": "9876500022",
+  "email": "buy@bluebird.in",
+  "createdAt": "2026-10-10T05:19:48.950Z"
+ },
+ {
+  "id": "cmv1y3aax000g102z4t8qwb3j",
+  "name": "Fab India Retail",
+  "phone": "9876500033",
+  "email": null,
+  "createdAt": "2026-10-10T05:19:48.950Z"
+ }
+]

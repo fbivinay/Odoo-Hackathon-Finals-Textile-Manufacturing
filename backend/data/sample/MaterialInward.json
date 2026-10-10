@@ -1,0 +1,46 @@
+[
+ {
+  "id": "cmv1y3ab2000n102zpob3i80g",
+  "materialId": "cmv1y3aay000h102zhfvlw6rt",
+  "supplierId": "cmv1y3a9s000c102zq48d7yhr",
+  "orderId": null,
+  "receivedById": "cmv1y3a9h0001102zhiuyx7fn",
+  "qty": 600,
+  "rate": 210,
+  "billAmount": 126000,
+  "receivedAt": "2026-10-10T05:19:48.975Z"
+ },
+ {
+  "id": "cmv1y3ab6000q102z3e6xrhtp",
+  "materialId": "cmv1y3aaz000i102zhhnbqg65",
+  "supplierId": "cmv1y3a9s000c102zq48d7yhr",
+  "orderId": null,
+  "receivedById": "cmv1y3a9h0001102zhiuyx7fn",
+  "qty": 400,
+  "rate": 235,
+  "billAmount": 94000,
+  "receivedAt": "2026-10-10T05:19:48.979Z"
+ },
+ {
+  "id": "cmv1y3ab8000t102zk9ygnfdt",
+  "materialId": "cmv1y3aaz000j102zf1ungvor",
+  "supplierId": "cmv1y3aac000d102z7q8y6ys8",
+  "orderId": null,
+  "receivedById": "cmv1y3a9h0001102zhiuyx7fn",
+  "qty": 300,
+  "rate": 160,
+  "billAmount": 48000,
+  "receivedAt": "2026-10-10T05:19:48.981Z"
+ },
+ {
+  "id": "cmv1y3abb000w102zfdc16a9j",
+  "materialId": "cmv1y3ab0000k102z24dannt5",
+  "supplierId": "cmv1y3aac000d102z7q8y6ys8",
+  "orderId": null,
+  "receivedById": "cmv1y3a9h0001102zhiuyx7fn",
+  "qty": 60,
+  "rate": 620,
+  "billAmount": 37200,
+  "receivedAt": "2026-10-10T05:19:48.983Z"
+ }
+]

@@ -1,0 +1,42 @@
+[
+ {
+  "id": "cmv1y3aay000h102zhfvlw6rt",
+  "yarnType": "Cotton 40s",
+  "colour": "White",
+  "unit": "kg",
+  "qtyInStock": 330,
+  "reorderLevel": 200,
+  "avgCost": 210,
+  "createdAt": "2026-10-10T05:19:48.970Z"
+ },
+ {
+  "id": "cmv1y3aaz000i102zhhnbqg65",
+  "yarnType": "Cotton 40s",
+  "colour": "Blue",
+  "unit": "kg",
+  "qtyInStock": 190,
+  "reorderLevel": 200,
+  "avgCost": 235,
+  "createdAt": "2026-10-10T05:19:48.971Z"
+ },
+ {
+  "id": "cmv1y3aaz000j102zf1ungvor",
+  "yarnType": "Polyester 150D",
+  "colour": "Black",
+  "unit": "kg",
+  "qtyInStock": 200,
+  "reorderLevel": 100,
+  "avgCost": 160,
+  "createdAt": "2026-10-10T05:19:48.972Z"
+ },
+ {
+  "id": "cmv1y3ab0000k102z24dannt5",
+  "yarnType": "Silk Blend",
+  "colour": "Red",
+  "unit": "kg",
+  "qtyInStock": 60,
+  "reorderLevel": 80,
+  "avgCost": 620,
+  "createdAt": "2026-10-10T05:19:48.972Z"
+ }
+]

@@ -1,0 +1,56 @@
+[
+ {
+  "id": "cmv1y3abc000x102zgdnv8v4p",
+  "code": "W-01",
+  "name": "Ramesh Patel",
+  "shift": "MORNING",
+  "dailyWage": 650,
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.984Z"
+ },
+ {
+  "id": "cmv1y3abc000y102z98niteya",
+  "code": "W-02",
+  "name": "Suresh Yadav",
+  "shift": "MORNING",
+  "dailyWage": 650,
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.984Z"
+ },
+ {
+  "id": "cmv1y3abc000z102z1cqmhyj8",
+  "code": "W-03",
+  "name": "Anita Kumari",
+  "shift": "MORNING",
+  "dailyWage": 700,
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.984Z"
+ },
+ {
+  "id": "cmv1y3abx0010102zl9rbp8ax",
+  "code": "W-06",
+  "name": "Mohan Singh",
+  "shift": "NIGHT",
+  "dailyWage": 750,
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.984Z"
+ },
+ {
+  "id": "cmv1y3abx0011102zleqrs9zx",
+  "code": "W-05",
+  "name": "Lakshmi Devi",
+  "shift": "EVENING",
+  "dailyWage": 700,
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.985Z"
+ },
+ {
+  "id": "cmv1y3aby0012102zesoohjdr",
+  "code": "W-04",
+  "name": "Imran Shaikh",
+  "shift": "EVENING",
+  "dailyWage": 680,
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.984Z"
+ }
+]

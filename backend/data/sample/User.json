@@ -1,0 +1,47 @@
+[
+ {
+  "id": "cmv1y3a9e0000102zn314bm3k",
+  "name": "Mill Owner",
+  "email": "owner@everest.dev",
+  "passwordHash": "$2a$10$4bOj7jlJC/4j//Cg4MCjqulqDcdxjSn4e3x6PgyQ7yR4x8MT3FL9m",
+  "role": "OWNER",
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.915Z"
+ },
+ {
+  "id": "cmv1y3a9h0001102zhiuyx7fn",
+  "name": "Store Keeper",
+  "email": "store@everest.dev",
+  "passwordHash": "$2a$10$4bOj7jlJC/4j//Cg4MCjqulqDcdxjSn4e3x6PgyQ7yR4x8MT3FL9m",
+  "role": "STORE",
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.917Z"
+ },
+ {
+  "id": "cmv1y3a9i0002102z66m7vbza",
+  "name": "Floor Supervisor",
+  "email": "production@everest.dev",
+  "passwordHash": "$2a$10$4bOj7jlJC/4j//Cg4MCjqulqDcdxjSn4e3x6PgyQ7yR4x8MT3FL9m",
+  "role": "PRODUCTION",
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.918Z"
+ },
+ {
+  "id": "cmv1y3a9j0003102zp3ux7nkg",
+  "name": "QC Inspector",
+  "email": "qc@everest.dev",
+  "passwordHash": "$2a$10$4bOj7jlJC/4j//Cg4MCjqulqDcdxjSn4e3x6PgyQ7yR4x8MT3FL9m",
+  "role": "QC",
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.919Z"
+ },
+ {
+  "id": "cmv1y3a9k0004102zo52fr9ru",
+  "name": "Dispatch Clerk",
+  "email": "dispatch@everest.dev",
+  "passwordHash": "$2a$10$4bOj7jlJC/4j//Cg4MCjqulqDcdxjSn4e3x6PgyQ7yR4x8MT3FL9m",
+  "role": "DISPATCH",
+  "isActive": true,
+  "createdAt": "2026-10-10T05:19:48.920Z"
+ }
+]
