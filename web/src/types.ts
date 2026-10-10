@@ -273,5 +273,5 @@ export interface Planning {
     withinHorizon: boolean
   }[]
   weeklyLoad: ({ weekStart: string } & Record<Stage, StageLoad>)[]
-  yarnNeeds: { id: string; yarnType: string; colour: string; unit: string; needed: number; inStock: number; shortBy: number; orders: number }[]
+  yarnNeeds: { id: string; yarnType: string; colour: string; unit: string; needed: number; inStock: number; shortBy: number; orders: number; neededBy: string | null }[]
 }

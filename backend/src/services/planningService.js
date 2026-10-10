@@ -6,6 +6,10 @@ const { STAGES, stageTarget, leftOf, stageOutput } = require('./productionServic
 const SHIFTS_PER_DAY = 3;
 const RATE_WINDOW_DAYS = 60;
 const QC_DAYS = 1;
+// Typical wait for a yarn truck once it is ordered; an order short of yarn can't start spinning before that.
+const YARN_LEAD_DAYS = 7;
+// A machine that is down is expected back after this many days, not lost for the whole plan.
+const BACK_IN_DAYS = { BREAKDOWN: 2, MAINTENANCE: 1 };
 const MAX_DAYS_AHEAD = 365;
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -38,9 +42,16 @@ async function stageCapacity() {
     const all = machines.filter((m) => m.type === stage);
     const known = all.map((m) => rateOf.get(m.id)).filter(Boolean);
     const fallback = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 0;
-    const usable = all.filter((m) => !['BREAKDOWN', 'MAINTENANCE'].includes(m.status));
-    const perShift = usable.reduce((total, m) => total + (rateOf.get(m.id) || fallback), 0);
-    capacity[stage] = { machines: all.length, usable: usable.length, perDay: round(perShift * SHIFTS_PER_DAY) };
+    const perDayOf = (m) => (rateOf.get(m.id) || fallback) * SHIFTS_PER_DAY;
+    const usable = all.filter((m) => !BACK_IN_DAYS[m.status]);
+    capacity[stage] = {
+      machines: all.length,
+      usable: usable.length,
+      perDay: round(usable.reduce((total, m) => total + perDayOf(m), 0)),
+      fullPerDay: round(all.reduce((total, m) => total + perDayOf(m), 0)),
+      // Machines that are down now, with the day they rejoin the plan.
+      returning: all.filter((m) => BACK_IN_DAYS[m.status]).map((m) => ({ code: m.code, fromDay: BACK_IN_DAYS[m.status], perDay: round(perDayOf(m)) })),
+    };
   }
   return capacity;
 }
@@ -71,16 +82,19 @@ async function schedule({ days = 90 } = {}) {
   const dayAt = (index) => new Date(today.getTime() + index * DAY);
   const used = { SPINNING: new Map(), WEAVING: new Map(), DYEING: new Map() };
 
+  // What a stage can make on a given day: today's usable machines plus any that are back by then.
+  const capacityOn = (stage, index) =>
+    capacity[stage].perDay + capacity[stage].returning.reduce((total, m) => total + (index >= m.fromDay ? m.perDay : 0), 0);
+
   // Put `qty` of a stage on the first days with room, starting at day `from`. Returns the day range used.
   function allocate(stage, qty, from) {
-    const perDay = capacity[stage].perDay;
-    if (perDay <= 0) return null;
+    if (capacity[stage].fullPerDay <= 0) return null;
     let left = qty;
     let start = null;
     let index = from;
     for (; left > 0.005 && index < MAX_DAYS_AHEAD * 2; index += 1) {
       if (!isWorkingDay(dayAt(index))) continue;
-      const free = perDay - (used[stage].get(index) || 0);
+      const free = capacityOn(stage, index) - (used[stage].get(index) || 0);
       if (free <= 0.005) continue;
       const take = Math.min(free, left);
       used[stage].set(index, (used[stage].get(index) || 0) + take);
@@ -91,13 +105,27 @@ async function schedule({ days = 90 } = {}) {
     return left > 0.005 ? null : { start, end: index };
   }
 
-  const yarn = new Map(materials.map((m) => [m.id, { needed: 0, orders: 0 }]));
+  const yarn = new Map(materials.map((m) => [m.id, { needed: 0, orders: 0, neededBy: null }]));
   // Stock is handed out in the same order as the plan, so two orders never count the same yarn.
   const stockLeft = new Map(materials.map((m) => [m.id, Number(m.qtyInStock)]));
   const plan = orders.map((order) => {
     const finishing = ['QC', 'READY'].includes(order.status);
 
-    let cursor = 0;
+    const yarnToIssue = Math.max(0, Number(order.yarnRequired) - (issuedOf.get(order.id) || 0));
+    let yarnShortBy = 0;
+    if (order.materialId && yarnToIssue > 0 && yarn.has(order.materialId)) {
+      const entry = yarn.get(order.materialId);
+      entry.needed += yarnToIssue;
+      entry.orders += 1;
+      const covered = Math.min(yarnToIssue, stockLeft.get(order.materialId));
+      stockLeft.set(order.materialId, stockLeft.get(order.materialId) - covered);
+      yarnShortBy = yarnToIssue - covered;
+      // The first order that can't be covered sets how soon the yarn has to arrive.
+      if (yarnShortBy > 0 && !entry.neededBy) entry.neededBy = order.deadline;
+    }
+
+    // Short of yarn: nothing can start until a delivery arrives.
+    let cursor = yarnShortBy > 0 && !finishing ? YARN_LEAD_DAYS : 0;
     let blocked = false;
     const stages = STAGES.map((stage) => {
       // Whatever a stage still owes is planned, even if a later stage has already started on the first part.
@@ -112,17 +140,6 @@ async function schedule({ days = 90 } = {}) {
       cursor = slot.end;
       return { stage, remaining: round(remaining), start: dayKey(dayAt(slot.start)), end: dayKey(dayAt(slot.end)) };
     });
-
-    const yarnToIssue = Math.max(0, Number(order.yarnRequired) - (issuedOf.get(order.id) || 0));
-    let yarnShortBy = 0;
-    if (order.materialId && yarnToIssue > 0 && yarn.has(order.materialId)) {
-      const entry = yarn.get(order.materialId);
-      entry.needed += yarnToIssue;
-      entry.orders += 1;
-      const covered = Math.min(yarnToIssue, stockLeft.get(order.materialId));
-      stockLeft.set(order.materialId, stockLeft.get(order.materialId) - covered);
-      yarnShortBy = yarnToIssue - covered;
-    }
 
     const readyIndex = order.status === 'READY' ? 0 : cursor + QC_DAYS;
     const expectedReady = blocked ? null : dayAt(readyIndex);
@@ -156,7 +173,7 @@ async function schedule({ days = 90 } = {}) {
     if (!weeks.has(key)) weeks.set(key, { weekStart: key, SPINNING: { load: 0, capacity: 0 }, WEAVING: { load: 0, capacity: 0 }, DYEING: { load: 0, capacity: 0 } });
     for (const stage of STAGES) {
       weeks.get(key)[stage].load += used[stage].get(index) || 0;
-      weeks.get(key)[stage].capacity += capacity[stage].perDay;
+      weeks.get(key)[stage].capacity += capacityOn(stage, index);
     }
   }
   const weeklyLoad = [...weeks.values()].map((week) => {
@@ -169,9 +186,9 @@ async function schedule({ days = 90 } = {}) {
 
   const yarnNeeds = materials
     .map((m) => {
-      const { needed, orders: count } = yarn.get(m.id);
+      const { needed, orders: count, neededBy } = yarn.get(m.id);
       const inStock = Number(m.qtyInStock);
-      return { id: m.id, yarnType: m.yarnType, colour: m.colour, unit: m.unit, needed: round(needed), inStock, shortBy: round(Math.max(0, needed - inStock)), orders: count };
+      return { id: m.id, yarnType: m.yarnType, colour: m.colour, unit: m.unit, needed: round(needed), inStock, shortBy: round(Math.max(0, needed - inStock)), orders: count, neededBy };
     })
     .filter((m) => m.needed > 0)
     .sort((a, b) => b.shortBy - a.shortBy);

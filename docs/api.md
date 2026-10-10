@@ -130,13 +130,13 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 
 | Field | Meaning |
 |---|---|
-| `capacity.<STAGE>` | `{ machines, usable, perDay }`; `perDay` = usable machines × their 60-day average output per shift × 3 shifts |
+| `capacity.<STAGE>` | `{ machines, usable, perDay, fullPerDay, returning[] }`; `perDay` = usable machines × their 60-day average output per shift × 3 shifts; `returning` lists down machines and the day they rejoin |
 | `summary` | `{ openOrders, onTime, late, unscheduled, waitingForYarn, yarnsShort }` |
 | `orders[]` | order fields + `stages[]` (`{ stage, remaining, start, end }`), `yarnToIssue`, `yarnShortBy` (stock is allocated earliest deadline first), `expectedReady`, `lateByDays`, `onTime`, `withinHorizon` |
 | `weeklyLoad[]` | per week (Monday `weekStart`): each stage's `{ load, capacity, utilisation }` |
-| `yarnNeeds[]` | per yarn: `needed` by open orders, `inStock`, `shortBy`, `orders` |
+| `yarnNeeds[]` | per yarn: `needed` by open orders, `inStock`, `shortBy`, `orders`, `neededBy` (deadline of the first order that stock can't cover) |
 
-Assumptions: Sundays are closed, broken or under-maintenance machines count as unavailable, one day is added for QC, spinning is planned in kg of yarn and weaving/dyeing in order quantity.
+Assumptions: an order short of yarn can't start for 7 days (delivery lead time), Sundays are closed, a broken machine is counted back after 2 days and one under maintenance after 1, one day is added for QC, spinning is planned in kg of yarn and weaving/dyeing in order quantity.
 
 ## Errors
 
