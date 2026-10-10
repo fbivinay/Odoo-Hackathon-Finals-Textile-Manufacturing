@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { AlertTriangle, PackagePlus } from 'lucide-react'
+import { AlertTriangle, Bell, BellOff, PackagePlus } from 'lucide-react'
 import { PageHead } from '@/components/PageHead'
+import { StockWarningDialog } from '@/components/StockWarningDialog'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
@@ -17,7 +18,7 @@ import { useApi, usePaged } from '@/lib/useApi'
 import { LoadMore } from '@/components/LoadMore'
 import type { MaterialInward, RawMaterial, Ref } from '@/types'
 
-const stockCols: ColumnDef<RawMaterial>[] = [
+const stockCols = (onWarning: (m: RawMaterial) => void): ColumnDef<RawMaterial>[] => [
   { accessorKey: 'yarnType', header: 'Yarn' },
   { accessorKey: 'colour', header: 'Colour' },
   {
@@ -36,7 +37,22 @@ const stockCols: ColumnDef<RawMaterial>[] = [
       </span>
     ),
   },
-  { id: 'reorder', header: 'Reorder at', accessorFn: (m) => m.reorderLevel, cell: ({ row: { original: m } }) => formatQty(m.reorderLevel, m.unit) },
+  {
+    id: 'warning',
+    header: '',
+    enableSorting: false,
+    cell: ({ row: { original: m } }) => (
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        title={m.reorderLevel > 0 ? `Warns below ${formatQty(m.reorderLevel, m.unit)}. Click to change.` : 'No low-stock warning. Click to set one.'}
+        aria-label={`Low-stock warning for ${m.yarnType} ${m.colour}`}
+        onClick={() => onWarning(m)}
+      >
+        {m.reorderLevel > 0 ? <Bell className="size-3.5" /> : <BellOff className="size-3.5 text-muted-foreground" />}
+      </Button>
+    ),
+  },
 ]
 
 const inwardCols: ColumnDef<MaterialInward>[] = [
@@ -51,6 +67,7 @@ export function Materials() {
   const stock = useApi<RawMaterial[]>('/materials?category=YARN')
   const inwards = usePaged<MaterialInward>('/materials/inwards?category=YARN')
   const [open, setOpen] = useState(false)
+  const [warning, setWarning] = useState<RawMaterial | null>(null)
   // Yarns that need reordering come first.
   const rows = [...(stock.data ?? [])].sort((a, b) => Number(b.lowStock) - Number(a.lowStock))
   const low = rows.filter((m) => m.lowStock).length
@@ -76,7 +93,7 @@ export function Materials() {
         <TabsContent value="stock" className="space-y-3">
           {stock.error && <p className="text-sm text-problem">{stock.error}</p>}
           <DataTable
-            columns={stockCols}
+            columns={stockCols(setWarning)}
             data={rows}
             loading={stock.loading}
             empty={<EmptyState icon={PackagePlus} line="No yarn in the store yet." actionLabel="Receive yarn" onAction={() => setOpen(true)} />}
@@ -87,6 +104,8 @@ export function Materials() {
           <LoadMore hasMore={inwards.hasMore} more={inwards.more} />
         </TabsContent>
       </Tabs>
+
+      {warning && <StockWarningDialog m={warning} onClose={() => setWarning(null)} onSaved={stock.reload} />}
 
       <InwardDialog
         open={open}

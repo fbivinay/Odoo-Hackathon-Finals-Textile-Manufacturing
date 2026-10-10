@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
-import { AlertTriangle, PackagePlus } from 'lucide-react'
+import { AlertTriangle, Bell, BellOff, PackagePlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { DataTable } from '@/components/DataTable'
@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
 import { LoadMore } from '@/components/LoadMore'
 import { PageHead } from '@/components/PageHead'
+import { StockWarningDialog } from '@/components/StockWarningDialog'
 import { Pill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -48,6 +49,7 @@ export function RawMaterials() {
   const [category, setCategory] = useState<Category | 'ALL'>('ALL')
   const [receiving, setReceiving] = useState(false)
   const [using, setUsing] = useState<RawMaterial | null>(null)
+  const [warning, setWarning] = useState<RawMaterial | null>(null)
   // Only the store moves stock; production can look.
   const canEdit = user?.role === 'OWNER' || user?.role === 'STORE'
 
@@ -88,7 +90,6 @@ export function RawMaterials() {
         </span>
       ),
     },
-    { id: 'reorder', header: 'Reorder at', accessorFn: (m) => m.reorderLevel, cell: ({ row: { original: m } }) => formatQty(m.reorderLevel, m.unit) },
     ...(canEdit
       ? [
           {
@@ -96,6 +97,19 @@ export function RawMaterials() {
             header: '',
             enableSorting: false,
             cell: ({ row: { original: m } }) => (
+              <div className="flex items-center justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  title={m.reorderLevel > 0 ? `Warns below ${formatQty(m.reorderLevel, m.unit)}. Click to change.` : 'No low-stock warning. Click to set one.'}
+                  aria-label={`Low-stock warning for ${m.yarnType}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setWarning(m)
+                  }}
+                >
+                  {m.reorderLevel > 0 ? <Bell className="size-3.5" /> : <BellOff className="size-3.5 text-muted-foreground" />}
+                </Button>
               <Button
                 size="xs"
                 variant="outline"
@@ -107,6 +121,7 @@ export function RawMaterials() {
               >
                 Use
               </Button>
+              </div>
             ),
           } satisfies ColumnDef<RawMaterial>,
         ]
@@ -165,6 +180,7 @@ export function RawMaterials() {
       </Tabs>
 
       {receiving && <ReceiveDialog materials={all} startWith={category === 'ALL' ? null : category} onClose={() => setReceiving(false)} onSaved={reload} />}
+      {warning && <StockWarningDialog m={warning} onClose={() => setWarning(null)} onSaved={stock.reload} />}
       {using && <UseDialog m={using} onClose={() => setUsing(null)} onSaved={reload} />}
     </div>
   )
