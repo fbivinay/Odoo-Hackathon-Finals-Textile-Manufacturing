@@ -48,7 +48,7 @@ function SidebarNav({ role, onNavigate, onSignOut }: { role: Role; onNavigate?: 
   return (
     <>
       <div className="flex h-14 items-center gap-2 border-b border-border px-5">
-        <div className="flex h-6 w-6 items-center justify-center rounded bg-indigo-600 text-white">
+        <div className="flex h-6 w-6 items-center justify-center rounded bg-brand text-white">
           <Logo className="size-3.5" />
         </div>
         <div className="leading-tight">
@@ -66,7 +66,7 @@ function SidebarNav({ role, onNavigate, onSignOut }: { role: Role; onNavigate?: 
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
-                isActive ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900',
+                isActive ? 'bg-brand-tint font-medium text-brand' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900',
               )
             }
           >

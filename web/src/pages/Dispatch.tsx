@@ -137,7 +137,7 @@ function LoadCard({ group, onDone }: { group: ShelfGroup; onDone: () => void }) 
       </div>
       <div className="flex flex-wrap gap-2">
         {rolls.map((r) => (
-          <label key={r.id} className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs has-checked:border-ink has-checked:bg-ink has-checked:text-surface transition-colors">
+          <label key={r.id} className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs has-checked:border-brand has-checked:bg-brand has-checked:text-surface transition-colors">
             <input type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} />
             {r.rollNo} · {formatQty(r.qty)}
           </label>

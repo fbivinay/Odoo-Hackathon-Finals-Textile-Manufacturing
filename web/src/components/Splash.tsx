@@ -6,7 +6,7 @@ export function Splash() {
   return (
     <div className="splash" aria-hidden="true">
       <div className="splash__inner">
-        <span className="flex size-12 items-center justify-center rounded-xl bg-indigo-600 text-white">
+        <span className="flex size-12 items-center justify-center rounded-xl bg-brand text-white">
           <Logo className="size-8" />
         </span>
         <div className="splash__name">Everest</div>

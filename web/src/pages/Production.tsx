@@ -110,8 +110,8 @@ function MachineCard({ m, onChange, onAssign }: { m: BoardMachine; onChange: () 
               </span>
               <span className="text-muted-foreground">{label(job.shift)} shift</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-ink/10">
-              <div className="h-full rounded-full bg-ink transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }} />
+            <div className="h-1.5 overflow-hidden rounded-full bg-brand/10">
+              <div className="h-full rounded-full bg-brand transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }} />
             </div>
             <p className="text-xs text-muted-foreground tabular-nums">
               {formatQty(job.qtyProduced, unit)} of {formatQty(job.qtyPlanned, unit)} · {Math.round(pct)}% · today {formatQty(m.producedToday, unit)}

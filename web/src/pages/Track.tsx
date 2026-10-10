@@ -15,7 +15,7 @@ export function Track() {
     <div className="min-h-screen px-4 py-10">
       <div className="mx-auto max-w-lg space-y-6">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-ink text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand text-white">
             <Logo className="size-4" />
           </div>
           <span className="text-sm font-medium">Everest Textile Mills · Order tracking</span>
@@ -52,14 +52,14 @@ export function Track() {
                         <span
                           className={cn(
                             'flex size-6 items-center justify-center rounded-full border-2 text-xs',
-                            done && 'border-ink bg-ink text-white',
+                            done && 'border-brand bg-brand text-white',
                             now && 'animate-pulse border-ink text-ink',
                             !done && !now && 'border-line text-ink-3/50',
                           )}
                         >
                           {done ? <Check className="size-3.5" /> : i + 1}
                         </span>
-                        {i < t.timeline.length - 1 && <span className={cn('h-6 w-0.5', done ? 'bg-ink' : 'bg-line')} />}
+                        {i < t.timeline.length - 1 && <span className={cn('h-6 w-0.5', done ? 'bg-brand' : 'bg-line')} />}
                       </div>
                       <p className={cn('pt-0.5 text-sm', now ? 'font-medium text-ink' : done ? 'text-ink-2' : 'text-ink-3/60')}>
                         {s.label}

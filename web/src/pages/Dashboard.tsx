@@ -33,8 +33,8 @@ function Figure({ label, value, note, tone, loading }: { label: string; value: s
   )
 }
 
-// Monochrome: colour is reserved for status, so stages are three inks.
-const STAGE_COLOR: Record<Stage, string> = { SPINNING: '#6b6b74', WEAVING: '#4a4a52', DYEING: '#0b0b0c' } // ink-3, ink-2, ink
+// Three shades of the brand purple; other colours are reserved for status.
+const STAGE_COLOR: Record<Stage, string> = { SPINNING: '#c9b3c2', WEAVING: '#9a7790', DYEING: '#714b67' }
 
 const money = ({ getValue }: { getValue: () => unknown }) => formatINR(getValue() as number)
 
@@ -192,7 +192,7 @@ export function Dashboard() {
               />
               <Bar dataKey="invoiced" radius={[6, 6, 0, 0]} animationDuration={900}>
                 {trend.map((t) => (
-                  <Cell key={t.month} fill={t.month === month ? '#0b0b0c' : '#6b6b74'} cursor="pointer" onClick={() => setMonth(t.month)} />
+                  <Cell key={t.month} fill={t.month === month ? '#714b67' : '#c9b3c2'} cursor="pointer" onClick={() => setMonth(t.month)} />
                 ))}
               </Bar>
               <Line dataKey="profit" type="monotone" stroke="#16704a" strokeWidth={2} dot={{ r: 2.5 }} animationDuration={900} />

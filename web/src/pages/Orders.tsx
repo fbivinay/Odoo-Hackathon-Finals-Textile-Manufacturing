@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { formatDate, formatINR, formatQty, toISODate } from '@/lib/format'
 import { yarnNeed } from '@/lib/textile'
+import { api, ApiError } from '@/lib/api'
 import { mutate, useApi, usePaged } from '@/lib/useApi'
 import { LoadMore } from '@/components/LoadMore'
 import { dayFromToday } from '@/lib/format'
@@ -31,6 +32,7 @@ function YarnCheck({ o, material, issued, canIssue, onIssued }: { o: Order; mate
     <Button
       size="xs"
       variant="outline"
+      title={`${material.yarnType} · ${material.colour}`}
       onClick={async () => {
         if (await mutate('/materials/issues', 'POST', { materialId: material.id, orderId: o.id, qty: remaining }, `${formatQty(remaining, material.unit)} issued to ${o.orderNo}`)) onIssued()
       }}
@@ -40,14 +42,8 @@ function YarnCheck({ o, material, issued, canIssue, onIssued }: { o: Order; mate
   )
 }
 
-const FILTERS: { label: string; match: (s: OrderStatus) => boolean }[] = [
-  { label: 'Open', match: (s) => !['DISPATCHED', 'CANCELLED'].includes(s) },
-  { label: 'All', match: () => true },
-  { label: 'Pending', match: (s) => s === 'PENDING' },
-  { label: 'In production', match: (s) => ['SPINNING', 'WEAVING', 'DYEING', 'QC'].includes(s) },
-  { label: 'Ready', match: (s) => s === 'READY' },
-  { label: 'Dispatched', match: (s) => s === 'DISPATCHED' },
-]
+const OPEN = (s: OrderStatus) => !['DISPATCHED', 'CANCELLED'].includes(s)
+const FILTERS = ['Open', 'Needs yarn', 'Ready', 'All'] as const
 
 export function Orders() {
   const { user } = useSession()
@@ -69,9 +65,23 @@ export function Orders() {
     issues.reload()
   }
 
+  // Yarn still to be issued for an open order.
+  const needsYarn = (o: Order) => OPEN(o.status) && o.yarnRequired > 0 && yarnNeed(o.yarnRequired, issuedTo(o.id), 0).remaining > 0
+  const matches = [(o: Order) => OPEN(o.status), needsYarn, (o: Order) => o.status === 'READY', () => true]
+  // Only the roles that talk to buyers need the tracking link.
+  const showLink = user?.role === 'OWNER' || user?.role === 'DISPATCH'
+
   const columns: ColumnDef<Order>[] = [
-    { accessorKey: 'orderNo', header: 'Order' },
-    { id: 'buyer', header: 'Buyer', accessorFn: (o) => o.buyer.name },
+    {
+      accessorKey: 'orderNo',
+      header: 'Order',
+      cell: ({ row: { original: o } }) => (
+        <div className="leading-tight">
+          <p className="font-medium">{o.orderNo}</p>
+          <p className="text-xs text-muted-foreground">{o.buyer.name}</p>
+        </div>
+      ),
+    },
     { id: 'fabric', header: 'Fabric', accessorFn: (o) => `${o.fabricType} · ${o.colour}` },
     { id: 'qty', header: 'Qty', accessorFn: (o) => o.qty, cell: ({ row: { original: o } }) => formatQty(o.qty) },
     {
@@ -86,58 +96,61 @@ export function Orders() {
         <YarnCheck o={o} material={materials.data?.find((m) => m.id === o.materialId)} issued={issuedTo(o.id)} canIssue={canIssue} onIssued={reloadYarn} />
       ),
     },
-    {
-      id: 'track',
-      header: '',
-      enableSorting: false,
-      cell: ({ row: { original: o } }) => (
-        <Button
-          variant="ghost"
-          size="xs"
-          className="gap-1"
-          onClick={() => navigator.clipboard.writeText(trackingUrl(o.trackingToken)).then(() => toast.success('Tracking link copied'))}
-        >
-          <Link2 className="size-3" />
-          Buyer link
-        </Button>
-      ),
-    },
+    ...(showLink
+      ? [
+          {
+            id: 'track',
+            header: '',
+            enableSorting: false,
+            cell: ({ row: { original: o } }) => (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="gap-1"
+                onClick={() => navigator.clipboard.writeText(trackingUrl(o.trackingToken)).then(() => toast.success('Tracking link copied'))}
+              >
+                <Link2 className="size-3" />
+                Buyer link
+              </Button>
+            ),
+          } satisfies ColumnDef<Order>,
+        ]
+      : []),
   ]
 
-  const rows = orders.rows.filter((o) => FILTERS[filter].match(o.status))
+  const rows = orders.rows.filter(matches[filter])
 
   return (
     <div className="space-y-4">
       <PageHead
         eyebrow="Order book"
         title="Orders"
-        lede="Each buyer's order with its deadline, where it is on the floor, and whether there is yarn to start it."
         actions={
-          <select aria-label="Period" className={`${selectClass} w-40 bg-surface`} value={period} onChange={(e) => setPeriod(e.target.value)}>
-            <option value="recent">Current book</option>
-            {Array.from({ length: new Date().getFullYear() - 2022 }, (_, i) => String(new Date().getFullYear() - i)).map((y) => (
-              <option key={y} value={y}>
-                Placed in {y}
-              </option>
-            ))}
-          </select>
+          canCreate && (
+            <Button className="gap-1.5" onClick={() => setOpen(true)}>
+              <Plus className="size-4" />
+              New order
+            </Button>
+          )
         }
       />
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1">
-          {FILTERS.map((f, i) => (
-            <Button key={f.label} size="sm" variant={i === filter ? 'secondary' : 'ghost'} onClick={() => setFilter(i)}>
-              {f.label}
-              <span className="ml-1 text-xs text-muted-foreground">{orders.rows.filter((o) => f.match(o.status)).length}</span>
+          {FILTERS.map((label, i) => (
+            <Button key={label} size="sm" variant={i === filter ? 'secondary' : 'ghost'} onClick={() => setFilter(i)}>
+              {label}
+              <span className="ml-1 text-xs text-muted-foreground">{orders.rows.filter(matches[i]).length}</span>
             </Button>
           ))}
         </div>
-        {canCreate && (
-          <Button size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
-            <Plus className="size-4" />
-            New order
-          </Button>
-        )}
+        <select aria-label="Period" className={`${selectClass} w-28! shrink-0 bg-surface`} value={period} onChange={(e) => setPeriod(e.target.value)}>
+          <option value="recent">Current</option>
+          {Array.from({ length: new Date().getFullYear() - 2022 }, (_, i) => String(new Date().getFullYear() - i)).map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
       </div>
       {orders.error && <p className="text-sm text-problem">{orders.error}</p>}
       <DataTable columns={columns} data={rows} loading={orders.loading} initialSorting={[{ id: 'deadline', desc: period !== 'recent' }]} />
@@ -147,31 +160,71 @@ export function Orders() {
   )
 }
 
-const EMPTY = { buyerId: '', materialId: '', fabricType: '', colour: '', qty: '', yarnRequired: '', pricePerUnit: '', deadline: '' }
+const NEW = '__new__'
+// Typical yarn use per metre of fabric (kg/m), used to suggest "Yarn needed". The user can overwrite it.
+const YARN_PER_METRE: Record<string, number> = {
+  poplin: 0.11, cambric: 0.09, lawn: 0.07, twill: 0.2, denim: 0.45, canvas: 0.5, oxford: 0.17,
+  chambray: 0.15, satin: 0.13, georgette: 0.08, 'linen suiting': 0.22, 'rayon print': 0.12,
+}
+const FABRIC_TYPES = ['Poplin', 'Cambric', 'Lawn', 'Twill', 'Denim', 'Canvas', 'Oxford', 'Chambray', 'Satin', 'Georgette', 'Linen Suiting', 'Rayon Print']
+const EMPTY = { buyerId: '', buyerName: '', materialId: '', fabricType: '', colour: '', qty: '', yarnRequired: '', pricePerUnit: '', deadline: '' }
 
 function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; onSaved: () => void }) {
   const buyers = useApi<Ref[]>(open ? '/buyers' : null)
   const materials = useApi<RawMaterial[]>(open ? '/materials' : null)
   const [form, setForm] = useState(EMPTY)
   const [busy, setBusy] = useState(false)
-  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value })
+  // Until the user types their own figure, "Yarn needed" follows fabric type × quantity.
+  const [yarnEdited, setYarnEdited] = useState(false)
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => {
+    if (k === 'yarnRequired') setYarnEdited(true)
+    setForm((f) => {
+      const next = { ...f, [k]: e.target.value }
+      const perMetre = YARN_PER_METRE[next.fabricType.trim().toLowerCase()]
+      if ((k === 'fabricType' || k === 'qty') && !yarnEdited && perMetre && Number(next.qty) > 0) {
+        next.yarnRequired = String(Math.round(Number(next.qty) * perMetre))
+      }
+      return next
+    })
+  }
+  const newBuyer = form.buyerId === NEW
   const mat = materials.data?.find((m) => m.id === form.materialId)
   const short = mat && form.yarnRequired ? yarnNeed(Number(form.yarnRequired), 0, mat.qtyInStock).shortBy : null
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
-    const ok = await mutate(
-      '/orders',
-      'POST',
-      { ...form, materialId: form.materialId || undefined, qty: Number(form.qty), yarnRequired: Number(form.yarnRequired), pricePerUnit: Number(form.pricePerUnit) },
-      'Order created',
-    )
-    setBusy(false)
-    if (ok) {
+    try {
+      // A new buyer is saved first and stays selected, so a retry never creates it twice.
+      let { buyerId } = form
+      if (newBuyer) {
+        buyerId = (await api<Ref>('/buyers', { method: 'POST', body: { name: form.buyerName } })).id
+        setForm((f) => ({ ...f, buyerId }))
+        buyers.reload()
+      }
+      const order = await api<Order>('/orders', {
+        method: 'POST',
+        body: {
+          buyerId,
+          materialId: form.materialId,
+          fabricType: form.fabricType,
+          colour: form.colour,
+          deadline: form.deadline,
+          qty: Number(form.qty),
+          yarnRequired: Number(form.yarnRequired),
+          pricePerUnit: Number(form.pricePerUnit),
+        },
+      })
+      toast.success(`${order.orderNo} created`)
       onSaved()
       onOpenChange(false)
       setForm(EMPTY)
+      setYarnEdited(false)
+    } catch (err) {
+      const duplicate = err instanceof ApiError && err.code === 'CONFLICT'
+      toast.error(duplicate ? 'That buyer already exists. Pick it from the list.' : err instanceof ApiError ? err.message : 'Something went wrong.')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -184,32 +237,45 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
         <form id="order" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
           <Field label="Buyer" htmlFor="buyerId">
             <select id="buyerId" required className={selectClass} value={form.buyerId} onChange={set('buyerId')}>
-              <option value="">Select…</option>
+              <option value="">Select buyer…</option>
               {buyers.data?.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
               ))}
+              <option value={NEW}>+ Add new buyer</option>
             </select>
           </Field>
           <Field label="Deadline" htmlFor="deadline">
             <Input id="deadline" type="date" required min={toISODate(new Date())} value={form.deadline} onChange={set('deadline')} />
           </Field>
+          {newBuyer && (
+            <div className="sm:col-span-2">
+              <Field label="Buyer name" htmlFor="buyerName">
+                <Input id="buyerName" required autoFocus placeholder="Arvind Garments" value={form.buyerName} onChange={set('buyerName')} />
+              </Field>
+            </div>
+          )}
           <Field label="Fabric type" htmlFor="fabricType">
-            <Input id="fabricType" required placeholder="Poplin" value={form.fabricType} onChange={set('fabricType')} />
+            <Input id="fabricType" required list="fabric-types" placeholder="Poplin" value={form.fabricType} onChange={set('fabricType')} />
+            <datalist id="fabric-types">
+              {FABRIC_TYPES.map((f) => (
+                <option key={f} value={f} />
+              ))}
+            </datalist>
           </Field>
           <Field label="Colour" htmlFor="colour">
             <Input id="colour" required placeholder="Navy" value={form.colour} onChange={set('colour')} />
           </Field>
           <Field label="Quantity (m)" htmlFor="qty">
-            <Input id="qty" type="number" min="1" required value={form.qty} onChange={set('qty')} />
+            <Input id="qty" type="number" min="1" step="1" inputMode="numeric" required value={form.qty} onChange={set('qty')} />
           </Field>
           <Field label="Price (₹/m)" htmlFor="pricePerUnit">
-            <Input id="pricePerUnit" type="number" min="0" step="0.01" required value={form.pricePerUnit} onChange={set('pricePerUnit')} />
+            <Input id="pricePerUnit" type="number" min="0.01" step="0.01" inputMode="decimal" required value={form.pricePerUnit} onChange={set('pricePerUnit')} />
           </Field>
           <Field label="Yarn" htmlFor="materialId">
             <select id="materialId" required className={selectClass} value={form.materialId} onChange={set('materialId')}>
-              <option value="">Select…</option>
+              <option value="">Select yarn…</option>
               {materials.data?.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.yarnType} · {m.colour}
@@ -224,13 +290,13 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
               short === null ? (
                 mat && `${formatQty(mat.qtyInStock, 'kg')} in store`
               ) : short > 0 ? (
-                <span className="text-problem">Short by {formatQty(short, 'kg')}, order yarn first</span>
+                <span className="text-problem">Short by {formatQty(short, 'kg')}</span>
               ) : (
-                <span className="text-good">Enough yarn to start</span>
+                <span className="text-good">Enough in store</span>
               )
             }
           >
-            <Input id="yarnRequired" type="number" min="0" step="0.01" required value={form.yarnRequired} onChange={set('yarnRequired')} />
+            <Input id="yarnRequired" type="number" min="0.01" step="0.01" inputMode="decimal" required value={form.yarnRequired} onChange={set('yarnRequired')} />
           </Field>
         </form>
         <DialogFooter className="items-center sm:justify-between">
