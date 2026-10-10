@@ -166,11 +166,12 @@ function InwardDialog({
         setForm((f) => ({ ...f, supplierId }))
         suppliers.reload()
       }
-      await api('/materials/inwards', {
+      const saved = await api<{ issuedTo: { orderNo: string }[] }>('/materials/inwards', {
         method: 'POST',
         body: { materialId, supplierId, qty: Number(form.qty), rate: Number(form.rate) },
       })
-      toast.success('Yarn received, stock updated')
+      const waiting = saved.issuedTo?.length ?? 0
+      toast.success('Yarn received', { description: waiting ? `Issued to ${waiting} waiting order${waiting > 1 ? 's' : ''}.` : undefined })
       onSaved()
       onOpenChange(false)
       setForm(emptyForm)

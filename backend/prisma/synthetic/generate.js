@@ -717,7 +717,34 @@ function generate({ asOfDate }) {
   };
   syncOrderStatuses(data);
   for (const o of data.Order) delete o.cancelled;
+  stockUpYarn(data, storeKeepers[0].id);
   return { data, asOf: iso(T) };
+}
+
+// A well-run store holds more yarn than the order book needs. Each yarn gets one extra
+// delivery, dated in the warm-up months so no reported month's bills change, big enough to
+// cover every open order with a buffer on top. Two yarns are left short on purpose, so the
+// "Short of yarn" and "Yarn to buy" lists have something real to show.
+const KEPT_SHORT = ['Viscose 30s', 'Linen 25s'];
+function stockUpYarn(data, storeKeeperId) {
+  const open = data.Order.filter((o) => !['DISPATCHED', 'CANCELLED'].includes(o.status));
+  const issued = new Map();
+  for (const i of data.MaterialIssue) issued.set(i.orderId, (issued.get(i.orderId) || 0) + i.qty);
+  const firstSupplier = new Map();
+  for (const i of data.MaterialInward) if (!firstSupplier.has(i.materialId)) firstSupplier.set(i.materialId, i.supplierId);
+
+  data.RawMaterial.filter((m) => m.category === 'YARN' && !KEPT_SHORT.includes(m.yarnType)).forEach((m, k) => {
+    const owed = open.filter((o) => o.materialId === m.id).reduce((t, o) => t + Math.max(0, o.yarnRequired - (issued.get(o.id) || 0)), 0);
+    const target = owed + m.reorderLevel * 2;
+    const extra = Math.ceil(Math.max(0, target - m.qtyInStock) / 50) * 50;
+    if (extra <= 0) return;
+    const rate = m.avgCost;
+    data.MaterialInward.push({
+      id: `inw_s_${pad(k + 1, 3)}`, materialId: m.id, supplierId: firstSupplier.get(m.id), orderId: null, receivedById: storeKeeperId,
+      qty: extra, rate, billAmount: round2(extra * rate), receivedAt: '2022-12-20T05:30:00.000Z',
+    });
+    m.qtyInStock = round2(m.qtyInStock + extra);
+  });
 }
 
 // Same rule as orderService.syncStatus and the dataset checker.

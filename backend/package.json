@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "db": "node prisma/local-db.js",
-    "setup": "prisma migrate deploy && node prisma/dataset.js import data/everest --reset",
+    "setup": "prisma migrate deploy && node prisma/dataset.js import data/everest --reset && node prisma/allocate-yarn.js",
     "start": "node src/server.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",

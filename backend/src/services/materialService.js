@@ -26,6 +26,54 @@ async function update(id, data) {
   return withLowStock(await prisma.rawMaterial.update({ where: { id }, data }));
 }
 
+// Yarn is issued to orders by itself: an order gets its yarn the moment it is taken, and
+// orders left waiting get it as soon as a delivery arrives. Stock goes to the earliest
+// deadlines first; an order may get part of what it needs if that is all there is.
+async function allocateYarn(tx, materialId) {
+  const material = await tx.rawMaterial.findUnique({ where: { id: materialId } });
+  if (!material || material.category !== 'YARN') return [];
+
+  const orders = await tx.order.findMany({
+    where: { materialId, yarnRequired: { gt: 0 }, status: { notIn: ['DISPATCHED', 'CANCELLED'] } },
+    orderBy: [{ deadline: 'asc' }, { id: 'asc' }],
+    select: { id: true, orderNo: true, yarnRequired: true },
+  });
+  if (orders.length === 0) return [];
+  const issuedRows = await tx.materialIssue.groupBy({
+    by: ['orderId'],
+    where: { materialId, orderId: { in: orders.map((o) => o.id) } },
+    _sum: { qty: true },
+  });
+  const issuedTo = new Map(issuedRows.map((r) => [r.orderId, Number(r._sum.qty || 0)]));
+
+  let stock = Number(material.qtyInStock);
+  const given = [];
+  for (const order of orders) {
+    if (stock <= 0.005) break;
+    const owed = Math.round((Number(order.yarnRequired) - (issuedTo.get(order.id) || 0)) * 100) / 100;
+    if (owed <= 0.005) continue;
+    const qty = Math.min(owed, Math.round(stock * 100) / 100);
+    await tx.materialIssue.create({ data: { materialId, orderId: order.id, qty, cost: qty * Number(material.avgCost) } });
+    stock -= qty;
+    given.push({ orderNo: order.orderNo, qty });
+  }
+  if (given.length > 0) {
+    const total = given.reduce((sum, g) => sum + g.qty, 0);
+    await tx.rawMaterial.update({ where: { id: materialId }, data: { qtyInStock: { decrement: total } } });
+  }
+  return given;
+}
+
+// Runs the same rule over every yarn. Used once after loading a dataset.
+async function allocateAllYarn() {
+  const yarns = await prisma.rawMaterial.findMany({ where: { category: 'YARN' }, select: { id: true } });
+  let orders = 0;
+  for (const yarn of yarns) {
+    orders += (await prisma.$transaction((tx) => allocateYarn(tx, yarn.id), { timeout: 60000 })).length;
+  }
+  return orders;
+}
+
 // Yarn arriving at the gate: record the bill, add to stock, re-average the cost.
 async function inward({ materialId, supplierId, orderId, qty, rate }, userId) {
   return prisma.$transaction(async (tx) => {
@@ -42,12 +90,15 @@ async function inward({ materialId, supplierId, orderId, qty, rate }, userId) {
       data: { materialId, supplierId, orderId, receivedById: userId, qty, rate, billAmount: qty * rate },
       include: { supplier: true, order: { select: { id: true, orderNo: true } } },
     });
-    const updated = await tx.rawMaterial.update({
+    await tx.rawMaterial.update({
       where: { id: materialId },
       data: { qtyInStock: { increment: qty }, avgCost: Math.round(avgCost * 100) / 100 },
     });
+    // Orders that were waiting for this yarn get it now.
+    const issuedTo = await allocateYarn(tx, materialId);
+    const updated = await tx.rawMaterial.findUnique({ where: { id: materialId } });
 
-    return { ...entry, material: withLowStock(updated) };
+    return { ...entry, material: withLowStock(updated), issuedTo };
   });
 }
 
@@ -110,4 +161,4 @@ async function listIssues(query = {}) {
   return toPage(rows, query);
 }
 
-module.exports = { list, create, update, inward, listInwards, issue, listIssues };
+module.exports = { allocateYarn, allocateAllYarn, list, create, update, inward, listInwards, issue, listIssues };

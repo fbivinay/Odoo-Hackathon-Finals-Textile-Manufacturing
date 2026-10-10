@@ -54,6 +54,8 @@ They answer `{ ok, data: [...], meta: { count, nextCursor } }`. Pass `nextCursor
 
 ## Orders
 
+Yarn is issued automatically: when an order is created (if the store has it) and when yarn is received (to waiting orders, earliest deadline first, partly if that is all there is). `POST /materials/inwards` returns `issuedTo[]`. `npm run setup` runs the same rule once over the loaded data.
+
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/orders` | | `?status=&buyerId=&q=&delayed=true` + paging; each row has `isDelayed` |

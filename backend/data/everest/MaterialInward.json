@@ -2952,5 +2952,13 @@
 {"id":"inw_o_009_4","materialId":"mat_o_009","supplierId":"sup_o_003","orderId":null,"receivedById":"usr_000002","qty":1200,"rate":42.56,"billAmount":51072,"receivedAt":"2026-06-15T05:30:00.000Z"},
 {"id":"inw_o_010_1","materialId":"mat_o_010","supplierId":"sup_o_003","orderId":null,"receivedById":"usr_000002","qty":90,"rate":780,"billAmount":70200,"receivedAt":"2022-12-12T05:30:00.000Z"},
 {"id":"inw_o_010_2","materialId":"mat_o_010","supplierId":"sup_o_003","orderId":null,"receivedById":"usr_000002","qty":70,"rate":811.2,"billAmount":56784,"receivedAt":"2024-10-14T05:30:00.000Z"},
-{"id":"inw_o_010_3","materialId":"mat_o_010","supplierId":"sup_o_003","orderId":null,"receivedById":"usr_000002","qty":60,"rate":842.4,"billAmount":50544,"receivedAt":"2026-01-19T05:30:00.000Z"}
+{"id":"inw_o_010_3","materialId":"mat_o_010","supplierId":"sup_o_003","orderId":null,"receivedById":"usr_000002","qty":60,"rate":842.4,"billAmount":50544,"receivedAt":"2026-01-19T05:30:00.000Z"},
+{"id":"inw_s_001","materialId":"mat_000001","supplierId":"sup_000009","orderId":null,"receivedById":"usr_000002","qty":2350,"rate":264.61,"billAmount":621833.5,"receivedAt":"2022-12-20T05:30:00.000Z"},
+{"id":"inw_s_002","materialId":"mat_000002","supplierId":"sup_000006","orderId":null,"receivedById":"usr_000002","qty":3300,"rate":326.62,"billAmount":1077846,"receivedAt":"2022-12-20T05:30:00.000Z"},
+{"id":"inw_s_003","materialId":"mat_000003","supplierId":"sup_000010","orderId":null,"receivedById":"usr_000002","qty":800,"rate":235.93,"billAmount":188744,"receivedAt":"2022-12-20T05:30:00.000Z"},
+{"id":"inw_s_004","materialId":"mat_000004","supplierId":"sup_000009","orderId":null,"receivedById":"usr_000002","qty":6550,"rate":179.11,"billAmount":1173170.5,"receivedAt":"2022-12-20T05:30:00.000Z"},
+{"id":"inw_s_005","materialId":"mat_000005","supplierId":"sup_000006","orderId":null,"receivedById":"usr_000002","qty":8600,"rate":297.68,"billAmount":2560048,"receivedAt":"2022-12-20T05:30:00.000Z"},
+{"id":"inw_s_006","materialId":"mat_000006","supplierId":"sup_000005","orderId":null,"receivedById":"usr_000002","qty":3150,"rate":213.66,"billAmount":673029,"receivedAt":"2022-12-20T05:30:00.000Z"},
+{"id":"inw_s_007","materialId":"mat_000007","supplierId":"sup_000004","orderId":null,"receivedById":"usr_000002","qty":450,"rate":168.91,"billAmount":76009.5,"receivedAt":"2022-12-20T05:30:00.000Z"},
+{"id":"inw_s_008","materialId":"mat_000008","supplierId":"sup_000010","orderId":null,"receivedById":"usr_000002","qty":650,"rate":198.17,"billAmount":128810.5,"receivedAt":"2022-12-20T05:30:00.000Z"}
 ]

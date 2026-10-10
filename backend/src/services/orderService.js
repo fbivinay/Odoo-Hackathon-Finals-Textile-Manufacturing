@@ -1,6 +1,7 @@
 const prisma = require('../lib/prisma');
 const { nextNumber } = require('../lib/numbering');
 const { notFound, badRequest } = require('../lib/errors');
+const { allocateYarn } = require('./materialService');
 const { pageArgs, toPage, dateRange } = require('../lib/paging');
 
 const CLOSED = ['DISPATCHED', 'CANCELLED'];
@@ -88,9 +89,14 @@ async function create(data) {
   }
   if (data.yarnRequired > 0 && !data.materialId) throw badRequest('materialId is required with yarnRequired');
 
-  const order = await prisma.order.create({
-    data: { ...data, orderNo: await nextNumber(prisma.order, 'ORD') },
-    include: { buyer: { select: { id: true, name: true } } },
+  const order = await prisma.$transaction(async (tx) => {
+    const created = await tx.order.create({
+      data: { ...data, orderNo: await nextNumber(tx.order, 'ORD') },
+      include: { buyer: { select: { id: true, name: true } } },
+    });
+    // The order gets its yarn straight away if the store has it.
+    if (created.materialId) await allocateYarn(tx, created.materialId);
+    return created;
   });
   return { ...decorate(order), availability: await availability(order) };
 }

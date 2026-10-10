@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import { AlertTriangle, Bell, BellOff, PackagePlus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -42,7 +41,6 @@ const receivedCols: ColumnDef<MaterialInward>[] = [
 
 export function RawMaterials() {
   const { user } = useSession()
-  const navigate = useNavigate()
   const stock = useApi<RawMaterial[]>('/materials?kind=other')
   const received = usePaged<MaterialInward>('/materials/inwards?kind=other')
   const [category, setCategory] = useState<Category | 'ALL'>('ALL')
@@ -102,10 +100,7 @@ export function RawMaterials() {
                   size="icon-xs"
                   title={m.reorderLevel > 0 ? `Warns below ${formatQty(m.reorderLevel, m.unit)}. Click to change.` : 'No low-stock warning. Click to set one.'}
                   aria-label={`Low-stock warning for ${m.yarnType}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setWarning(m)
-                  }}
+                  onClick={() => setWarning(m)}
                 >
                   {m.reorderLevel > 0 ? <Bell className="size-3.5" /> : <BellOff className="size-3.5 text-muted-foreground" />}
                 </Button>
@@ -113,10 +108,7 @@ export function RawMaterials() {
                 size="xs"
                 variant="outline"
                 disabled={m.qtyInStock <= 0}
-                onClick={(e) => {
-                  e.stopPropagation() // the row itself opens the material's history
-                  setUsing(m)
-                }}
+                onClick={() => setUsing(m)}
               >
                 Use
               </Button>
@@ -169,7 +161,6 @@ export function RawMaterials() {
                 onAction={canEdit ? () => setReceiving(true) : undefined}
               />
             }
-            onRowClick={(m) => navigate(`/raw-materials/${m.id}`)}
           />
         </TabsContent>
         <TabsContent value="received" className="space-y-3">
