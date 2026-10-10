@@ -93,19 +93,19 @@ enum InvoiceStatus {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role
-  isActive     Boolean  @default(true)
+  id                 String   @id @default(cuid())
+  name               String
+  email              String   @unique
+  passwordHash       String
+  role               Role
+  isActive           Boolean  @default(true)
   // Set when the owner hands out a password; cleared once the employee picks their own.
-  mustChangePassword Boolean @default(false)
+  mustChangePassword Boolean  @default(false)
   // Sidebar tabs granted to this one person on top of their role, e.g. ["/waste"].
-  extraTabs    String[] @default([])
-  createdAt    DateTime @default(now())
+  extraTabs          String[] @default([])
+  createdAt          DateTime @default(now())
   // When the owner last added or edited this login; orders the Employees list.
-  updatedAt    DateTime @default(now())
+  updatedAt          DateTime @default(now())
 
   inwards        MaterialInward[]
   qcRecords      QCRecord[]
@@ -120,6 +120,7 @@ model Supplier {
 
   inwards        MaterialInward[]
   purchaseOrders PurchaseOrder[]
+  materials      RawMaterial[]
 }
 
 model Buyer {
@@ -138,16 +139,21 @@ model RawMaterial {
   category     MaterialCategory @default(YARN)
   yarnType     String
   colour       String
-  unit         String   @default("kg")
-  qtyInStock   Decimal  @default(0) @db.Decimal(12, 2)
-  reorderLevel Decimal  @default(0) @db.Decimal(12, 2)
-  avgCost      Decimal  @default(0) @db.Decimal(12, 2)
-  createdAt    DateTime @default(now())
+  unit         String           @default("kg")
+  qtyInStock   Decimal          @default(0) @db.Decimal(12, 2)
+  reorderLevel Decimal          @default(0) @db.Decimal(12, 2)
+  avgCost      Decimal          @default(0) @db.Decimal(12, 2)
+  // Config: who it is usually bought from and how many days a delivery takes.
+  supplierId   String?
+  leadDays     Int              @default(7)
+  createdAt    DateTime         @default(now())
 
+  supplier       Supplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   inwards        MaterialInward[]
   issues         MaterialIssue[]
   orders         Order[]
   purchaseOrders PurchaseOrder[]
+  fabricSpecs    FabricSpec[]
 
   @@unique([yarnType, colour])
 }
@@ -164,9 +170,9 @@ model MaterialInward {
   billAmount   Decimal  @db.Decimal(14, 2)
   receivedAt   DateTime @default(now())
 
-  material   RawMaterial @relation(fields: [materialId], references: [id])
-  supplier   Supplier    @relation(fields: [supplierId], references: [id])
-  order      Order?      @relation(fields: [orderId], references: [id])
+  material      RawMaterial    @relation(fields: [materialId], references: [id])
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  order         Order?         @relation(fields: [orderId], references: [id])
   receivedBy    User           @relation(fields: [receivedById], references: [id])
   purchaseOrder PurchaseOrder?
 
@@ -224,6 +230,10 @@ model Order {
   qty           Decimal     @db.Decimal(12, 2)
   yarnRequired  Decimal     @default(0) @db.Decimal(12, 2)
   pricePerUnit  Decimal     @default(0) @db.Decimal(12, 2)
+  // The Config figures this order was taken with, kept so later Config edits don't rewrite it.
+  yarnPerMetre  Decimal?    @db.Decimal(8, 4)
+  wastagePct    Decimal?    @db.Decimal(5, 2)
+  listPrice     Decimal?    @db.Decimal(12, 2)
   deadline      DateTime
   status        OrderStatus @default(PENDING)
   createdAt     DateTime    @default(now())
@@ -267,9 +277,9 @@ model ProductionJob {
   startedAt   DateTime  @default(now())
   completedAt DateTime?
 
-  order   Order   @relation(fields: [orderId], references: [id])
-  machine Machine @relation(fields: [machineId], references: [id])
-  worker  Worker? @relation(fields: [workerId], references: [id])
+  order   Order           @relation(fields: [orderId], references: [id])
+  machine Machine         @relation(fields: [machineId], references: [id])
+  worker  Worker?         @relation(fields: [workerId], references: [id])
   rolls   Roll[]
   logs    ProductionLog[]
 
@@ -405,4 +415,58 @@ model WagePayment {
   worker Worker @relation(fields: [workerId], references: [id])
 
   @@unique([workerId, month])
+}
+
+// ---------------------------------------------------------------- config --
+// Figures the owner sets on the Config page instead of them being fixed in code.
+
+enum RuleKind {
+  QUANTITY // an order smaller than `below` metres
+  DEADLINE // a deadline fewer than `below` days away
+}
+
+// Per fabric: the yarn it is made from, net yarn per metre, expected waste and the usual price.
+// Yarn to issue = metres x yarnPerMetre x (1 + wastage %).
+model FabricSpec {
+  id            String   @id @default(cuid())
+  fabricType    String   @unique
+  materialId    String?
+  yarnPerMetre  Decimal  @db.Decimal(8, 4)
+  wastagePct    Decimal  @default(0) @db.Decimal(5, 2)
+  pricePerMetre Decimal  @db.Decimal(12, 2)
+  updatedAt     DateTime @updatedAt
+
+  material RawMaterial? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+}
+
+// Adjustments for small or rushed orders, added on top of the fabric's figures.
+model OrderRule {
+  id         String   @id @default(cuid())
+  kind       RuleKind
+  below      Int
+  pricePct   Decimal  @default(0) @db.Decimal(5, 2)
+  wastagePct Decimal  @default(0) @db.Decimal(5, 2)
+  createdAt  DateTime @default(now())
+
+  @@unique([kind, below])
+}
+
+// Mill-wide numbers (QC days, roll length, shift hours...). A missing key uses its default.
+model Setting {
+  key       String   @id
+  value     Decimal  @db.Decimal(12, 2)
+  updatedAt DateTime @updatedAt
+}
+
+// Every config edit: who changed what, from and to.
+model ConfigChange {
+  id        String   @id @default(cuid())
+  what      String
+  field     String
+  oldValue  String?
+  newValue  String?
+  changedBy String
+  changedAt DateTime @default(now())
+
+  @@index([changedAt])
 }

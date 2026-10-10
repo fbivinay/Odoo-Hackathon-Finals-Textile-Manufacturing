@@ -2,6 +2,7 @@ const prisma = require('../lib/prisma');
 const { nextNumber } = require('../lib/numbering');
 const { notFound, badRequest } = require('../lib/errors');
 const { allocateYarn } = require('./materialService');
+const { quoteFor } = require('./configService');
 const { pageArgs, toPage, dateRange } = require('../lib/paging');
 
 const CLOSED = ['DISPATCHED', 'CANCELLED'];
@@ -82,7 +83,21 @@ async function list(query = {}) {
   return toPage(orders.map(decorate), query);
 }
 
-async function create(data) {
+async function create(input) {
+  // Config decides the yarn, so every order gets the same rule however it was entered. The figures
+  // used are stored on the order; the agreed price is the one sent (it may be negotiated).
+  const q = await quoteFor(input.fabricType, input);
+  const data = q
+    ? {
+        ...input,
+        materialId: input.materialId || q.spec.materialId || undefined,
+        yarnRequired: q.yarnKg,
+        yarnPerMetre: q.spec.yarnPerMetre,
+        wastagePct: q.wastagePct,
+        listPrice: q.price,
+        pricePerUnit: input.pricePerUnit || q.price,
+      }
+    : input;
   if (!(await prisma.buyer.findUnique({ where: { id: data.buyerId } }))) throw notFound('Buyer not found');
   if (data.materialId && !(await prisma.rawMaterial.findUnique({ where: { id: data.materialId } }))) {
     throw notFound('Material not found');

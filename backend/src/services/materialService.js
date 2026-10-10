@@ -105,7 +105,7 @@ async function addInward(tx, { materialId, supplierId, orderId, qty, rate }, use
 }
 
 const poInclude = {
-  material: { select: { id: true, category: true, yarnType: true, colour: true, unit: true } },
+  material: { select: { id: true, category: true, yarnType: true, colour: true, unit: true, leadDays: true } },
   supplier: { select: { id: true, name: true, phone: true } },
   orderedBy: { select: { id: true, name: true } },
 };

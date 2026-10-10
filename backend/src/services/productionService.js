@@ -3,6 +3,7 @@ const { nextNumber } = require('../lib/numbering');
 const { startOfToday } = require('../lib/dates');
 const { notFound, conflict, badRequest } = require('../lib/errors');
 const { syncStatus } = require('./orderService');
+const { setting } = require('./configService');
 const { pageArgs, toPage, dateRange } = require('../lib/paging');
 
 const jobInclude = {
@@ -178,8 +179,7 @@ async function logProgress(jobId, { qty }) {
   });
 }
 
-// Dyed fabric leaves the line wound into rolls of about this length (metres).
-const ROLL_LENGTH = 1100;
+// Dyed fabric leaves the line wound into rolls of about Config's roll length (metres).
 
 async function finishJob(jobId, status) {
   return prisma.$transaction(async (tx) => {
@@ -191,9 +191,10 @@ async function finishJob(jobId, status) {
     // yet rolled is cut into rolls here, so nothing dyed is left without a roll.
     let rollsSent = 0;
     if (status === 'COMPLETED' && job.stage === 'DYEING') {
+      const rollLength = await setting('rollLength');
       let unrolled = Number(job.qtyProduced) - job.rolls.reduce((total, r) => total + Number(r.qty), 0);
       while (unrolled > 1) {
-        const qty = Math.round(Math.min(ROLL_LENGTH, unrolled) * 100) / 100;
+        const qty = Math.round(Math.min(rollLength, unrolled) * 100) / 100;
         await tx.roll.create({
           data: { rollNo: await nextNumber(tx.roll, 'ROLL'), orderId: job.orderId, machineId: job.machineId, jobId, qty },
         });

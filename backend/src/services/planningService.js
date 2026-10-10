@@ -1,13 +1,12 @@
 const prisma = require('../lib/prisma');
 const { badRequest } = require('../lib/errors');
 const { CLOSED } = require('./orderService');
+const { settings } = require('./configService');
 const { STAGES, stageTarget, leftOf, stageOutput } = require('./productionService');
 
 const SHIFTS_PER_DAY = 3;
 const RATE_WINDOW_DAYS = 60;
-const QC_DAYS = 1;
 // Typical wait for a yarn truck once it is ordered; an order short of yarn can't start spinning before that.
-const YARN_LEAD_DAYS = 7;
 // A machine that is down is expected back after this many days, not lost for the whole plan.
 const BACK_IN_DAYS = { BREAKDOWN: 2, MAINTENANCE: 1 };
 const MAX_DAYS_AHEAD = 365;
@@ -62,7 +61,7 @@ async function schedule({ days = 90 } = {}) {
   const horizon = Number(days);
   if (!Number.isInteger(horizon) || horizon < 1 || horizon > MAX_DAYS_AHEAD) throw badRequest(`days must be 1 to ${MAX_DAYS_AHEAD}`);
 
-  const [capacity, orders, materials] = await Promise.all([
+  const [capacity, orders, materials, { qcDays }] = await Promise.all([
     stageCapacity(),
     prisma.order.findMany({
       where: { status: { notIn: CLOSED } },
@@ -70,7 +69,10 @@ async function schedule({ days = 90 } = {}) {
       include: { buyer: { select: { id: true, name: true } } },
     }),
     prisma.rawMaterial.findMany(),
+    settings(),
   ]);
+  // A short yarn waits for its supplier's delivery time (Config, per material).
+  const leadDaysOf = new Map(materials.map((m) => [m.id, m.leadDays]));
   const ids = orders.map((o) => o.id);
   const [output, issued] = await Promise.all([
     stageOutput(ids),
@@ -125,7 +127,7 @@ async function schedule({ days = 90 } = {}) {
     }
 
     // Short of yarn: nothing can start until a delivery arrives.
-    let cursor = yarnShortBy > 0 && !finishing ? YARN_LEAD_DAYS : 0;
+    let cursor = yarnShortBy > 0 && !finishing ? leadDaysOf.get(order.materialId) ?? 7 : 0;
     let blocked = false;
     const stages = STAGES.map((stage) => {
       // Whatever a stage still owes is planned, even if a later stage has already started on the first part.
@@ -141,7 +143,7 @@ async function schedule({ days = 90 } = {}) {
       return { stage, remaining: round(remaining), start: dayKey(dayAt(slot.start)), end: dayKey(dayAt(slot.end)) };
     });
 
-    const readyIndex = order.status === 'READY' ? 0 : cursor + QC_DAYS;
+    const readyIndex = order.status === 'READY' ? 0 : cursor + qcDays;
     const expectedReady = blocked ? null : dayAt(readyIndex);
     const lateByDays = expectedReady ? Math.max(0, Math.ceil((expectedReady - order.deadline) / DAY)) : null;
 

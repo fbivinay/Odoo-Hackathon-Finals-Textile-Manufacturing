@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { addDays, checkCommitment, daysBetween, estimateDelivery, MAX_OVERRIDE_DAYS, type PlanInput, type Stage } from '@/lib/deadline'
 import { dayFromToday, formatDate, formatQty } from '@/lib/format'
 import { useApi } from '@/lib/useApi'
-import type { Planning, RawMaterial, Roll } from '@/types'
+import type { Config, Planning, RawMaterial, Roll } from '@/types'
 
 const HORIZON = 120 // days of plan to fit the new order into
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
@@ -28,6 +28,10 @@ type Capacity = Planning['capacity'][Stage] & { returning?: { fromDay: number; p
 export function DeliveryEstimate({ qty, yarnKg, materialId, onChange }: { qty: number; yarnKg: number; materialId: string; onChange: (d: Delivery) => void }) {
   const planning = useApi<Planning>(`/planning/schedule?days=${HORIZON}`)
   const materials = useApi<RawMaterial[]>('/materials')
+  // Config: this yarn's delivery days and the QC days, the same figures the backend planner uses.
+  const config = useApi<Config>('/config')
+  const yarnLeadDays = config.data?.materials.find((m) => m.id === materialId)?.leadDays
+  const qcDays = config.data?.settings.find((s) => s.key === 'qcDays')?.value
   // Rework allowance: the share of recently checked rolls that were sent back at least once.
   const recent = useApi<Roll[]>(`/qc/rolls?from=${dayFromToday(-60)}&limit=500`)
   const [commit, setCommit] = useState('')
@@ -56,8 +60,8 @@ export function DeliveryEstimate({ qty, yarnKg, materialId, onChange }: { qty: n
       returning: { SPINNING: cap.SPINNING.returning ?? [], WEAVING: cap.WEAVING.returning ?? [], DYEING: cap.DYEING.returning ?? [] },
       weeklyLoad: p.weeklyLoad,
     }
-    return estimateDelivery(plan, { yarnKg, metres: qty, reworkRate, yarnShortKg: yarnShort })
-  }, [planning.data, yarnKg, qty, reworkRate, yarnShort])
+    return estimateDelivery(plan, { yarnKg, metres: qty, reworkRate, yarnShortKg: yarnShort, yarnLeadDays, qcDays })
+  }, [planning.data, yarnKg, qty, reworkRate, yarnShort, yarnLeadDays, qcDays])
 
   const estDate = estimate?.ok ? estimate.date! : null
   const commitError = estDate && commit ? checkCommitment(estDate, commit) : null

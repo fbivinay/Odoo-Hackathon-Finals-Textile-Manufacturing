@@ -69,7 +69,7 @@ Yarn is issued automatically: when an order is created (if the store has it) and
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
 | GET | `/orders` | | `?status=&buyerId=&q=&delayed=true` + paging; each row has `isDelayed` |
-| POST | `/orders` | STORE, DISPATCH | `{ buyerId, materialId?, fabricType, colour?, qty, yarnRequired?, pricePerUnit?, deadline }` → includes `availability` |
+| POST | `/orders` | STORE, DISPATCH | `{ buyerId, materialId?, fabricType, colour?, qty, yarnRequired?, pricePerUnit?, deadline }` → includes `availability`. When the fabric has Config figures (saved or from history), the server sets `yarnRequired` = qty × yarnPerMetre × (1 + wastage %, plus size/deadline bands), defaults `materialId` to the usual yarn and `pricePerUnit` to the Config price, and stores `yarnPerMetre`, `wastagePct`, `listPrice` on the order |
 | GET | `/orders/:id` | | buyer, material, issues (with `material`), jobs, rolls (with `qcRecords`), dispatches (with `invoice.payments`), `availability` |
 | PATCH | `/orders/:id/status` | OWNER | `{ status }` manual override, e.g. `CANCELLED` |
 | GET | `/track/:token` | public | buyer page; token is `order.trackingToken` |
@@ -149,6 +149,20 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | `yarnNeeds[]` | per yarn: `needed` by open orders, `inStock`, `shortBy`, `orders`, `neededBy` (deadline of the first order that stock can't cover) |
 
 Assumptions: an order short of yarn can't start for 7 days (delivery lead time), Sundays are closed, a broken machine is counted back after 2 days and one under maintenance after 1, one day is added for QC, spinning is planned in kg of yarn and weaving/dyeing in order quantity.
+
+## Config (owner edits, everyone reads)
+
+| Method | Path | Role | Notes |
+|---|---|---|---|
+| GET | `/config` | | `{ fabrics, rules, settings, materials }`. A fabric with no saved row is filled from the last 365 days of orders (`saved: false`); `history` always carries those figures |
+| PUT | `/config/fabrics/:fabricType` | OWNER | `{ materialId?, yarnPerMetre, wastagePct, pricePerMetre }` upsert. Yarn to issue = metres × yarnPerMetre × (1 + wastage %) |
+| POST | `/config/rules` | OWNER | `{ kind, below, pricePct, wastagePct }` (kind QUANTITY or DEADLINE); 409 if that band exists |
+| PATCH / DELETE | `/config/rules/:id` | OWNER | `{ below?, pricePct?, wastagePct? }` |
+| PUT | `/config/settings` | OWNER | `{ qcDays?, rollLength?, shiftHours?, dispatchTolerancePct?, shelfWaitDays? }`; a missing key uses its default (1, 1100, 8, 5, 3) |
+| PATCH | `/config/materials/:id` | OWNER | `{ reorderLevel?, supplierId?, leadDays? }` |
+| GET | `/config/changes` | OWNER | `?limit=` (max 500), newest first: `what, field, oldValue, newValue, changedBy, changedAt` |
+
+Read by: planning (`qcDays`, each material's `leadDays` when an order is short of yarn), finishing a dyeing job (`rollLength`), order costs (`shiftHours`), the order form (fabrics and rules) and dispatch checks (`dispatchTolerancePct`, `shelfWaitDays`).
 
 ## Errors
 

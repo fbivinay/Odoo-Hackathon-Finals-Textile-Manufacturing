@@ -28,6 +28,8 @@ export interface OrderWork {
   metres: number // weaving and dyeing quantity
   reworkRate: number // share of rolls historically sent back for rework (0–1)
   yarnShortKg: number // yarn this order needs that the store cannot cover today
+  yarnLeadDays?: number // the yarn's delivery days (Config, per material)
+  qcDays?: number // Config mill setting
 }
 
 export interface StageSlot {
@@ -48,6 +50,7 @@ export interface Estimate {
   limitation: string | null // why no reliable date can be given
 }
 
+// Defaults when Config has no value.
 export const QC_DAYS = 1
 export const DISPATCH_PREP_DAYS = 1
 export const MAX_OVERRIDE_DAYS = 7
@@ -113,7 +116,8 @@ export function estimateDelivery(plan: PlanInput, work: OrderWork): Estimate {
   }
   const stages: StageSlot[] = []
   // A yarn shortfall holds spinning back by the delivery lead time, as the backend planner does.
-  let cursor = work.yarnShortKg > 0 ? YARN_LEAD_DAYS : 0
+  const leadDays = work.yarnLeadDays ?? YARN_LEAD_DAYS
+  let cursor = work.yarnShortKg > 0 ? leadDays : 0
   for (const stage of STAGES) {
     let left = qty[stage]
     let start = -1
@@ -139,7 +143,7 @@ export function estimateDelivery(plan: PlanInput, work: OrderWork): Estimate {
   }
 
   const lastEnd = stages[stages.length - 1].end
-  const qcDay = nextWorking(lastEnd, QC_DAYS)
+  const qcDay = nextWorking(lastEnd, work.qcDays ?? QC_DAYS)
   const date = nextWorking(qcDay, DISPATCH_PREP_DAYS)
 
   // What is holding the date back, in order of impact.
@@ -153,7 +157,7 @@ export function estimateDelivery(plan: PlanInput, work: OrderWork): Estimate {
   constraints.sort((a, b) => b.weight - a.weight)
   const list = constraints.map((c) => c.text)
   if (work.yarnShortKg > 0) {
-    list.unshift(`Yarn is short by ${fmt(work.yarnShortKg)} kg after stock already committed to open orders, so spinning waits ${YARN_LEAD_DAYS} days for a delivery (starts ${stages[0].start} at the earliest).`)
+    list.unshift(`Yarn is short by ${fmt(work.yarnShortKg)} kg after stock already committed to open orders, so spinning waits ${work.yarnLeadDays ?? YARN_LEAD_DAYS} days for a delivery (starts ${stages[0].start} at the earliest).`)
   }
   return { ok: true, date, stages, qcDay, constraints: list, limitation: null }
 }

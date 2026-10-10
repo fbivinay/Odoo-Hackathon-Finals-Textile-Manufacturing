@@ -301,6 +301,9 @@ function handle(path: string, method: string, body: Record<string, any>): unknow
   if (is('GET', '/suppliers')) return suppliers
   // ponytail: no purchase orders in mock mode; the real list comes from the backend.
   if (is('GET', '/materials/purchase-orders')) return []
+  // ponytail: no Config figures in mock mode; the order form falls back to its built-in fabric list.
+  if (is('GET', '/config')) return { fabrics: [], rules: [], settings: [], materials: [] }
+  if (is('GET', '/config/changes')) return []
   if (is('GET', '/buyers')) return buyers
 
   // store

@@ -3,9 +3,27 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 // One box of a figures panel (Overview, Orders): a big number, a label and a short note.
-export function Figure({ label, value, note, tone, loading }: { label: string; value: string; note?: string; tone?: 'good' | 'watch' | 'problem'; loading?: boolean }) {
-  return (
-    <div className={cn('figure', tone && `figure--${tone}`)}>
+// With `onClick` the box is a button (Orders uses it to filter the list below); `active` marks
+// the box whose filter is applied.
+export function Figure({
+  label,
+  value,
+  note,
+  tone,
+  loading,
+  onClick,
+  active,
+}: {
+  label: string
+  value: string
+  note?: string
+  tone?: 'good' | 'watch' | 'problem'
+  loading?: boolean
+  onClick?: () => void
+  active?: boolean
+}) {
+  const body = (
+    <>
       <p className="figure__label">{label}</p>
       {loading ? (
         <Skeleton className="mx-auto mt-2 h-9 w-32" />
@@ -15,6 +33,18 @@ export function Figure({ label, value, note, tone, loading }: { label: string; v
         </p>
       )}
       {note && !loading && <p className="figure__note">{note}</p>}
-    </div>
+    </>
+  )
+  const cls = cn('figure', tone && `figure--${tone}`)
+  if (!onClick) return <div className={cls}>{body}</div>
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(cls, 'w-full cursor-pointer rounded-xl transition hover:ring-2 hover:ring-brand/30 focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none', active && 'ring-2 ring-brand')}
+    >
+      {body}
+    </button>
   )
 }

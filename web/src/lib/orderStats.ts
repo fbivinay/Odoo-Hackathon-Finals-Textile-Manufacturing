@@ -25,8 +25,7 @@ export function orderBoxes(
   const dueSoon = open.filter((o) => day(o.deadline) >= today && day(o.deadline) <= in7)
 
   // An order counts as dispatched in the period when its last truck left in the period.
-  const lastTruck = new Map<string, string>()
-  for (const d of dispatches) if ((lastTruck.get(d.orderId) ?? '') < d.dispatchedAt) lastTruck.set(d.orderId, d.dispatchedAt)
+  const lastTruck = lastTrucks(dispatches)
   const done = orders.filter((o) => o.status === 'DISPATCHED' && lastTruck.has(o.id) && inPeriod(lastTruck.get(o.id)!, from, to))
   const onTime = done.filter((o) => day(lastTruck.get(o.id)!) <= day(o.deadline))
   const leadDays = done.map((o) => (Date.parse(lastTruck.get(o.id)!) - Date.parse(o.createdAt)) / DAY)
@@ -45,4 +44,11 @@ export function orderBoxes(
     late: { count: late.length, dueSoon: dueSoon.length },
     onTime: { pct: done.length ? Math.round((onTime.length / done.length) * 100) : null, avgDays: leadDays.length ? Math.round(leadDays.reduce((s, x) => s + x, 0) / leadDays.length) : null },
   }
+}
+
+// When each order's last truck left.
+export function lastTrucks(dispatches: Pick<SDispatch, 'orderId' | 'dispatchedAt'>[]) {
+  const last = new Map<string, string>()
+  for (const d of dispatches) if ((last.get(d.orderId) ?? '') < d.dispatchedAt) last.set(d.orderId, d.dispatchedAt)
+  return last
 }

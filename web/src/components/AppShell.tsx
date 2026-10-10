@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { CalendarRange, ClipboardCheck, Factory, FlaskConical, LayoutDashboard, Menu, Package, Recycle, ShoppingCart, Truck, UserCog, Users } from 'lucide-react'
+import { CalendarRange, ClipboardCheck, Factory, FlaskConical, LayoutDashboard, Menu, Package, Recycle, ShoppingCart, SlidersHorizontal, Truck, UserCog, Users } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 import { Assistant } from '@/components/Assistant'
 import { Logo } from '@/components/Logo'
@@ -30,6 +30,7 @@ export const NAV: NavItem[] = [
   { to: '/waste', label: 'Waste', icon: Recycle, roles: ['PRODUCTION', 'QC'] },
   { to: '/dispatch', label: 'Dispatch', icon: Truck, roles: ['DISPATCH'] },
   { to: '/employees', label: 'Employees', icon: UserCog, roles: [] },
+  { to: '/config', label: 'Config', icon: SlidersHorizontal, roles: [] },
 ]
 
 type Access = Pick<User, 'role' | 'extraTabs'>

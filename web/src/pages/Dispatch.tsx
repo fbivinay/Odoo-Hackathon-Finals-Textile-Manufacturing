@@ -13,6 +13,14 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { api, ApiError } from '@/lib/api'
 import { byUrgency, checkLoad, shelfStatus, TOLERANCE, WAIT_LIMIT_DAYS, type ShelfFlag } from '@/lib/dispatch'
+import type { Config } from '@/types'
+
+// Tolerance and shelf-wait limit from the Config page, falling back to the defaults.
+function useDispatchRules() {
+  const config = useApi<Config>('/config')
+  const value = (key: string) => config.data?.settings.find((s) => s.key === key)?.value
+  return { tolerance: (value('dispatchTolerancePct') ?? TOLERANCE * 100) / 100, waitLimit: value('shelfWaitDays') ?? WAIT_LIMIT_DAYS }
+}
 import { dayFromToday, formatDate, formatDateTime, formatINR, formatMoney, formatQty, toISODate } from '@/lib/format'
 import { mutate, useApi, usePaged } from '@/lib/useApi'
 import { LoadMore } from '@/components/LoadMore'
@@ -28,6 +36,7 @@ const FLAG: Record<Exclude<ShelfFlag, null>, { tone: 'problem' | 'watch'; text: 
 }
 
 export function Dispatch() {
+  const { tolerance, waitLimit } = useDispatchRules()
   const shelf = useApi<ShelfStock>('/dispatch/stock', { refreshMs: 30000 })
   // Recent trucks: what each order on the shelf has already received, and this month's totals.
   const recent = useApi<DispatchRow[]>(`/dispatch?from=${dayFromToday(-180)}&limit=500`)
@@ -49,11 +58,11 @@ export function Dispatch() {
       .map((g) => {
         const sent = shipped.get(g.order.id) ?? 0
         const finishedAt = g.rolls.reduce((m, r) => (r.createdAt && r.createdAt > m ? r.createdAt : m), '') || today
-        const s = shelfStatus({ ordered: g.order.qty, shipped: sent, onShelf: g.totalQty, deadline: g.order.deadline, finishedAt, today })
+        const s = shelfStatus({ ordered: g.order.qty, shipped: sent, onShelf: g.totalQty, deadline: g.order.deadline, finishedAt, today, tolerance, waitLimit })
         return { ...g, ...s, shipped: sent, deadline: g.order.deadline }
       })
       .sort(byUrgency)
-  }, [shelf.data, recent.data, today])
+  }, [shelf.data, recent.data, today, tolerance, waitLimit])
 
   // Finished stock by fabric: what the shelf holds, whoever it is for.
   const byFabric = useMemo(() => {
@@ -123,7 +132,7 @@ export function Dispatch() {
           label="Needs attention"
           tone={attention ? 'problem' : undefined}
           value={String(attention)}
-          hint={attention ? `Overdue, due within 3 days, or waiting over ${WAIT_LIMIT_DAYS} days` : 'Nothing left waiting'}
+          hint={attention ? `Overdue, due within 3 days, or waiting over ${waitLimit} days` : 'Nothing left waiting'}
           loading={shelf.loading || recent.loading}
         />
         <KpiCard label="Dispatched this month" value={formatQty(thisMonth.reduce((t, d) => t + d.totalQty, 0))} hint={`${thisMonth.length} trucks · ${formatMoney(thisMonth.reduce((t, d) => t + (d.invoice?.amount ?? 0), 0))} invoiced`} loading={recent.loading} />
@@ -281,6 +290,7 @@ interface OrderDetail {
 function ConfirmDispatch({ group, rollIds, onClose, onDone, onStale }: { group: ShelfGroup; rollIds: string[]; onClose: () => void; onDone: (d: DispatchRow) => void; onStale: () => void }) {
   const { order: o } = group
   const detail = useApi<OrderDetail>(`/orders/${o.id}`)
+  const { tolerance } = useDispatchRules()
   const [vehicleNo, setVehicleNo] = useState('')
   const [checked, setChecked] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -289,7 +299,7 @@ function ConfirmDispatch({ group, rollIds, onClose, onDone, onStale }: { group: 
   const machineOf = (id: string) => detail.data?.rolls.find((r) => r.id === id)?.machine?.code ?? '—'
   const shipped = (detail.data?.rolls ?? []).filter((r) => r.status === 'DISPATCHED').reduce((a, r) => a + r.qty, 0)
   const ordered = detail.data?.qty ?? o.qty
-  const load = checkLoad({ ordered, shippedBefore: shipped, truck })
+  const load = checkLoad({ ordered, shippedBefore: shipped, truck, tolerance })
   const earlier = detail.data?.dispatches ?? []
   const sameDay = earlier.find((d) => toISODate(new Date(d.dispatchedAt)) === dayFromToday(0))
   const vehicle = vehicleNo.trim().toUpperCase()
@@ -369,10 +379,10 @@ function ConfirmDispatch({ group, rollIds, onClose, onDone, onStale }: { group: 
           <p className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm ${load.kind === 'match' ? 'bg-good-bg text-good' : load.kind === 'part' ? 'bg-watch-bg text-watch' : 'bg-problem-bg text-problem'}`}>
             {load.kind === 'match' ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}
             {load.kind === 'match'
-              ? `Quantity matches the order (${load.diffPct >= 0 ? '+' : ''}${load.diffPct}%, within ±${TOLERANCE * 100}%).`
+              ? `Quantity matches the order (${load.diffPct >= 0 ? '+' : ''}${load.diffPct}%, within ±${Math.round(tolerance * 1000) / 10}%).`
               : load.kind === 'part'
                 ? `Part delivery: ${formatQty(load.toFollow)} still to follow on a later truck.`
-                : `${formatQty(load.overBy)} (${load.overPct}%) more than ordered, beyond the ±${TOLERANCE * 100}% buyers accept. Leave a roll off, or get the buyer's agreement first.`}
+                : `${formatQty(load.overBy)} (${load.overPct}%) more than ordered, beyond the ±${Math.round(tolerance * 1000) / 10}% buyers accept. Leave a roll off, or get the buyer's agreement first.`}
           </p>
         )}
         {earlier.length > 0 && (

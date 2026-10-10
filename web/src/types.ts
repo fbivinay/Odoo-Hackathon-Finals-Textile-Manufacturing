@@ -62,6 +62,8 @@ export interface RawMaterial {
   reorderLevel: number
   avgCost: number
   lowStock: boolean
+  supplierId?: string | null // usual supplier (Config)
+  leadDays?: number // supplier delivery days (Config)
 }
 
 // GET /materials/inwards
@@ -86,7 +88,7 @@ export interface PurchaseOrder {
   status: 'PENDING' | 'RECEIVED' | 'CANCELLED'
   orderedAt: string
   receivedAt: string | null
-  material: Pick<RawMaterial, 'id' | 'category' | 'yarnType' | 'colour' | 'unit'>
+  material: Pick<RawMaterial, 'id' | 'category' | 'yarnType' | 'colour' | 'unit' | 'leadDays'>
   supplier: Ref & { phone: string | null }
   orderedBy: Ref
 }
@@ -118,6 +120,10 @@ export interface Order {
   createdAt: string
   isDelayed: boolean
   buyer: Ref
+  // The Config figures the order was taken with (null on orders from before Config).
+  yarnPerMetre?: number | null
+  wastagePct?: number | null
+  listPrice?: number | null
 }
 
 export interface Machine {
@@ -312,4 +318,32 @@ export interface Planning {
   }[]
   weeklyLoad: ({ weekStart: string } & Record<Stage, StageLoad>)[]
   yarnNeeds: { id: string; yarnType: string; colour: string; unit: string; needed: number; inStock: number; shortBy: number; orders: number; neededBy: string | null }[]
+}
+
+// GET /config — figures the owner edits on the Config page.
+export interface Config {
+  fabrics: {
+    fabricType: string
+    saved: boolean
+    materialId: string | null
+    yarnPerMetre: number
+    wastagePct: number
+    pricePerMetre: number
+    updatedAt: string | null
+    history: { orders: number; yarnPerMetre: number; pricePerMetre: number; wastagePct: number } | null
+  }[]
+  rules: { id: string; kind: 'QUANTITY' | 'DEADLINE'; below: number; pricePct: number; wastagePct: number }[]
+  settings: { key: 'qcDays' | 'rollLength' | 'shiftHours' | 'dispatchTolerancePct' | 'shelfWaitDays'; label: string; value: number; default: number; min: number; max: number }[]
+  materials: { id: string; category: MaterialCategory; yarnType: string; colour: string; unit: string; reorderLevel: number; avgCost: number; supplierId: string | null; leadDays: number }[]
+}
+
+// GET /config/changes
+export interface ConfigChange {
+  id: string
+  what: string
+  field: string
+  oldValue: string | null
+  newValue: string | null
+  changedBy: string
+  changedAt: string
 }

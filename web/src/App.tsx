@@ -28,6 +28,7 @@ const Employees = page(() => import('@/pages/Employees'), 'Employees')
 const SetPassword = page(() => import('@/pages/SetPassword'), 'SetPassword')
 const Customer = page(() => import('@/pages/Customer'), 'Customer')
 const OrderDetail = page(() => import('@/pages/OrderDetail'), 'OrderDetail')
+const Config = page(() => import('@/pages/Config'), 'Config')
 
 const PAGES: Record<string, ReactNode> = {
   '/dashboard': <Dashboard />,
@@ -41,6 +42,7 @@ const PAGES: Record<string, ReactNode> = {
   '/qc': <QC />,
   '/dispatch': <Dispatch />,
   '/employees': <Employees />,
+  '/config': <Config />,
 }
 
 function RouteFallback() {

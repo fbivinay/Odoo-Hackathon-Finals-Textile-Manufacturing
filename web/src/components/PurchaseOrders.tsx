@@ -11,8 +11,15 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { api, ApiError } from '@/lib/api'
-import { formatDateTime, formatINR, formatQty } from '@/lib/format'
+import { formatDate, formatDateTime, formatINR, formatQty, toISODate } from '@/lib/format'
 import type { PurchaseOrder } from '@/types'
+
+// Expected when ordered + the supplier's delivery days (Config, per material).
+function Due({ po }: { po: PurchaseOrder }) {
+  const due = toISODate(new Date(Date.parse(po.orderedAt) + (po.material.leadDays ?? 7) * 86400000))
+  const late = due < toISODate(new Date())
+  return <span className={late ? 'text-xs font-medium text-problem' : 'text-xs text-muted-foreground'}>{late ? `Overdue since ${formatDate(due)}` : `Due ${formatDate(due)}`}</span>
+}
 
 const name = (m: PurchaseOrder['material']) => (m.colour ? `${m.yarnType} · ${m.colour}` : m.yarnType)
 const STATUS = { PENDING: ['watch', 'Pending'], RECEIVED: ['good', 'Received'], CANCELLED: ['neutral', 'Cancelled'] } as const
@@ -64,6 +71,7 @@ export function PurchaseOrders({
         <span className="inline-flex flex-col">
           <Pill tone={STATUS[p.status][0]}>{STATUS[p.status][1]}</Pill>
           {p.receivedAt && <span className="text-xs text-muted-foreground">{formatDateTime(p.receivedAt)}</span>}
+          {p.status === 'PENDING' && <Due po={p} />}
         </span>
       ),
     },

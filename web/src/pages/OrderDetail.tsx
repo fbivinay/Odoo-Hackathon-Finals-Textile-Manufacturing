@@ -211,7 +211,8 @@ export function OrderDetail() {
           <h2 className="section-head">Yarn and raw materials used</h2>
           {o.material && (
             <p className="text-sm text-ink-2">
-              Needs {formatQty(n(o.yarnRequired), o.material.unit)} of {matName(o.material)}; {formatQty(yarnIssued, o.material.unit)} issued so far.
+              Needs {formatQty(n(o.yarnRequired), o.material.unit)} of {matName(o.material)}
+              {o.yarnPerMetre != null && ` (${formatQty(qty)} × ${n(o.yarnPerMetre)} kg/m + ${n(o.wastagePct)}% wastage, from Config)`}; {formatQty(yarnIssued, o.material.unit)} issued so far.
             </p>
           )}
           {materials.length ? (
@@ -245,6 +246,12 @@ export function OrderDetail() {
           <h2 className="section-head">Wastage</h2>
           {o.rolls.length ? (
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              {o.wastagePct != null && (
+                <>
+                  <dt className="text-ink-2">Wastage allowed (Config)</dt>
+                  <dd className="text-right tabular-nums">{n(o.wastagePct)}%</dd>
+                </>
+              )}
               <dt className="text-ink-2">Rejected fabric</dt>
               <dd className={cn('text-right tabular-nums', rejectedQty > 0 && 'font-medium text-problem')}>
                 {formatQty(rejectedQty)} · {produced ? ((rejectedQty / produced) * 100).toFixed(1) : 0}%
@@ -296,6 +303,15 @@ export function OrderDetail() {
                   {formatINR(c.totalCost)}
                   {c.costPerUnit !== null && <span className="ml-1 text-xs font-normal text-muted-foreground">{formatINR(c.costPerUnit)}/m</span>}
                 </dd>
+                {o.listPrice != null && (
+                  <>
+                    <dt className="text-ink-2">Config price</dt>
+                    <dd className="text-right tabular-nums">
+                      {formatINR(n(o.listPrice))}/m
+                      {n(o.pricePerUnit) !== n(o.listPrice) && <span className="ml-1 text-xs text-muted-foreground">sold at {formatINR(n(o.pricePerUnit))}/m</span>}
+                    </dd>
+                  </>
+                )}
                 <dt className="text-ink-2">Order value</dt>
                 <dd className="text-right tabular-nums">{formatINR(c.orderValue)}</dd>
                 <dt className="text-ink-2">Invoiced</dt>

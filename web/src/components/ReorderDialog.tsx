@@ -27,7 +27,8 @@ export function ReorderDialog({ open, onOpenChange, items, inwardsPath, onPlaced
   useEffect(() => {
     if (!open) return
     let live = true
-    const base = Object.fromEntries(items.map(({ m, qty }) => [m.id, { qty: String(qty), supplierId: NONE, rate: Number(m.avgCost) }]))
+    // The usual supplier set in Config comes first; otherwise the one it last came from.
+    const base = Object.fromEntries(items.map(({ m, qty }) => [m.id, { qty: String(qty), supplierId: m.supplierId ?? NONE, rate: Number(m.avgCost) }]))
     setLines(base)
     // Newest first, so the first delivery seen for a material is its last one.
     fetchAll<MaterialInward>(inwardsPath).then((rows) => {

@@ -1,7 +1,7 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Plus, Search, ShoppingCart } from 'lucide-react'
+import { Plus, Search, ShoppingCart, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { actsAs } from '@/components/AppShell'
@@ -16,11 +16,12 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { dayFromToday, formatDate, formatINR, formatMoney, formatQty, toISODate } from '@/lib/format'
-import { orderBoxes } from '@/lib/orderStats'
+import { lastTrucks, orderBoxes } from '@/lib/orderStats'
+import { quote } from '@/lib/pricing'
 import { api, ApiError } from '@/lib/api'
 import { useAll, useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
-import type { Dispatch, Order, OrderStatus, Planning, RawMaterial, Ref } from '@/types'
+import type { Config, Dispatch, Order, OrderStatus, Planning, RawMaterial, Ref } from '@/types'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const THIS_MONTH = new Date().toISOString().slice(0, 7)
@@ -36,6 +37,11 @@ const STATUS_GROUPS: { label: string; match: (s: OrderStatus) => boolean }[] = [
   { label: 'Cancelled', match: (s) => s === 'CANCELLED' },
 ]
 const PAGE = 50
+// Every filter of the list. A box click replaces them all; `box` remembers which box did it.
+type Filters = { q: string; group: number; buyer: string; fabric: string; due: '' | 'late' | 'soon'; when: '' | 'ordered' | 'dispatched'; delivery: '' | 'ontime' | 'late'; box: string }
+const NO_FILTERS: Filters = { q: '', group: 0, buyer: '', fabric: '', due: '', when: '', delivery: '', box: '' }
+const DUE = { late: 'Past deadline', soon: 'Late or due in 7 days' } as const
+const DELIVERY = { ontime: 'Delivered on time', late: 'Delivered late' } as const
 const plural = (n: number, word: string) => `${n.toLocaleString('en-IN')} ${word}${n === 1 ? '' : 's'}`
 
 export function Orders() {
@@ -74,31 +80,54 @@ export function Orders() {
   const loadingBoxes = !boxes
 
   // The list: every order, searchable and filterable.
-  const [q, setQ] = useState('')
-  const [group, setGroup] = useState(0)
-  const [buyer, setBuyer] = useState('')
-  const [fabric, setFabric] = useState('')
-  const [lateOnly, setLateOnly] = useState(false)
+  const [f, setF] = useState<Filters>(NO_FILTERS)
   const [shown, setShown] = useState(PAGE)
-  const all = useMemo(() => orders.rows ?? [], [orders.rows])
-  const buyers = useMemo(() => [...new Map(all.map((o) => [o.buyer.id, o.buyer.name])).entries()].sort((a, b) => a[1].localeCompare(b[1])), [all])
-  const fabrics = useMemo(() => [...new Set(all.map((o) => o.fabricType))].sort(), [all])
-  const needle = q.trim().toLowerCase()
-  const rows = all
-    .filter(
-    (o) =>
-      STATUS_GROUPS[group].match(o.status) &&
-      (!buyer || o.buyer.id === buyer) &&
-      (!fabric || o.fabricType === fabric) &&
-      (!lateOnly || o.isDelayed) &&
-      (!needle || [o.orderNo, o.buyer.name, o.fabricType, o.colour].some((x) => x.toLowerCase().includes(needle))),
-    )
-    .sort((a, b) => b.orderNo.localeCompare(a.orderNo))
-  const filtersOn = Boolean(needle || group || buyer || fabric || lateOnly)
-  const resetPaging = <T,>(set: (v: T) => void) => (v: T) => {
-    set(v)
+  const listRef = useRef<HTMLElement>(null)
+  const set = <K extends keyof Filters>(k: K, v: Filters[K]) => {
+    setF((cur) => ({ ...cur, [k]: v, box: '' }))
     setShown(PAGE)
   }
+  // A box shows its orders in the list below and scrolls to it.
+  const pick = (box: string, preset: Partial<Filters>) => {
+    setF(f.box === box ? NO_FILTERS : { ...NO_FILTERS, ...preset, box })
+    setShown(PAGE)
+    if (f.box !== box) listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const all = useMemo(() => orders.rows ?? [], [orders.rows])
+  const trucks = useMemo(() => lastTrucks((dispatches.rows ?? []).map((d) => ({ ...d, orderId: d.order.id }))), [dispatches.rows])
+  const buyers = useMemo(() => [...new Map(all.map((o) => [o.buyer.id, o.buyer.name])).entries()].sort((a, b) => a[1].localeCompare(b[1])), [all])
+  const fabrics = useMemo(() => [...new Set(all.map((o) => o.fabricType))].sort(), [all])
+  const in7 = toISODate(new Date(Date.parse(today) + 7 * 86400000))
+  const isOpen = (o: Order) => !['DISPATCHED', 'CANCELLED'].includes(o.status)
+  const inPeriod = (iso?: string) => !!iso && iso.slice(0, 10) >= from && iso.slice(0, 10) <= to
+  const needle = f.q.trim().toLowerCase()
+  const rows = all
+    .filter((o) => {
+      const truck = trucks.get(o.id)
+      return (
+        STATUS_GROUPS[f.group].match(o.status) &&
+        (!f.buyer || o.buyer.id === f.buyer) &&
+        (!f.fabric || o.fabricType === f.fabric) &&
+        (!f.due || (isOpen(o) && (f.due === 'late' ? o.deadline.slice(0, 10) < today : o.deadline.slice(0, 10) <= in7))) &&
+        (!f.when || (f.when === 'ordered' ? inPeriod(o.createdAt) : o.status === 'DISPATCHED' && inPeriod(truck))) &&
+        (!f.delivery || (o.status === 'DISPATCHED' && !!truck && (truck.slice(0, 10) <= o.deadline.slice(0, 10)) === (f.delivery === 'ontime'))) &&
+        (!needle || [o.orderNo, o.buyer.name, o.fabricType, o.colour].some((x) => x.toLowerCase().includes(needle)))
+      )
+    })
+    .sort((a, b) => b.orderNo.localeCompare(a.orderNo))
+  // One removable chip per filter that is on.
+  const chips = ([
+    ['q', `"${f.q}"`],
+    ['group', STATUS_GROUPS[f.group].label],
+    ['buyer', buyers.find(([id]) => id === f.buyer)?.[1] ?? 'Client'],
+    ['fabric', f.fabric],
+    ['due', f.due && DUE[f.due]],
+    ['when', f.when === 'ordered' ? `Ordered in ${periodLabel}` : `Fully dispatched in ${periodLabel}`],
+    ['delivery', f.delivery && DELIVERY[f.delivery]],
+  ] as [keyof Filters, string][])
+    .filter(([k]) => f[k] !== NO_FILTERS[k])
+    .map(([key, text]) => ({ key, text }))
+  const filtersOn = chips.length > 0
 
   const columns: ColumnDef<Order>[] = [
     {
@@ -203,18 +232,24 @@ export function Orders() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Figure
             label="Orders received"
+            onClick={() => pick('received', { when: 'ordered' })}
+            active={f.box === 'received'}
             value={plural(boxes?.received.count ?? 0, 'order')}
             note={`${formatQty(boxes?.received.metres ?? 0)} · ${formatMoney(boxes?.received.value ?? 0)}`}
             loading={loadingBoxes}
           />
           <Figure
             label="Open orders"
+            onClick={() => pick('open', { group: 1 })}
+            active={f.box === 'open'}
             value={plural(boxes?.open.count ?? 0, 'order')}
             note={`Today: ${boxes?.open.inProduction ?? 0} in production · ${boxes?.open.ready ?? 0} ready · ${boxes?.open.notStarted ?? 0} not started`}
             loading={loadingBoxes}
           />
           <Figure
             label="Waiting to start"
+            onClick={() => pick('waiting', { group: 2 })}
+            active={f.box === 'waiting'}
             tone={boxes?.waiting.forYarn ? 'watch' : undefined}
             value={plural(boxes?.waiting.count ?? 0, 'order')}
             note={boxes?.waiting.forYarn ? `${boxes.waiting.forYarn} held up waiting for yarn` : 'None held up for yarn'}
@@ -222,6 +257,8 @@ export function Orders() {
           />
           <Figure
             label="Dispatched"
+            onClick={() => pick('dispatched', { group: 6, when: 'dispatched' })}
+            active={f.box === 'dispatched'}
             tone="good"
             value={plural(boxes?.dispatched.count ?? 0, 'order')}
             note={`Fully sent · ${formatQty(boxes?.dispatched.metres ?? 0)} shipped · ${formatMoney(boxes?.dispatched.invoiced ?? 0)} invoiced`}
@@ -229,6 +266,8 @@ export function Orders() {
           />
           <Figure
             label="Late / at risk"
+            onClick={() => pick('late', { due: 'late' })}
+            active={f.box === 'late'}
             tone={boxes?.late.count ? 'problem' : undefined}
             value={plural(boxes?.late.count ?? 0, 'order')}
             note={`Past deadline today · ${boxes?.late.dueSoon ?? 0} more due in 7 days`}
@@ -236,6 +275,8 @@ export function Orders() {
           />
           <Figure
             label="On-time delivery"
+            onClick={() => pick('ontime', { group: 6, when: 'dispatched', delivery: 'late' })}
+            active={f.box === 'ontime'}
             tone={boxes?.onTime.pct == null ? undefined : boxes.onTime.pct >= 90 ? 'good' : boxes.onTime.pct >= 75 ? 'watch' : 'problem'}
             value={boxes?.onTime.pct == null ? '—' : `${boxes.onTime.pct}%`}
             note={boxes?.onTime.avgDays == null ? 'Nothing dispatched in this period' : `Average ${boxes.onTime.avgDays} days from order to dispatch`}
@@ -244,21 +285,21 @@ export function Orders() {
         </div>
       </section>
 
-      <section className="space-y-3">
+      <section ref={listRef} className="scroll-mt-4 space-y-3">
         <h2 className="section-head">All orders</h2>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-52 flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input aria-label="Search orders" placeholder="Search order no., client or fabric" className="pl-8" value={q} onChange={(e) => resetPaging(setQ)(e.target.value)} />
+            <Input aria-label="Search orders" placeholder="Search order no., client or fabric" className="pl-8" value={f.q} onChange={(e) => set('q', e.target.value)} />
           </div>
-          <select aria-label="Status" className={cn(selectClass, 'w-40 bg-surface')} value={group} onChange={(e) => resetPaging(setGroup)(+e.target.value)}>
+          <select aria-label="Status" className={cn(selectClass, 'w-40 bg-surface')} value={f.group} onChange={(e) => set('group', +e.target.value)}>
             {STATUS_GROUPS.map((g, i) => (
               <option key={g.label} value={i}>
                 {g.label}
               </option>
             ))}
           </select>
-          <select aria-label="Client" className={cn(selectClass, 'w-44 bg-surface')} value={buyer} onChange={(e) => resetPaging(setBuyer)(e.target.value)}>
+          <select aria-label="Client" className={cn(selectClass, 'w-44 bg-surface')} value={f.buyer} onChange={(e) => set('buyer', e.target.value)}>
             <option value="">All clients</option>
             {buyers.map(([id, name]) => (
               <option key={id} value={id}>
@@ -266,35 +307,53 @@ export function Orders() {
               </option>
             ))}
           </select>
-          <select aria-label="Fabric" className={cn(selectClass, 'w-36 bg-surface')} value={fabric} onChange={(e) => resetPaging(setFabric)(e.target.value)}>
+          <select aria-label="Fabric" className={cn(selectClass, 'w-36 bg-surface')} value={f.fabric} onChange={(e) => set('fabric', e.target.value)}>
             <option value="">All fabrics</option>
-            {fabrics.map((f) => (
-              <option key={f} value={f}>
-                {f}
+            {fabrics.map((x) => (
+              <option key={x} value={x}>
+                {x}
               </option>
             ))}
           </select>
-          <label className="flex items-center gap-1.5 text-sm">
-            <input type="checkbox" className="size-4 accent-[#714b67]" checked={lateOnly} onChange={(e) => resetPaging(setLateOnly)(e.target.checked)} />
-            Late only
-          </label>
-          {filtersOn && (
+          <select aria-label="Deadline" className={cn(selectClass, 'w-44 bg-surface')} value={f.due} onChange={(e) => set('due', e.target.value as Filters['due'])}>
+            <option value="">Any deadline</option>
+            <option value="late">{DUE.late}</option>
+            <option value="soon">{DUE.soon}</option>
+          </select>
+          <select aria-label="Period" className={cn(selectClass, 'w-52 bg-surface')} value={f.when} onChange={(e) => set('when', e.target.value as Filters['when'])}>
+            <option value="">Any time</option>
+            <option value="ordered">Ordered in {periodLabel}</option>
+            <option value="dispatched">Fully dispatched in {periodLabel}</option>
+          </select>
+          <select aria-label="Delivery" className={cn(selectClass, 'w-44 bg-surface')} value={f.delivery} onChange={(e) => set('delivery', e.target.value as Filters['delivery'])}>
+            <option value="">Any delivery</option>
+            <option value="ontime">{DELIVERY.ontime}</option>
+            <option value="late">{DELIVERY.late}</option>
+          </select>
+        </div>
+        {filtersOn && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {chips.map((c) => (
+              <span key={c.key} className="inline-flex items-center gap-1 rounded-full border border-border bg-surface py-0.5 pr-1 pl-2.5 text-xs">
+                {c.text}
+                <button type="button" aria-label={`Remove filter ${c.text}`} className="rounded-full p-0.5 hover:bg-zinc-100" onClick={() => set(c.key, NO_FILTERS[c.key])}>
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
             <Button
               size="sm"
               variant="ghost"
+              className="h-7"
               onClick={() => {
-                setQ('')
-                setGroup(0)
-                setBuyer('')
-                setFabric('')
-                setLateOnly(false)
+                setF(NO_FILTERS)
                 setShown(PAGE)
               }}
             >
-              Clear
+              Reset all filters
             </Button>
-          )}
-        </div>
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
           {plural(rows.length, 'order')}
           {filtersOn && ` of ${all.length.toLocaleString('en-IN')}`} · click an order for its full details
@@ -342,6 +401,10 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
   const [busy, setBusy] = useState(false)
   // Likewise the price follows the usual price for fabric × yarn until the user types one.
   const [priceEdited, setPriceEdited] = useState(false)
+  // The owner's figures per fabric (Config page); past orders fill in a fabric with no figures.
+  const config = useApi<Config>(open ? '/config' : null)
+  const specOf = (fabric: string) => config.data?.fabrics.find((f) => f.fabricType.toLowerCase() === fabric.trim().toLowerCase())
+  const fabricTypes = config.data?.fabrics.length ? config.data.fabrics.map((f) => f.fabricType) : FABRIC_TYPES
   const past = useApi<Order[]>(open ? `/orders?from=${dayFromToday(-365)}&limit=500` : null)
   const typicalPrice = (fabric: string, materialId: string) => {
     const f = fabric.trim().toLowerCase()
@@ -358,6 +421,8 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
   // which yarn a fabric is made from and how many kg a metre takes.
   const sameFabric = (fabric: string) => (past.data ?? []).filter((o) => o.fabricType.toLowerCase() === fabric.trim().toLowerCase())
   const usualYarn = (fabric: string) => {
+    const configured = specOf(fabric)?.materialId
+    if (configured) return configured
     const count = new Map<string, number>()
     for (const o of sameFabric(fabric)) if (o.materialId) count.set(o.materialId, (count.get(o.materialId) ?? 0) + 1)
     return [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
@@ -373,7 +438,7 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
       // A new fabric clears a yarn picked by hand for the previous one.
       if (k === 'fabricType') next.materialId = ''
       const yarn = next.materialId || usualYarn(next.fabricType)
-      if ((k === 'fabricType' || k === 'materialId') && !priceEdited && next.fabricType && yarn) {
+      if ((k === 'fabricType' || k === 'materialId') && !priceEdited && next.fabricType && yarn && !specOf(next.fabricType)) {
         const price = typicalPrice(next.fabricType, yarn)
         if (price) next.pricePerUnit = String(price)
       }
@@ -387,7 +452,16 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
   // The yarn type is pre-filled with the one this fabric is usually made from; a hand pick wins.
   const usual = usualYarn(form.fabricType)
   const materialId = form.materialId || usual
-  const yarnKg = Number(form.qty) > 0 ? Math.round(Number(form.qty) * kgPerMetre(form.fabricType)) : 0
+  // With Config figures: yarn = metres x yarn per metre x (1 + wastage %), price from the fabric's
+  // price plus any size or rush band. The delivery estimate gets the yarn before the rush band,
+  // since the deadline it picks is what decides the rush band.
+  const spec = specOf(form.fabricType)
+  const daysToDeadline = delivery.committed ? Math.round((Date.parse(delivery.committed) - Date.parse(toISODate(new Date()))) / 86400000) : null
+  const q = spec ? quote(spec, config.data!.rules, { qty: Number(form.qty), daysToDeadline }) : null
+  const qBase = spec ? quote(spec, config.data!.rules, { qty: Number(form.qty), daysToDeadline: null }) : null
+  const yarnKg = q ? q.yarnKg : Number(form.qty) > 0 ? Math.round(Number(form.qty) * kgPerMetre(form.fabricType)) : 0
+  const estimateYarnKg = qBase ? qBase.yarnKg : yarnKg
+  const price = priceEdited || !q ? form.pricePerUnit : String(q.price)
   const mat = materials.data?.find((m) => m.id === materialId)
   const ready = Boolean(form.fabricType) && Number(form.qty) > 0 && Boolean(materialId) && yarnKg > 0
   const shortBy = mat ? Math.max(0, yarnKg - mat.qtyInStock) : 0
@@ -413,7 +487,7 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
           deadline: delivery.committed,
           qty: Number(form.qty),
           yarnRequired: yarnKg,
-          pricePerUnit: Number(form.pricePerUnit),
+          pricePerUnit: Number(price),
         },
       })
       toast.success(`${order.orderNo} created`, { description: `Delivery by ${formatDate(delivery.committed)}.` })
@@ -459,7 +533,7 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
             <Field label="Fabric type" htmlFor="fabricType">
               <select id="fabricType" required className={selectClass} value={form.fabricType} onChange={set('fabricType')}>
                 <option value="">Select fabric…</option>
-                {FABRIC_TYPES.map((f) => (
+                {fabricTypes.map((f) => (
                   <option key={f} value={f}>
                     {f}
                   </option>
@@ -470,8 +544,22 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
           <Field label="Quantity (m)" htmlFor="qty">
             <Input id="qty" type="number" min="1" step="1" inputMode="numeric" required value={form.qty} onChange={set('qty')} />
           </Field>
-          <Field label="Price (₹/m)" htmlFor="pricePerUnit" hint={form.pricePerUnit && !priceEdited ? 'Usual price' : undefined}>
-            <Input id="pricePerUnit" type="number" min="0.01" step="0.01" inputMode="decimal" required value={form.pricePerUnit} onChange={set('pricePerUnit')} />
+          <Field
+            label="Price (₹/m)"
+            htmlFor="pricePerUnit"
+            hint={
+              priceEdited
+                ? undefined
+                : q
+                  ? q.applied.length
+                    ? `Config price ${q.pricePct > 0 ? '+' : ''}${q.pricePct}% (${q.applied.map((r) => (r.kind === 'QUANTITY' ? `under ${r.below.toLocaleString('en-IN')} m` : `deadline under ${r.below} days`)).join(', ')})`
+                    : 'Config price for this fabric'
+                  : form.pricePerUnit
+                    ? 'Usual price'
+                    : undefined
+            }
+          >
+            <Input id="pricePerUnit" type="number" min="0.01" step="0.01" inputMode="decimal" required value={price} onChange={set('pricePerUnit')} />
           </Field>
           {form.fabricType && (
             <div className="sm:col-span-2">
@@ -513,7 +601,7 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
           )}
           <div className="sm:col-span-2">
             {ready ? (
-              <DeliveryEstimate qty={Number(form.qty)} yarnKg={yarnKg} materialId={materialId} onChange={setDelivery} />
+              <DeliveryEstimate qty={Number(form.qty)} yarnKg={estimateYarnKg} materialId={materialId} onChange={setDelivery} />
             ) : (
               <div className="rounded-xl border bg-ground/60 p-4">
                 <p className="text-sm font-medium">Delivery date</p>
@@ -526,7 +614,7 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
           <p className="text-sm text-muted-foreground">
             Order value:{' '}
             <span className="font-semibold text-ink tabular-nums">
-              {Number(form.qty) * Number(form.pricePerUnit) > 0 ? formatINR(Number(form.qty) * Number(form.pricePerUnit)) : '—'}
+              {Number(form.qty) * Number(price) > 0 ? formatINR(Number(form.qty) * Number(price)) : '—'}
             </span>
           </p>
           <Button type="submit" form="order" disabled={busy || !ready || !delivery.valid}>

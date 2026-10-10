@@ -7,8 +7,8 @@ const orderService = require('./orderService');
 const productionService = require('./productionService');
 const qcService = require('./qcService');
 const workforceService = require('./workforceService');
+const { setting } = require('./configService');
 
-const HOURS_PER_SHIFT = 8;
 const round = (n) => Math.round(n * 100) / 100;
 const sum = (rows, key) => rows.reduce((total, r) => total + Number(r[key]), 0);
 
@@ -72,12 +72,13 @@ async function orderCosts(query = {}) {
   if (ids.length === 0) return page;
 
   // On an unfiltered run every order is wanted, so skip the id list entirely.
+  const shiftHours = await setting('shiftHours');
   const only = (column) => (filtered ? Prisma.sql`WHERE ${column} IN (${Prisma.join(ids)})` : Prisma.empty);
   const [issues, labour, rolls, invoices] = await Promise.all([
     prisma.materialIssue.groupBy({ by: ['orderId'], where: filtered ? { orderId: { in: ids } } : {}, _sum: { cost: true } }),
     prisma.$queryRaw`
       SELECT j."orderId" AS id,
-             SUM(w."dailyWage" * EXTRACT(EPOCH FROM (COALESCE(j."completedAt", NOW()) - j."startedAt")) / 3600 / ${HOURS_PER_SHIFT})::float AS value
+             SUM(w."dailyWage" * EXTRACT(EPOCH FROM (COALESCE(j."completedAt", NOW()) - j."startedAt")) / 3600 / ${shiftHours})::float AS value
       FROM "ProductionJob" j JOIN "Worker" w ON w.id = j."workerId"
       ${only(Prisma.sql`j."orderId"`)}
       GROUP BY j."orderId"`,
