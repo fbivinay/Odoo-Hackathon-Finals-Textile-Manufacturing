@@ -434,6 +434,29 @@ function handle(path: string, method: string, body: Record<string, any>): unknow
     return fullInvoice(inv)
   }
 
+  if (is('GET', '/invoices')) {
+    const status = query.get('status')
+    return invoices.map(fullInvoice).filter((i) => !status || i.status === status)
+  }
+  if (is('GET', '/qc/summary')) {
+    const counts = { PENDING_QC: 0, PASSED: 0, REWORK: 0, REJECTED: 0, DISPATCHED: 0 }
+    for (const r of rolls) counts[r.status] += 1
+    const checked = counts.PASSED + counts.DISPATCHED + counts.REWORK + counts.REJECTED
+    const byType = new Map<string, number>()
+    for (const q of qcRecords) if (q.result !== 'PASS') byType.set(q.defectType ?? 'Unspecified', (byType.get(q.defectType ?? 'Unspecified') ?? 0) + 1)
+    return {
+      counts,
+      passRate: checked ? Math.round(((counts.PASSED + counts.DISPATCHED) / checked) * 100) : null,
+      defectsByType: [...byType].map(([defectType, count]) => ({ defectType, count })),
+      defectsByMachine: [],
+    }
+  }
+  // ponytail: mock planning is an empty plan; the real one is computed by the backend.
+  if (is('GET', '/planning/schedule')) {
+    const cap = { machines: 0, usable: 0, perDay: 0 }
+    return { days: 90, capacity: { SPINNING: cap, WEAVING: cap, DYEING: cap }, summary: { openOrders: 0, onTime: 0, late: 0, unscheduled: 0, yarnsShort: 0 }, orders: [], weeklyLoad: [], yarnNeeds: [] }
+  }
+
   // owner reports
   if (is('GET', '/reports/pnl')) {
     const materialBills = sum(inwards.filter((i) => inMonth(i.receivedAt, month)), (i) => i.billAmount)

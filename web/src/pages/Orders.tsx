@@ -13,6 +13,8 @@ import { Input } from '@/components/ui/input'
 import { formatDate, formatINR, formatQty, toISODate } from '@/lib/format'
 import { yarnNeed } from '@/lib/textile'
 import { mutate, useApi } from '@/lib/useApi'
+import { recentOrdersPath } from '@/lib/queries'
+import { dayFromToday } from '@/lib/format'
 import type { MaterialIssue, Order, OrderStatus, RawMaterial, Ref } from '@/types'
 
 const trackingUrl = (token: string) => `${location.origin}/track/${token}`
@@ -39,6 +41,7 @@ function YarnCheck({ o, material, issued, canIssue, onIssued }: { o: Order; mate
 }
 
 const FILTERS: { label: string; match: (s: OrderStatus) => boolean }[] = [
+  { label: 'Open', match: (s) => !['DISPATCHED', 'CANCELLED'].includes(s) },
   { label: 'All', match: () => true },
   { label: 'Pending', match: (s) => s === 'PENDING' },
   { label: 'In production', match: (s) => ['SPINNING', 'WEAVING', 'DYEING', 'QC'].includes(s) },
@@ -48,9 +51,9 @@ const FILTERS: { label: string; match: (s: OrderStatus) => boolean }[] = [
 
 export function Orders() {
   const { user } = useSession()
-  const orders = useApi<Order[]>('/orders')
+  const orders = useApi<Order[]>(recentOrdersPath())
   const materials = useApi<RawMaterial[]>('/materials')
-  const issues = useApi<MaterialIssue[]>('/materials/issues')
+  const issues = useApi<MaterialIssue[]>(`/materials/issues?from=${dayFromToday(-180)}&limit=500`)
   const [filter, setFilter] = useState(0)
   const [open, setOpen] = useState(false)
   const canCreate = ['OWNER', 'STORE', 'DISPATCH'].includes(user?.role ?? '')
@@ -100,7 +103,7 @@ export function Orders() {
 
   return (
     <div className="space-y-4">
-      <PageHead eyebrow="Order book" title="Orders" lede="Every buyer's order with its deadline, where it is on the floor, and whether there is yarn to start it." />
+      <PageHead eyebrow="Order book" title="Orders" lede="Orders due from 90 days ago onward: deadline, where each one is on the floor, and whether there is yarn to start it." />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1">
           {FILTERS.map((f, i) => (

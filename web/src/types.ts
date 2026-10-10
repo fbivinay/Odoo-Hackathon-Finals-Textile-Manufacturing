@@ -236,3 +236,41 @@ export interface OrderCost {
   invoiced: number
   margin: number
 }
+
+// GET /qc/summary?from=&to=
+export interface QcSummary {
+  counts: Record<RollStatus, number>
+  passRate: number | null
+  defectsByType: { defectType: string; count: number }[]
+  defectsByMachine: { id: string; code: string; name: string; count: number }[]
+}
+
+// GET /planning/schedule?days=90 — computed on the fly from history; nothing stored.
+export interface StageLoad {
+  load: number
+  capacity: number
+  utilisation: number
+}
+export interface Planning {
+  days: number
+  capacity: Record<Stage, { machines: number; usable: number; perDay: number }>
+  summary: { openOrders: number; onTime: number; late: number; unscheduled: number; yarnsShort: number }
+  orders: {
+    id: string
+    orderNo: string
+    buyer: Ref
+    fabricType: string
+    colour: string
+    qty: number
+    status: OrderStatus
+    deadline: string
+    stages: { stage: Stage; remaining: number; start: string | null; end: string | null }[]
+    yarnToIssue: number
+    expectedReady: string | null
+    lateByDays: number
+    onTime: boolean
+    withinHorizon: boolean
+  }[]
+  weeklyLoad: ({ weekStart: string } & Record<Stage, StageLoad>)[]
+  yarnNeeds: { id: string; yarnType: string; colour: string; unit: string; needed: number; inStock: number; shortBy: number; orders: number }[]
+}

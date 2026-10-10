@@ -10,7 +10,9 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { formatDateTime, formatINR, formatQty } from '@/lib/format'
-import { mutate, useApi } from '@/lib/useApi'
+import { mutate, useApi, usePaged } from '@/lib/useApi'
+import { recentOrdersPath } from '@/lib/queries'
+import { LoadMore } from '@/components/LoadMore'
 import type { MaterialInward, Order, RawMaterial, Ref } from '@/types'
 
 const stockCols: ColumnDef<RawMaterial>[] = [
@@ -48,7 +50,7 @@ const inwardCols: ColumnDef<MaterialInward>[] = [
 
 export function Materials() {
   const stock = useApi<RawMaterial[]>('/materials')
-  const inwards = useApi<MaterialInward[]>('/materials/inwards')
+  const inwards = usePaged<MaterialInward>('/materials/inwards')
   const [open, setOpen] = useState(false)
   const low = stock.data?.filter((m) => m.lowStock) ?? []
 
@@ -85,7 +87,8 @@ export function Materials() {
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Inward log</h2>
-        <DataTable columns={inwardCols} data={inwards.data ?? []} loading={inwards.loading} />
+        <DataTable columns={inwardCols} data={inwards.rows} loading={inwards.loading} />
+        <LoadMore hasMore={inwards.hasMore} more={inwards.more} />
       </section>
 
       <InwardDialog
@@ -113,7 +116,7 @@ function InwardDialog({
   onSaved: () => void
 }) {
   const suppliers = useApi<Ref[]>(open ? '/suppliers' : null)
-  const orders = useApi<Order[]>(open ? '/orders' : null)
+  const orders = useApi<Order[]>(open ? recentOrdersPath() : null)
   const [form, setForm] = useState({ materialId: '', supplierId: '', orderId: '', qty: '', rate: '' })
   const [busy, setBusy] = useState(false)
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value })

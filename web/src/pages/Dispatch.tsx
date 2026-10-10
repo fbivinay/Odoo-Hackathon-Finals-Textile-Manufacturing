@@ -11,23 +11,28 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { formatDate, formatINR, formatQty } from '@/lib/format'
-import { mutate, useApi } from '@/lib/useApi'
+import { mutate, useApi, usePaged } from '@/lib/useApi'
+import { LoadMore } from '@/components/LoadMore'
 import type { Dispatch as DispatchRow, ShelfStock } from '@/types'
 
 type ShelfGroup = ShelfStock['orders'][number]
 
 export function Dispatch() {
   const shelf = useApi<ShelfStock>('/dispatch/stock')
-  const dispatches = useApi<DispatchRow[]>('/dispatch')
+  const dispatches = usePaged<DispatchRow>('/dispatch')
+  const open = useApi<{ balance: number }[]>('/invoices?status=UNPAID&limit=500')
+  const partial = useApi<{ balance: number }[]>('/invoices?status=PARTIAL&limit=500')
   const [invoiceOf, setInvoiceOf] = useState<DispatchRow | null>(null)
   const [paying, setPaying] = useState<DispatchRow | null>(null)
   const reload = () => {
     shelf.reload()
     dispatches.reload()
+    open.reload()
+    partial.reload()
   }
 
   const groups = shelf.data?.orders ?? []
-  const outstanding = (dispatches.data ?? []).reduce((a, d) => a + (d.invoice?.balance ?? 0), 0)
+  const outstanding = [...(open.data ?? []), ...(partial.data ?? [])].reduce((a, i) => a + i.balance, 0)
 
   const columns: ColumnDef<DispatchRow>[] = [
     { accessorKey: 'dispatchNo', header: 'Dispatch' },
@@ -68,8 +73,8 @@ export function Dispatch() {
           hint={`${shelf.data?.totalRolls ?? 0} passed rolls`}
           loading={shelf.loading}
         />
-        <KpiCard label="Dispatches" value={dispatches.data?.length ?? 0} loading={dispatches.loading} />
-        <KpiCard label="Outstanding from buyers" value={formatINR(outstanding)} loading={dispatches.loading} />
+        <KpiCard label="Invoices awaiting payment" tone="watch" value={String((open.data?.length ?? 0) + (partial.data?.length ?? 0))} loading={open.loading} />
+        <KpiCard label="Outstanding from buyers" value={formatINR(outstanding)} loading={open.loading || partial.loading} />
       </div>
 
       <section className="space-y-3">
@@ -89,11 +94,12 @@ export function Dispatch() {
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Dispatched</h2>
-        <DataTable columns={columns} data={dispatches.data ?? []} loading={dispatches.loading} />
+        <DataTable columns={columns} data={dispatches.rows} loading={dispatches.loading} />
+        <LoadMore hasMore={dispatches.hasMore} more={dispatches.more} />
       </section>
 
       {invoiceOf && <InvoiceDialog d={invoiceOf} onClose={() => setInvoiceOf(null)} />}
-      {paying && <PaymentDialog d={paying} onClose={() => setPaying(null)} onSaved={dispatches.reload} />}
+      {paying && <PaymentDialog d={paying} onClose={() => setPaying(null)} onSaved={reload} />}
     </div>
   )
 }

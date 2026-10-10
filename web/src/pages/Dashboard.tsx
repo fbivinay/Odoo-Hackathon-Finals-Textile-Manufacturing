@@ -43,7 +43,9 @@ export function Dashboard() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))
   const { data: p, loading, error } = useApi<Pnl>(`/reports/pnl?month=${month}`)
   const output = useApi<MachineOutput>(`/reports/machine-output?month=${month}`)
-  const costs = useApi<OrderCost[]>('/reports/order-costs')
+  // Costing for the orders placed in the chosen month.
+  const monthEnd = new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0)).toISOString().slice(0, 10)
+  const costs = useApi<OrderCost[]>(`/reports/order-costs?from=${month}-01&to=${monthEnd}&limit=500`)
 
   return (
     <div className="space-y-6">
@@ -123,7 +125,7 @@ export function Dashboard() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="section-head">Cost per order (all time)</h2>
+        <h2 className="section-head">Cost per order placed this month</h2>
         <DataTable columns={orderCols} data={costs.data ?? []} loading={costs.loading} initialSorting={[{ id: 'margin', desc: true }]} />
       </section>
     </div>

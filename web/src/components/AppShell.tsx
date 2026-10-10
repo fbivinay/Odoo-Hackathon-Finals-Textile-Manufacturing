@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { ClipboardCheck, Factory, LayoutDashboard, LogOut, Package, ShoppingCart, Truck } from 'lucide-react'
+import { CalendarRange, ClipboardCheck, Factory, LayoutDashboard, LogOut, Package, ShoppingCart, Truck } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { Logo } from '@/components/Logo'
 import { useSession } from '@/auth/session'
@@ -18,6 +18,7 @@ export const NAV: NavItem[] = [
   { to: '/materials', label: 'Raw material', icon: Package, roles: ['STORE'] },
   { to: '/orders', label: 'Orders', icon: ShoppingCart, roles: ['STORE', 'PRODUCTION', 'DISPATCH'] },
   { to: '/production', label: 'Production', icon: Factory, roles: ['PRODUCTION'] },
+  { to: '/planning', label: 'Planning', icon: CalendarRange, roles: ['PRODUCTION', 'STORE'] },
   { to: '/qc', label: 'Quality check', icon: ClipboardCheck, roles: ['QC'] },
   { to: '/dispatch', label: 'Dispatch', icon: Truck, roles: ['DISPATCH'] },
 ]
@@ -55,9 +56,9 @@ export function AppShell() {
           </Link>
           <nav className="nav" aria-label="Sections">
             {navFor(user.role).map(({ to, label, icon: Icon }) => (
-              <NavLink key={to} to={to} className="nav__link">
+              <NavLink key={to} to={to} className="nav__link" title={label} aria-label={label}>
                 <Icon className="size-3.5" />
-                {label}
+                <span className="nav__label">{label}</span>
               </NavLink>
             ))}
           </nav>

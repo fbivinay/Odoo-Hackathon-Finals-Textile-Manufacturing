@@ -19,12 +19,14 @@ const Production = page(() => import('@/pages/Production'), 'Production')
 const QC = page(() => import('@/pages/QC'), 'QC')
 const Dispatch = page(() => import('@/pages/Dispatch'), 'Dispatch')
 const Track = page(() => import('@/pages/Track'), 'Track')
+const Planning = page(() => import('@/pages/Planning'), 'Planning')
 
 const PAGES: Record<string, ReactNode> = {
   '/dashboard': <Dashboard />,
   '/materials': <Materials />,
   '/orders': <Orders />,
   '/production': <Production />,
+  '/planning': <Planning />,
   '/qc': <QC />,
   '/dispatch': <Dispatch />,
 }

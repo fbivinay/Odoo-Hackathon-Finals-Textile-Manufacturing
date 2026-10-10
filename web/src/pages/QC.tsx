@@ -11,8 +11,9 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { formatDateTime, formatQty } from '@/lib/format'
-import { mutate, useApi } from '@/lib/useApi'
-import type { QCRecord, QCResult, Roll } from '@/types'
+import { mutate, useApi, usePaged } from '@/lib/useApi'
+import { LoadMore } from '@/components/LoadMore'
+import type { QCRecord, QCResult, QcSummary, Roll } from '@/types'
 
 type LogRow = QCRecord & { roll: Roll }
 
@@ -29,15 +30,23 @@ const historyCols: ColumnDef<LogRow>[] = [
 ]
 
 export function QC() {
-  // One list of all rolls: the queue is what's waiting, the log is every inspection on them.
-  const rolls = useApi<Roll[]>('/qc/rolls')
-  const waiting = (rolls.data ?? []).filter((r) => r.status === 'PENDING_QC' || r.status === 'REWORK')
-  const history = (rolls.data ?? [])
+  // The queue is two filtered calls; totals come from /qc/summary; the log pages through recent rolls.
+  const pending = useApi<Roll[]>('/qc/rolls?status=PENDING_QC&limit=500')
+  const rework = useApi<Roll[]>('/qc/rolls?status=REWORK&limit=500')
+  const summary = useApi<QcSummary>('/qc/summary')
+  const recent = usePaged<Roll>('/qc/rolls', 60)
+  const waiting = [...(rework.data ?? []), ...(pending.data ?? [])]
+  const history = recent.rows
     .flatMap((roll) => roll.qcRecords.map((q) => ({ ...q, roll })))
     .sort((a, b) => (a.checkedAt < b.checkedAt ? 1 : -1))
   const [defectFor, setDefectFor] = useState<{ roll: Roll; result: QCResult } | null>(null)
-  const reload = rolls.reload
-  const count = (s: Roll['status']) => (rolls.data ?? []).filter((r) => r.status === s).length
+  const reload = () => {
+    pending.reload()
+    rework.reload()
+    summary.reload()
+    recent.reload()
+  }
+  const counts = summary.data?.counts
 
   async function pass(roll: Roll) {
     if (await mutate(`/qc/rolls/${roll.id}/inspect`, 'POST', { result: 'PASS' }, `${roll.rollNo} passed`)) reload()
@@ -73,25 +82,38 @@ export function QC() {
     <div className="space-y-6">
       <PageHead eyebrow="Quality" title="Before it leaves the line" lede="Each roll is traced to its order and machine, so a defect leads back to its cause." />
       <div className="grid gap-4 sm:grid-cols-4">
-        <KpiCard label="Waiting for check" tone="watch" value={String(waiting.length)} loading={rolls.loading} />
-        <KpiCard label="Passed" tone="good" value={(count('PASSED') + count('DISPATCHED')).toLocaleString('en-IN')} loading={rolls.loading} />
-        <KpiCard label="Rework" tone="watch" value={String(count('REWORK'))} loading={rolls.loading} />
-        <KpiCard label="Rejected" tone="problem" value={String(count('REJECTED'))} loading={rolls.loading} />
+        <KpiCard label="Waiting for check" tone="watch" value={String(waiting.length)} loading={pending.loading || rework.loading} />
+        <KpiCard
+          label="Pass rate"
+          tone="good"
+          value={summary.data?.passRate == null ? '—' : `${summary.data.passRate}%`}
+          hint={counts && `${(counts.PASSED + counts.DISPATCHED).toLocaleString('en-IN')} rolls passed`}
+          loading={summary.loading}
+        />
+        <KpiCard label="In rework" tone="watch" value={String(counts?.REWORK ?? 0)} loading={summary.loading} />
+        <KpiCard
+          label="Rejected"
+          tone="problem"
+          value={(counts?.REJECTED ?? 0).toLocaleString('en-IN')}
+          hint={summary.data?.defectsByType.slice().sort((a, b) => b.count - a.count)[0] && `Most common: ${summary.data.defectsByType.slice().sort((a, b) => b.count - a.count)[0].defectType}`}
+          loading={summary.loading}
+        />
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">Waiting for check</h2>
+        <h2 className="section-head">Waiting for check</h2>
         <DataTable
           columns={waitingCols}
           data={waiting}
-          loading={rolls.loading}
+          loading={pending.loading || rework.loading}
           empty={<EmptyState icon={ClipboardCheck} line="No rolls waiting. Nice." />}
         />
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">QC log</h2>
-        <DataTable columns={historyCols} data={history} loading={rolls.loading} />
+        <h2 className="section-head">QC log</h2>
+        <DataTable columns={historyCols} data={history} loading={recent.loading} />
+        <LoadMore hasMore={recent.hasMore} more={recent.more} />
       </section>
 
       <DefectDialog target={defectFor} onClose={() => setDefectFor(null)} onSaved={reload} />

@@ -30,14 +30,24 @@ export function CountUp({ text }: { text: string }) {
       setShown(t === 1 ? text : prefix + fmt.format(target * easeOut(t)) + suffix)
       if (t < 1) frame = requestAnimationFrame(step)
     }
+    // Counts once per visit to the screen: an entrance animation moving the card across the
+    // threshold must not restart it, only leaving the screen entirely re-arms it.
+    let running = false
     const observer = new IntersectionObserver(
       ([entry]) => {
-        cancelAnimationFrame(frame)
-        if (!entry.isIntersecting) return
+        if (!entry.isIntersecting) {
+          if (entry.intersectionRatio === 0) {
+            cancelAnimationFrame(frame)
+            running = false
+          }
+          return
+        }
+        if (running) return
+        running = true
         start = 0
         frame = requestAnimationFrame(step)
       },
-      { threshold: 0.25 },
+      { threshold: [0, 0.25] },
     )
     observer.observe(node)
     return () => {

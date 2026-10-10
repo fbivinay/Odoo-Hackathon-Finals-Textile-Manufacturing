@@ -1,7 +1,13 @@
 import { mockRequest } from './mock'
 import { getToken } from './token'
 
-export type Envelope<T> = { ok: true; data: T } | { ok: false; error: string; message: string }
+// List endpoints add `meta` when paged: pass `nextCursor` back as `cursor`; null means the end.
+export interface PageMeta {
+  count: number
+  nextCursor: string | null
+}
+
+export type Envelope<T> = { ok: true; data: T; meta?: PageMeta } | { ok: false; error: string; message: string }
 
 export class ApiError extends Error {
   code: string
@@ -17,13 +23,17 @@ export class ApiError extends Error {
 const BASE = import.meta.env.VITE_API_URL ?? '/api'
 export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== 'false'
 
-export async function api<T>(
-  path: string,
-  init: Omit<RequestInit, 'body'> & { body?: unknown } = {},
-): Promise<T> {
+type Init = Omit<RequestInit, 'body'> & { body?: unknown }
+
+export async function api<T>(path: string, init: Init = {}): Promise<T> {
+  return (await apiPage<T>(path, init)).data
+}
+
+// Same call, keeping the paging meta for lists that page.
+export async function apiPage<T>(path: string, init: Init = {}): Promise<{ data: T; meta?: PageMeta }> {
   if (USE_MOCKS) {
     try {
-      return await mockRequest<T>(path, init)
+      return { data: await mockRequest<T>(path, init) }
     } catch (e) {
       const err = e as Error & { code?: string }
       throw new ApiError(err.code ?? 'MOCK_ERROR', err.message, 400)
@@ -52,5 +62,5 @@ export async function api<T>(
   }
 
   if (!payload.ok) throw new ApiError(payload.error, payload.message, res.status)
-  return payload.data
+  return { data: payload.data, meta: payload.meta }
 }

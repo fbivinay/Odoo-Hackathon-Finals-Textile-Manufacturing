@@ -35,3 +35,10 @@ export function formatQty(v: number | string, unit = 'm'): string {
 }
 
 export const unitFor = (stage: string) => (stage === 'SPINNING' ? 'kg' : 'm')
+
+// YYYY-MM-DD for today plus `days` (negative for the past), for API date filters.
+export const dayFromToday = (days: number) => toISODate(new Date(Date.now() + days * 86400000))
+
+export function formatDayMonth(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+}

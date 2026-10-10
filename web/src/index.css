@@ -301,6 +301,10 @@ body::before {
 }
 .nav__link[aria-current="page"]:hover { color: var(--surface); background: var(--ink); }
 
+/* Narrower screens: the other sections shrink to their icons; the current one keeps its name. */
+@media (max-width: 1180px) {
+  .nav__link:not([aria-current="page"]) .nav__label { display: none; }
+}
 @media (max-width: 900px) {
   .wordmark__text { display: none; }
   .nav { margin-inline: 0; }

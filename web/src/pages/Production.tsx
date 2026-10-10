@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatQty, unitFor } from '@/lib/format'
 import { mutate, useApi } from '@/lib/useApi'
+import { recentOrdersPath } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import type { Board, MachineStatus, Order, Shift, Stage } from '@/types'
 
@@ -168,7 +169,7 @@ const READY_FOR: Record<Stage, Order['status'][]> = {
 }
 
 function AssignDialog({ machine, onClose, onSaved }: { machine: BoardMachine | null; onClose: () => void; onSaved: () => void }) {
-  const orders = useApi<Order[]>(machine ? '/orders' : null)
+  const orders = useApi<Order[]>(machine ? recentOrdersPath() : null)
   const [form, setForm] = useState({ orderId: '', shift: 'MORNING', qtyPlanned: '' })
   const [busy, setBusy] = useState(false)
   if (!machine) return null
