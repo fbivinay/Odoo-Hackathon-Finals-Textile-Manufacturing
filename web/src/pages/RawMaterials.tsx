@@ -350,7 +350,7 @@ function UseDialog({ m, onClose, onSaved }: { m: RawMaterial; onClose: () => voi
           </DialogDescription>
         </DialogHeader>
         <form id="use-material" onSubmit={submit} className="grid gap-4">
-          <Field label="For order" htmlFor="orderId">
+          <Field label="For order" htmlFor="orderId" hint={!orders.loading && !open.length && 'No open orders to charge this to.'}>
             <select id="orderId" required className={selectClass} value={orderId} onChange={(e) => setOrderId(e.target.value)}>
               <option value="">{orders.loading ? 'Loading…' : 'Select order…'}</option>
               {open.map((o) => (

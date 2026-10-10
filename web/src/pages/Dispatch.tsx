@@ -94,7 +94,7 @@ export function Dispatch() {
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Dispatched</h2>
-        <DataTable columns={columns} data={dispatches.rows} loading={dispatches.loading} />
+        <DataTable columns={columns} data={dispatches.rows} loading={dispatches.loading} empty="Nothing dispatched yet." />
         <LoadMore hasMore={dispatches.hasMore} more={dispatches.more} />
       </section>
 

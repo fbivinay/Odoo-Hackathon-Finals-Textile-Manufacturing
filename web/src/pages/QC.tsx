@@ -113,7 +113,7 @@ export function QC() {
 
       <section className="space-y-3">
         <h2 className="section-head">QC log</h2>
-        <DataTable columns={historyCols} data={history} loading={recent.loading} />
+        <DataTable columns={historyCols} data={history} loading={recent.loading} empty="No rolls checked yet." />
         <LoadMore hasMore={recent.hasMore} more={recent.more} />
       </section>
 

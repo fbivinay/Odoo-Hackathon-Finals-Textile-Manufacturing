@@ -239,7 +239,7 @@ export function Dashboard() {
 
       <section className="space-y-3">
         <h2 className="section-head">Cost per order placed this month</h2>
-        <DataTable columns={orderCols} data={costs.data ?? []} loading={costs.loading} initialSorting={[{ id: 'margin', desc: true }]} />
+        <DataTable columns={orderCols} data={costs.data ?? []} loading={costs.loading} empty="No orders to cost yet." initialSorting={[{ id: 'margin', desc: true }]} />
       </section>
     </div>
   )

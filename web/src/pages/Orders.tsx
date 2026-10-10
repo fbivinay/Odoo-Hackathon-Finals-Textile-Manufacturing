@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { PackageSearch, Plus } from 'lucide-react'
+import { PackageSearch, Plus, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
+import { EmptyState } from '@/components/EmptyState'
 import { DeliveryEstimate, type Delivery } from '@/components/DeliveryEstimate'
 import { Field, selectClass } from '@/components/Field'
 import { Pill, StatusPill } from '@/components/StatusPill'
@@ -144,7 +145,20 @@ export function Orders() {
         </select>
       </div>
       {orders.error && <p className="text-sm text-problem">{orders.error}</p>}
-      <DataTable columns={columns} data={rows} loading={orders.loading} initialSorting={[{ id: 'deadline', desc: period !== 'recent' }]} />
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={orders.loading}
+        initialSorting={[{ id: 'deadline', desc: period !== 'recent' }]}
+        empty={
+          <EmptyState
+            icon={ShoppingCart}
+            line={['No open orders.', 'Every open order has its yarn.', 'No orders are ready to ship.', 'No orders in this period.'][filter]}
+            actionLabel={canCreate && filter !== 1 ? 'New customer order' : undefined}
+            onAction={canCreate && filter !== 1 ? () => setOpen(true) : undefined}
+          />
+        }
+      />
       <LoadMore hasMore={orders.hasMore} more={orders.more} />
       {canCreate && <OrderDialog open={open} onOpenChange={setOpen} onSaved={orders.reload} />}
     </div>

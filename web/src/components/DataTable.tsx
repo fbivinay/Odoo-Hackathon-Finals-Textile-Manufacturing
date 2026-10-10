@@ -1,3 +1,5 @@
+import { Inbox } from 'lucide-react'
+import { EmptyState } from '@/components/EmptyState'
 import { useState, type ReactNode } from 'react'
 import {
   flexRender,
@@ -40,8 +42,13 @@ export function DataTable<T>({
     getSortedRowModel: getSortedRowModel(),
   })
 
-  if (!loading && data.length === 0 && empty) {
-    return <div className="data-table-wrap">{empty}</div>
+  // An empty table never shows bare headers: a short line says why there is nothing.
+  if (!loading && data.length === 0) {
+    return (
+      <div className="data-table-wrap">
+        {empty === undefined || typeof empty === 'string' ? <EmptyState icon={Inbox} line={empty ?? 'Nothing to show yet.'} /> : empty}
+      </div>
+    )
   }
 
   return (

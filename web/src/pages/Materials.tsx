@@ -3,6 +3,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { AlertTriangle, PackagePlus } from 'lucide-react'
 import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
+import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
 import { Pill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
@@ -74,10 +75,15 @@ export function Materials() {
         </TabsList>
         <TabsContent value="stock" className="space-y-3">
           {stock.error && <p className="text-sm text-problem">{stock.error}</p>}
-          <DataTable columns={stockCols} data={rows} loading={stock.loading} />
+          <DataTable
+            columns={stockCols}
+            data={rows}
+            loading={stock.loading}
+            empty={<EmptyState icon={PackagePlus} line="No yarn in the store yet." actionLabel="Receive yarn" onAction={() => setOpen(true)} />}
+          />
         </TabsContent>
         <TabsContent value="deliveries" className="space-y-3">
-          <DataTable columns={inwardCols} data={inwards.rows} loading={inwards.loading} />
+          <DataTable columns={inwardCols} data={inwards.rows} loading={inwards.loading} empty="No yarn received yet." />
           <LoadMore hasMore={inwards.hasMore} more={inwards.more} />
         </TabsContent>
       </Tabs>

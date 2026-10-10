@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/DataTable'
+import { Factory } from 'lucide-react'
+import { EmptyState } from '@/components/EmptyState'
 import { PageHead } from '@/components/PageHead'
 import { Field, selectClass } from '@/components/Field'
 import { StatusPill, label } from '@/components/StatusPill'
@@ -127,6 +129,12 @@ export function Production() {
           </section>
         )
       })}
+
+      {!board.loading && machines.filter(FILTERS[filter].match).length === 0 && (
+        <div className="data-table-wrap">
+          <EmptyState icon={Factory} line={['No machines set up yet.', 'No machine is running.', 'No machine is idle. All are busy or down.', 'No machine is down.'][filter]} />
+        </div>
+      )}
 
       {selected && <MachineDialog m={selected} machines={machines} onClose={() => setOpenId(null)} onChange={board.reload} />}
     </div>
@@ -366,7 +374,7 @@ function NextStage({ order, from, left, machines, busy, run, onLater }: { order:
               ))}
             </select>
           </Field>
-          <Field label="Operator" htmlFor="nextWorker">
+          <Field label="Operator" htmlFor="nextWorker" hint={!workers.loading && !operators.length && `No operators on the ${label(shift).toLowerCase()} shift.`}>
             <select id="nextWorker" required className={selectClass} value={workerId} onChange={(e) => setWorkerId(e.target.value)}>
               <option value="">Select operator…</option>
               {operators.map((w) => (
@@ -421,7 +429,7 @@ function AssignOrder({ m, busy, run }: { m: BoardMachine; busy: boolean; run: Ru
           ))}
         </select>
       </Field>
-      <Field label="Operator" htmlFor="workerId">
+      <Field label="Operator" htmlFor="workerId" hint={!workers.loading && !operators.length && `No operators on the ${label(shift).toLowerCase()} shift.`}>
         <select id="workerId" required className={selectClass} value={workerId} onChange={(e) => setWorkerId(e.target.value)}>
           <option value="">Select operator…</option>
           {operators.map((w) => (
