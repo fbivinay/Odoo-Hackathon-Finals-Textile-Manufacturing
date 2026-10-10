@@ -135,16 +135,12 @@ export function Orders() {
       header: 'Order',
       cell: ({ row: { original: o } }) => (
         <div className="leading-tight">
-          <p className="font-medium">
+          <p className="flex items-center gap-1.5 font-medium whitespace-nowrap">
             {o.orderNo}
-            {o.priority && (
-              <Pill tone="problem" className="ml-1.5 align-middle">
-                Priority
-              </Pill>
-            )}
+            {o.reworkStage ? <Pill tone="watch">Rework</Pill> : o.replacesOrderNo ? <Pill tone="problem">From reject</Pill> : o.priority && <Pill tone="watch">Priority</Pill>}
           </p>
-          <p className="max-w-64 truncate text-xs text-muted-foreground" title={o.note ?? undefined}>
-            {o.note && o.status !== 'DISPATCHED' ? o.note : `Ordered ${formatDate(o.createdAt)}`}
+          <p className="text-xs whitespace-nowrap text-muted-foreground">
+            {o.reworkStage ? `Priority · back in ${o.reworkStage.toLowerCase()}` : o.replacesOrderNo ? `Priority · replaces ${o.replacesOrderNo}` : o.status === 'CANCELLED' && o.note ? o.note : `Ordered ${formatDate(o.createdAt)}`}
           </p>
         </div>
       ),

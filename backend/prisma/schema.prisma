@@ -270,6 +270,8 @@ model Order {
   id            String      @id @default(cuid())
   orderNo       String      @unique
   trackingToken String      @unique @default(cuid())
+  // On a replacement for rejected fabric: the order whose roll was rejected (`remakeOfId` is the first order in the chain).
+  replacesOrderId String?
   buyerId       String
   materialId    String?
   fabricType    String
@@ -336,6 +338,8 @@ model ProductionJob {
   qtyProduced Decimal   @default(0) @db.Decimal(12, 2)
   startedAt   DateTime  @default(now())
   completedAt DateTime?
+  // Making again what quality check sent back, counted apart from the order's own quantity.
+  rework      Boolean   @default(false)
 
   order   Order           @relation(fields: [orderId], references: [id])
   machine Machine         @relation(fields: [machineId], references: [id])
@@ -372,6 +376,10 @@ model Roll {
   dispatchId String?
   qty        Decimal    @db.Decimal(12, 2)
   status     RollStatus @default(PENDING_QC)
+  // Set at quality check. Rework: the stage the fabric goes back to (weaving or dyeing).
+  reworkStage Stage?
+  // Reject: the priority order raised to make this fabric again.
+  replacementOrderId String?
   createdAt  DateTime   @default(now())
 
   order     Order          @relation(fields: [orderId], references: [id])

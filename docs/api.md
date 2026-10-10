@@ -102,10 +102,9 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
-| GET | `/qc/rolls` | | `?status=PENDING_QC/PASSED/REWORK/REJECTED/DISPATCHED&orderId=&machineId=` |
+| GET | `/qc/rolls` | | `?status=PENDING_QC/PASSED/REWORK/REJECTED/DISPATCHED` (one, or several comma separated) `&orderId=&machineId=` |
 | GET | `/qc/rolls/:id` | | full trace: order, machine, job, worker, inspections |
-| POST | `/qc/rolls/:id/inspect` | QC | `{ result: PASS/REWORK/REJECT, defectType?, notes? }`; `defectType` needed unless PASS |
-| POST | `/qc/rolls/:id/reworked` | PRODUCTION | rework roll redone: back to `PENDING_QC`. Inspect only takes `PENDING_QC` rolls; REJECT also opens (or adds to) a priority remake order, returned as `remake`; REWORK puts the order back at DYEING with priority |
+| POST | `/qc/rolls/:id/inspect` | QC | `{ result: PASS/REWORK/REJECT, defectType?, notes?, reworkStage? }`; `defectType` needed unless PASS. REWORK needs `reworkStage` (`WEAVING` or `DYEING`): the roll's length goes back to that stage's list under the same order, and the fabric made again is cut into new rolls. REJECT sends the roll to waste and raises a priority order for its length (`replacementOrder: { id, orderNo, qty }` in the answer). Only `PENDING_QC` rolls can be checked |
 | GET | `/qc/summary` | | `?from=&to=` → `{ counts, passRate, defectsByType[], defectsByMachine[] }` |
 
 ## Dispatch, invoices, payments

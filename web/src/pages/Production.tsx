@@ -16,8 +16,7 @@ import { Input } from '@/components/ui/input'
 import { formatQty, unitFor } from '@/lib/format'
 import { mutate, useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
-import type { Board, Roll, Shift, Stage } from '@/types'
-import { RollLink } from '@/components/RollTrace'
+import type { Board, Shift, Stage } from '@/types'
 
 type BoardMachine = Board['machines'][number]
 // An order with work left in a stage (GET /production/queue).
@@ -28,6 +27,8 @@ interface QueueRow {
   remaining: number
   available: number
   running: number
+  priority?: boolean // a replacement for rejected fabric: listed first
+  rework?: boolean // back from quality check
 }
 interface Worker {
   id: string
@@ -190,67 +191,9 @@ export function Production() {
         </div>
       )}
 
-      <ReworkList />
-
       {selected && <MachineDialog m={selected} onClose={() => setOpenId(null)} onChange={board.reload} />}
       {adding && <AddMachineDialog machines={machines} onClose={() => setAdding(false)} />}
     </div>
-  )
-}
-
-// Rolls QC sent back. Their orders jump the queue; once a roll is redone on the finishing line it
-// goes back to QC for another check.
-function ReworkList() {
-  const rolls = useApi<Roll[]>('/qc/rolls?status=REWORK&limit=500')
-  const [busy, setBusy] = useState<string | null>(null)
-  if (!rolls.data?.length) return null
-  const why = (r: Roll) => r.qcRecords.find((q) => q.result === 'REWORK')
-  const cols: ColumnDef<Roll>[] = [
-    { accessorKey: 'rollNo', header: 'Roll', cell: ({ row: { original: r } }) => <RollLink id={r.id} rollNo={r.rollNo} /> },
-    { id: 'order', header: 'Order', accessorFn: (r) => `${r.order.orderNo} · ${r.order.fabricType} ${r.order.colour}` },
-    { id: 'qty', header: 'Length', accessorFn: (r) => r.qty, cell: ({ row: { original: r } }) => formatQty(r.qty) },
-    {
-      id: 'why',
-      header: 'Reason from QC',
-      accessorFn: (r) => why(r)?.defectType ?? '',
-      cell: ({ row: { original: r } }) => (
-        <div className="leading-tight">
-          <p>{why(r)?.defectType ?? 'Not given'}</p>
-          {why(r)?.notes && <p className="text-xs text-muted-foreground">{why(r)!.notes}</p>}
-        </div>
-      ),
-    },
-    {
-      id: 'act',
-      header: '',
-      enableSorting: false,
-      cell: ({ row: { original: r } }) => (
-        <div className="flex justify-end">
-          <Button
-            size="xs"
-            disabled={busy === r.id}
-            onClick={async () => {
-              setBusy(r.id)
-              if (await mutate(`/qc/rolls/${r.id}/reworked`, 'POST', undefined, `${r.rollNo} sent back to QC`)) rolls.reload()
-              setBusy(null)
-            }}
-          >
-            Reworked, send to QC
-          </Button>
-        </div>
-      ),
-    },
-  ]
-  return (
-    <section className="space-y-2">
-      <h2 className="flex items-baseline gap-2 text-sm font-semibold">
-        Rework
-        <span className="text-xs font-normal text-muted-foreground">
-          {rolls.data.length} roll{rolls.data.length === 1 ? '' : 's'} sent back by QC · do these first
-        </span>
-      </h2>
-      <DataTable columns={cols} data={rolls.data} />
-    </section>
   )
 }
 
@@ -571,12 +514,13 @@ function AssignOrder({ m, busy, run, onClose, stop }: { m: BoardMachine; busy: b
           <p className="text-sm text-muted-foreground">No order is waiting for {label(m.type).toLowerCase()}.</p>
         ) : (
           <>
-            <Field label="Order" htmlFor="orderId" hint={order ? `${formatQty(order.available, unitFor(m.type))} to make` : 'Earliest deadline first'}>
+            <Field label="Order" htmlFor="orderId" hint={order ? `${formatQty(order.available, unitFor(m.type))} to make` : 'Priority orders first, then earliest deadline'}>
               <select id="orderId" required className={selectClass} value={orderId} onChange={(e) => setOrderId(e.target.value)}>
                 <option value="">Select order</option>
                 {eligible.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.orderNo} · {o.fabricType}
+                    {o.rework ? ' · Rework · Priority' : o.priority ? ' · Priority' : ''}
                     {o.running > 0 ? ' (also running)' : ''}
                   </option>
                 ))}

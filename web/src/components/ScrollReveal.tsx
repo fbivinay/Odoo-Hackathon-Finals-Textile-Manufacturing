@@ -22,7 +22,8 @@ export function ScrollReveal() {
     const layoutTop = (el: HTMLElement) => {
       let y = 0
       for (let n: Element | null = el; n instanceof HTMLElement; n = n.offsetParent) y += n.offsetTop
-      return y - window.scrollY
+      // The page scrolls inside the app shell's panel, not the window.
+      return y - (document.querySelector('[data-scroll-root]')?.scrollTop ?? window.scrollY)
     }
     const mark = () => {
       const fold = window.innerHeight

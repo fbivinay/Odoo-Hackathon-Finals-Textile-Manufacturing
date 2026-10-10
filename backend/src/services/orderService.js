@@ -42,48 +42,23 @@ async function syncStatus(tx, orderId) {
   const byStatus = (status) => order.rolls.filter((r) => r.status === status);
   const dispatchedQty = sumQty(byStatus('DISPATCHED'));
   const passed = byStatus('PASSED');
-  const inRework = byStatus('REWORK').length;
   const awaitingQc = byStatus('PENDING_QC').length;
   // Rejected metres are owed by the remake order, not this one.
   const target = Number(order.qty) - sumQty(byStatus('REJECTED'));
+  // Fabric sent back by quality check returns the order to the stage that has to make it again.
+  const backTo = reworkStageLeft(order);
 
   let status = order.jobs[0]?.stage || 'PENDING';
   if (running) status = running.stage;
-  else if (inRework > 0) status = 'DYEING'; // back on the finishing line
+  else if (backTo) status = backTo;
   else if (awaitingQc > 0) status = 'QC';
   else if (passed.length === 0 && dispatchedQty >= target) status = 'DISPATCHED';
   else if (passed.length > 0 && dispatchedQty + sumQty(passed) >= target) status = 'READY';
 
   // Rework puts an order at the front of the queue until its rolls are back; a remake stays first until shipped.
-  const priority = inRework > 0 || (!!order.remakeOfId && status !== 'DISPATCHED');
+  const priority = !!backTo || (!!order.remakeOfId && status !== 'DISPATCHED');
   if (status === order.status && priority === order.priority) return order;
   return tx.order.update({ where: { id: orderId }, data: { status, priority, ...(order.priority && !priority && !order.remakeOfId ? { note: null } : {}) } });
-}
-
-// A rejected roll is owed again: a new priority order for the same buyer, fabric and price, due on the
-// original deadline. Metres rejected before the remake starts are added to it rather than opening another.
-async function remake(tx, roll, defectType) {
-  const order = await tx.order.findUnique({ where: { id: roll.orderId } });
-  if (order.status === 'CANCELLED') return null;
-  const rootId = order.remakeOfId || order.id;
-  const qty = Number(roll.qty);
-  const yarn = Number(order.qty) > 0 ? Math.round((Number(order.yarnRequired) * qty / Number(order.qty)) * 100) / 100 : 0;
-  const reason = `${roll.rollNo} rejected${defectType ? ` (${defectType})` : ''}`;
-
-  const open = await tx.order.findFirst({ where: { remakeOfId: rootId, status: 'PENDING', jobs: { none: {} } } });
-  const made = open
-    ? await tx.order.update({ where: { id: open.id }, data: { qty: { increment: qty }, yarnRequired: { increment: yarn }, note: `${open.note}; ${reason}` } })
-    : await tx.order.create({
-        data: {
-          orderNo: await nextNumber(tx.order, 'ORD'),
-          buyerId: order.buyerId, materialId: order.materialId, fabricType: order.fabricType, colour: order.colour,
-          qty, yarnRequired: yarn, pricePerUnit: order.pricePerUnit, yarnPerMetre: order.yarnPerMetre, wastagePct: order.wastagePct, listPrice: order.listPrice,
-          deadline: order.deadline, priority: true, remakeOfId: rootId,
-          note: `Remake for ${(await tx.order.findUnique({ where: { id: rootId }, select: { orderNo: true } })).orderNo}: ${reason}`,
-        },
-      });
-  if (made.materialId) await allocateYarn(tx, made.materialId);
-  return made;
 }
 
 // Owner only. Stops its machines, returns yarn that was issued but never spun, and leaves the rolls
@@ -124,6 +99,20 @@ async function cancel(id, { reason }) {
   });
 }
 
+// Fabric sent back from quality check has to be made again from its rework stage onwards. This is
+// the earliest stage that still owes some of it, or null. Mirrors the targets in productionService.queue.
+function reworkStageLeft(order) {
+  const flow = ['WEAVING', 'DYEING'];
+  const rework = order.rolls.filter((r) => r.status === 'REWORK' && r.reworkStage);
+  for (const stage of flow) {
+    const extra = sumQty(rework.filter((r) => flow.indexOf(r.reworkStage) <= flow.indexOf(stage)));
+    if (extra <= 0) continue;
+    const done = order.jobs.filter((j) => j.stage === stage && j.rework).reduce((total, j) => total + Number(j.qtyProduced), 0);
+    if (extra - done > extra * 0.01) return stage;
+  }
+  return null;
+}
+
 const delayedWhere = () => ({ deadline: { lt: new Date() }, status: { notIn: CLOSED } });
 
 // from/to filter on createdAt, dueFrom/dueTo on deadline.
@@ -149,7 +138,29 @@ async function list(query = {}) {
     include: { buyer: { select: { id: true, name: true } } },
     ...pageArgs(query),
   });
-  return toPage(orders.map(decorate), query);
+  return toPage(await withRework(await withReplaced(orders.map(decorate))), query);
+}
+
+// An order with fabric back from quality check shows the stage it has returned to (`reworkStage`),
+// until that fabric has been made again.
+async function withRework(orders) {
+  const open = orders.filter((o) => !CLOSED.includes(o.status)).map((o) => o.id);
+  if (open.length === 0) return orders;
+  const back = await prisma.roll.findMany({ where: { orderId: { in: open }, status: 'REWORK', reworkStage: { not: null } }, select: { orderId: true } });
+  const ids = [...new Set(back.map((r) => r.orderId))];
+  if (ids.length === 0) return orders;
+  const full = await prisma.order.findMany({ where: { id: { in: ids } }, include: { rolls: true, jobs: true } });
+  const stageOf = new Map(full.map((o) => [o.id, reworkStageLeft(o)]));
+  return orders.map((o) => (stageOf.get(o.id) ? { ...o, reworkStage: stageOf.get(o.id) } : o));
+}
+
+// A replacement order shows the number of the order it makes up for.
+async function withReplaced(orders) {
+  const ids = [...new Set(orders.map((o) => o.replacesOrderId).filter(Boolean))];
+  if (ids.length === 0) return orders;
+  const found = await prisma.order.findMany({ where: { id: { in: ids } }, select: { id: true, orderNo: true } });
+  const noOf = new Map(found.map((o) => [o.id, o.orderNo]));
+  return orders.map((o) => (o.replacesOrderId ? { ...o, replacesOrderNo: noOf.get(o.replacesOrderId) || null } : o));
 }
 
 async function create(input) {
@@ -204,7 +215,8 @@ async function get(id) {
     },
   });
   if (!order) throw notFound('Order not found');
-  return { ...decorate(order), availability: await availability(order) };
+  const [shown] = await withRework(await withReplaced([decorate(order)]));
+  return { ...shown, availability: await availability(order) };
 }
 
 async function updateStatus(id, status) {
@@ -257,4 +269,4 @@ async function track(token) {
   };
 }
 
-module.exports = { list, create, get, updateStatus, availability, syncStatus, remake, cancel, track, sumQty, decorate, delayedWhere, CLOSED };
+module.exports = { list, create, get, updateStatus, availability, syncStatus, cancel, track, sumQty, decorate, delayedWhere, CLOSED };

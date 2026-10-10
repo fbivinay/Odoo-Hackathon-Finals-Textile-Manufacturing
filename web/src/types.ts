@@ -135,6 +135,10 @@ export interface Order {
   createdAt: string
   isDelayed: boolean
   buyer: Ref
+  // On a replacement for fabric rejected at quality check: the number of the order it makes up for.
+  replacesOrderNo?: string | null
+  // Fabric sent back by quality check is being made again in this stage (same order, made first).
+  reworkStage?: Stage | null
   // The Config figures the order was taken with (null on orders from before Config).
   yarnPerMetre?: number | null
   wastagePct?: number | null
@@ -194,6 +198,8 @@ export interface Roll {
   machineId: string
   qty: number
   status: RollStatus
+  reworkStage?: Stage | null // where a reworked roll went back to
+  replacementOrderId?: string | null // the priority order raised for a rejected roll
   createdAt: string
   order: Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour'> & { buyer: { name: string } }
   machine: Pick<Machine, 'id' | 'code' | 'name'>

@@ -1,146 +1,239 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { ClipboardCheck } from 'lucide-react'
-import { PageHead } from '@/components/PageHead'
+import { toast } from 'sonner'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
-import { Field, selectClass } from '@/components/Field'
-import { Pill, StatusPill } from '@/components/StatusPill'
-import { KpiCard } from '@/components/tremor/KpiCard'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Textarea } from '@/components/ui/textarea'
-import { formatDateTime, formatQty } from '@/lib/format'
-import { mutate, useApi, usePaged } from '@/lib/useApi'
+import { Field } from '@/components/Field'
+import { Figure } from '@/components/Figure'
 import { LoadMore } from '@/components/LoadMore'
+import { PageHead } from '@/components/PageHead'
 import { RollLink } from '@/components/RollTrace'
-import type { QCRecord, QCResult, QcSummary, Roll } from '@/types'
-
-type LogRow = QCRecord & { roll: Roll }
+import { Pill, label } from '@/components/StatusPill'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import { dayFromToday, formatDateTime, formatQty } from '@/lib/format'
+import { api, ApiError } from '@/lib/api'
+import { useApi, usePaged } from '@/lib/useApi'
+import { cn } from '@/lib/utils'
+import type { QcSummary, Roll, Stage } from '@/types'
 
 const DEFECTS = ['Holes', 'Colour mismatch', 'Uneven weaving', 'Stains', 'Broken ends', 'Other']
 
-const historyCols: ColumnDef<LogRow>[] = [
-  { id: 'when', header: 'Checked', accessorKey: 'checkedAt', cell: ({ getValue }) => formatDateTime(getValue<string>()) },
-  { id: 'roll', header: 'Roll', accessorFn: (q) => q.roll.rollNo, cell: ({ row: { original: q } }) => <RollLink id={q.roll.id} rollNo={q.roll.rollNo} /> },
-  { id: 'order', header: 'Order', accessorFn: (q) => q.roll.order.orderNo },
-  { id: 'machine', header: 'Machine', accessorFn: (q) => q.roll.machine.code },
-  { accessorKey: 'result', header: 'Result', cell: ({ row: { original: q } }) => <StatusPill status={q.result} /> },
-  { id: 'defect', header: 'Defect', accessorFn: (q) => q.defectType ?? '—' },
-  { id: 'inspector', header: 'Inspector', accessorFn: (q) => q.inspector.name },
-]
+// What is waiting, what passed and what failed: one list each, in the same colours as their pills.
+const VIEWS = [
+  { key: 'waiting', label: 'Waiting', dot: 'bg-watch', status: 'PENDING_QC', empty: 'No rolls waiting. Nice.' },
+  { key: 'passed', label: 'Passed', dot: 'bg-good', status: 'PASSED,DISPATCHED', empty: 'No roll has passed yet.' },
+  { key: 'rejected', label: 'Rejected', dot: 'bg-problem', status: 'REJECTED', empty: 'No roll has been rejected.' },
+] as const
+type View = (typeof VIEWS)[number]['key']
+
+const order = (r: Roll) => (
+  <div className="leading-tight">
+    <p className="font-medium">{r.order.orderNo}</p>
+    <p className="truncate text-xs text-muted-foreground">{[r.order.fabricType, r.order.colour].filter(Boolean).join(' · ')}</p>
+  </div>
+)
+const none = <span className="text-muted-foreground">—</span>
+const rolls = (n: number) => `${n.toLocaleString('en-IN')} ${n === 1 ? 'roll' : 'rolls'}`
+// The figures cover the last 30 days, so each check visibly moves them.
+const WINDOW_DAYS = 30
 
 export function QC() {
-  // Rolls in rework are back on the finishing line (Machines page) until production returns them here.
-  // Totals come from /qc/summary; the log pages through recent rolls.
-  const pending = useApi<Roll[]>('/qc/rolls?status=PENDING_QC&limit=500')
+  const [view, setView] = useState<View>('waiting')
+  const [checking, setChecking] = useState<{ roll: Roll; result: 'REWORK' | 'REJECT' } | null>(null)
+  const [passing, setPassing] = useState<string | null>(null)
   const summary = useApi<QcSummary>('/qc/summary')
-  const recent = usePaged<Roll>('/qc/rolls', 60)
-  // Rolls back from rework are checked first.
-  const reworked = (r: Roll) => r.qcRecords.some((q) => q.result === 'REWORK')
-  const waiting = [...(pending.data ?? [])].sort((a, b) => Number(reworked(b)) - Number(reworked(a)))
-  const history = recent.rows
-    .flatMap((roll) => roll.qcRecords.map((q) => ({ ...q, roll })))
-    .sort((a, b) => (a.checkedAt < b.checkedAt ? 1 : -1))
-  const [defectFor, setDefectFor] = useState<{ roll: Roll; result: QCResult } | null>(null)
-  const reload = () => {
-    pending.reload()
-    summary.reload()
-    recent.reload()
-  }
+  const recent = useApi<QcSummary>(`/qc/summary?from=${dayFromToday(-WINDOW_DAYS)}`)
+  const current = VIEWS.find((v) => v.key === view)!
+  const list = usePaged<Roll>(`/qc/rolls?status=${current.status}`, 50)
   const counts = summary.data?.counts
-
+  const countOf: Record<View, number | undefined> = {
+    waiting: counts?.PENDING_QC,
+    passed: counts && counts.PASSED + counts.DISPATCHED,
+    rejected: counts?.REJECTED,
+  }
+  // Pass needs nothing more: one click sends the roll to Dispatch.
   async function pass(roll: Roll) {
-    if (await mutate(`/qc/rolls/${roll.id}/inspect`, 'POST', { result: 'PASS' }, `${roll.rollNo} passed`)) reload()
+    setPassing(roll.id)
+    try {
+      await api(`/qc/rolls/${roll.id}/inspect`, { method: 'POST', body: { result: 'PASS' } })
+      toast.success(`${roll.rollNo} passed, ready for dispatch`)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Something went wrong.')
+    } finally {
+      setPassing(null)
+    }
   }
 
-  const waitingCols: ColumnDef<Roll>[] = [
-    { accessorKey: 'rollNo', header: 'Roll', cell: ({ row: { original: r } }) => <RollLink id={r.id} rollNo={r.rollNo} /> },
-    { id: 'order', header: 'Order', accessorFn: (r) => `${r.order.orderNo} · ${r.order.fabricType} ${r.order.colour}` },
-    { id: 'machine', header: 'Machine', accessorFn: (r) => r.machine.code },
-    { id: 'qty', header: 'Length', accessorFn: (r) => r.qty, cell: ({ row: { original: r } }) => formatQty(r.qty) },
+  // Recent figures: every pass, rework or reject re-reads them, so the rate moves as you work.
+  const c = recent.data?.counts
+  const passed = c ? c.PASSED + c.DISPATCHED : 0
+  const checkedCount = c ? passed + c.REWORK + c.REJECTED : 0
+  const passRate = checkedCount ? Math.round((passed / checkedCount) * 1000) / 10 : null
+  const topDefect = recent.data?.defectsByType.slice().sort((a, b) => b.count - a.count)[0]
+
+  // Every list traces a roll to its order and machine. No column sorting: newest on top.
+  const base: ColumnDef<Roll>[] = [
     {
-      accessorKey: 'status',
-      header: 'Status',
-      cell: ({ row: { original: r } }) => (reworked(r) ? <Pill tone="watch">Back from rework</Pill> : <StatusPill status={r.status} />),
-    },
-    {
-      id: 'act',
-      header: '',
+      accessorKey: 'rollNo',
+      header: 'Roll',
+      meta: { width: '18%' },
       enableSorting: false,
-      cell: ({ row: { original: r } }) => (
-        <div className="flex justify-end gap-1">
-          <Button size="xs" className="bg-good text-white hover:bg-good/90" onClick={() => pass(r)}>
-            Pass
-          </Button>
-          <Button size="xs" variant="outline" onClick={() => setDefectFor({ roll: r, result: 'REWORK' })}>
-            Rework
-          </Button>
-          <Button size="xs" variant="destructive" onClick={() => setDefectFor({ roll: r, result: 'REJECT' })}>
-            Reject
-          </Button>
-        </div>
-      ),
+      cell: ({ row: { original: r } }) => {
+        const last = r.qcRecords[0]
+        return (
+          <div className="leading-tight">
+            <RollLink id={r.id} rollNo={r.rollNo} />
+            <p className="text-xs text-muted-foreground tabular-nums">{formatQty(r.qty)}</p>
+            {view === 'waiting' && last?.result === 'REWORK' && <p className="text-xs font-medium text-watch">Re-check{last.defectType ? ` · ${last.defectType}` : ''}</p>}
+          </div>
+        )
+      },
     },
+    { id: 'order', header: 'Order', meta: { width: '24%' }, enableSorting: false, cell: ({ row: { original: r } }) => order(r) },
+    { id: 'machine', header: 'Machine', meta: { width: '12%' }, enableSorting: false, accessorFn: (r) => r.machine.code },
   ]
+  const checked: ColumnDef<Roll> = {
+    id: 'checked',
+    header: 'Checked',
+    meta: { width: '26%' },
+    enableSorting: false,
+    cell: ({ row: { original: r } }) => {
+      const last = r.qcRecords[0]
+      if (!last) return none
+      return (
+        <div className="leading-tight">
+          <p>{formatDateTime(last.checkedAt)}</p>
+          <p className="text-xs text-muted-foreground">{last.inspector.name}</p>
+        </div>
+      )
+    },
+  }
+  const columns: ColumnDef<Roll>[] =
+    view === 'waiting'
+      ? [
+          ...base,
+          { id: 'made', header: 'Made', meta: { width: '20%' }, enableSorting: false, accessorFn: (r) => formatDateTime(r.createdAt) },
+          {
+            id: 'act',
+            header: '',
+            meta: { width: '26%' },
+            enableSorting: false,
+            cell: ({ row: { original: r } }) => (
+              <div className="flex justify-end gap-1">
+                <Button size="xs" className="bg-good text-white hover:bg-good/90" disabled={passing === r.id} onClick={() => pass(r)}>
+                  Pass
+                </Button>
+                <Button size="xs" variant="outline" onClick={() => setChecking({ roll: r, result: 'REWORK' })}>
+                  Rework
+                </Button>
+                <Button size="xs" variant="destructive" onClick={() => setChecking({ roll: r, result: 'REJECT' })}>
+                  Reject
+                </Button>
+              </div>
+            ),
+          },
+        ]
+      : view === 'passed'
+        ? [...base, checked, { id: 'now', header: 'Now', meta: { width: '20%' }, enableSorting: false, cell: ({ row: { original: r } }) => (r.status === 'DISPATCHED' ? <Pill>Dispatched</Pill> : <Pill tone="good">In store</Pill>) }]
+        : [...base, checked, { id: 'defect', header: 'Defect', meta: { width: '20%' }, enableSorting: false, cell: ({ row: { original: r } }) => r.qcRecords[0]?.defectType ?? none }]
 
   return (
-    <div className="space-y-6">
-      <PageHead eyebrow="Quality" title="Before it leaves the line" lede="Each roll is traced to its order and machine, so a defect leads back to its cause." />
-      <div className="grid gap-4 sm:grid-cols-4">
-        <KpiCard label="Waiting for check" tone="watch" value={String(waiting.length)} loading={pending.loading} />
-        <KpiCard
-          label="Pass rate"
-          tone="good"
-          value={summary.data?.passRate == null ? '—' : `${summary.data.passRate}%`}
-          hint={counts && `${(counts.PASSED + counts.DISPATCHED).toLocaleString('en-IN')} rolls passed`}
-          loading={summary.loading}
-        />
-        <KpiCard label="In rework" tone="watch" value={String(counts?.REWORK ?? 0)} hint="Back on the finishing line" loading={summary.loading} />
-        <KpiCard
-          label="Rejected"
-          tone="problem"
-          value={(counts?.REJECTED ?? 0).toLocaleString('en-IN')}
-          hint={summary.data?.defectsByType.slice().sort((a, b) => b.count - a.count)[0] && `Most common: ${summary.data.defectsByType.slice().sort((a, b) => b.count - a.count)[0].defectType}`}
-          loading={summary.loading}
-        />
+    <div className="space-y-5">
+      <PageHead eyebrow="Before it leaves the line" title="Quality check" />
+      {(summary.error || list.error) && <p className="text-sm text-problem">{summary.error || list.error}</p>}
+
+      <section className="figures-panel">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Figure
+            label="Waiting for check"
+            onClick={() => setView('waiting')}
+            active={view === 'waiting'}
+            tone={countOf.waiting ? 'watch' : undefined}
+            value={rolls(countOf.waiting ?? 0)}
+            note={countOf.waiting ? 'Pass, rework or reject each one' : 'Nothing waiting'}
+            loading={summary.loading}
+          />
+          <Figure
+            label="Pass rate"
+            onClick={() => setView('passed')}
+            active={view === 'passed'}
+            tone={passRate == null ? undefined : passRate >= 90 ? 'good' : passRate >= 75 ? 'watch' : 'problem'}
+            value={passRate == null ? '—' : `${passRate}%`}
+            note={`${passed.toLocaleString('en-IN')} of ${checkedCount.toLocaleString('en-IN')} checked · last ${WINDOW_DAYS} days`}
+            loading={recent.loading}
+          />
+          <Figure label="Sent for rework" value={rolls(c?.REWORK ?? 0)} note={`Back to weaving or dyeing · last ${WINDOW_DAYS} days`} loading={recent.loading} />
+          <Figure
+            label="Rejected"
+            onClick={() => setView('rejected')}
+            active={view === 'rejected'}
+            tone={c?.REJECTED ? 'problem' : undefined}
+            value={rolls(c?.REJECTED ?? 0)}
+            note={topDefect ? `Most common: ${topDefect.defectType.toLowerCase()} · last ${WINDOW_DAYS} days` : `Last ${WINDOW_DAYS} days`}
+            loading={recent.loading}
+          />
+        </div>
+      </section>
+
+      <div className="flex flex-wrap gap-1">
+        {VIEWS.map((v) => (
+          <Button key={v.key} size="sm" variant={v.key === view ? 'secondary' : 'ghost'} className="gap-1.5" onClick={() => setView(v.key)}>
+            <span className={`size-2 rounded-full ${v.dot}`} />
+            {v.label}
+            <span className="text-xs text-muted-foreground tabular-nums">{countOf[v.key]?.toLocaleString('en-IN') ?? '–'}</span>
+          </Button>
+        ))}
       </div>
 
-      <section className="space-y-3">
-        <h2 className="section-head">Waiting for check</h2>
-        <DataTable
-          columns={waitingCols}
-          data={waiting}
-          loading={pending.loading}
-          empty={<EmptyState icon={ClipboardCheck} line="No rolls waiting. Nice." />}
-        />
-      </section>
+      <DataTable key={view} columns={columns} data={list.rows} loading={list.loading} empty={<EmptyState icon={ClipboardCheck} line={current.empty} />} />
+      <LoadMore hasMore={list.hasMore} more={list.more} />
 
-      <section className="space-y-3">
-        <h2 className="section-head">QC log</h2>
-        <DataTable columns={historyCols} data={history} loading={recent.loading} empty="No rolls checked yet." />
-        <LoadMore hasMore={recent.hasMore} more={recent.more} />
-      </section>
-
-      <DefectDialog target={defectFor} onClose={() => setDefectFor(null)} onSaved={reload} />
+      {checking && <CheckDialog roll={checking.roll} result={checking.result} onClose={() => setChecking(null)} />}
     </div>
   )
 }
 
-function DefectDialog({ target, onClose, onSaved }: { target: { roll: Roll; result: QCResult } | null; onClose: () => void; onSaved: () => void }) {
+// Yarn can't be redone, so rework goes back to weaving or dyeing.
+const REWORK_STAGES: Stage[] = ['WEAVING', 'DYEING']
+const choice = (on: boolean, onClass: string) =>
+  cn('rounded-lg border text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50', on ? onClass : 'border-input text-zinc-600 hover:bg-zinc-50')
+
+// The popup for a failed roll. Rework sends its fabric back to a stage under the same order;
+// reject sends it to waste and raises a priority order to make it again.
+function CheckDialog({ roll, result, onClose }: { roll: Roll; result: 'REWORK' | 'REJECT'; onClose: () => void }) {
   const [defectType, setDefectType] = useState('')
+  const [reworkStage, setReworkStage] = useState<Stage | ''>('')
   const [notes, setNotes] = useState('')
-  if (!target) return null
-  const verb = target.result === 'REWORK' ? 'Rework' : 'Reject'
+  const [busy, setBusy] = useState(false)
+  const before = roll.qcRecords[0]?.result === 'REWORK' ? roll.qcRecords[0] : null
+  const length = formatQty(roll.qty)
+  const ready = !!defectType && (result === 'REJECT' || !!reworkStage)
+
+  const outcome =
+    result === 'REJECT'
+      ? `This roll goes to Waste. A new priority order for ${length} is created for ${roll.order.buyer.name}.`
+      : reworkStage
+        ? `${roll.order.orderNo} goes back to the ${label(reworkStage).toLowerCase()} list for ${length}${reworkStage === 'WEAVING' ? ', then dyeing' : ''}. Same order number.`
+        : null
+  const cta = result === 'REJECT' ? 'Reject roll' : reworkStage ? `Move to ${label(reworkStage).toLowerCase()}` : 'Move'
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    const ok = await mutate(`/qc/rolls/${target!.roll.id}/inspect`, 'POST', { result: target!.result, defectType, notes: notes || undefined }, target!.result === 'REJECT' ? `${target!.roll.rollNo} rejected: moved to Waste, priority remake order opened` : `${target!.roll.rollNo} sent for rework: its order is back on the line with priority`)
-    if (ok) {
-      onSaved()
+    if (!ready) return
+    setBusy(true)
+    const body = { result, defectType, notes: notes.trim() || undefined, ...(result === 'REWORK' ? { reworkStage } : {}) }
+    try {
+      const saved = await api<Roll & { replacementOrder?: { orderNo: string } }>(`/qc/rolls/${roll.id}/inspect`, { method: 'POST', body })
+      toast.success(
+        result === 'REWORK' ? `${roll.rollNo} sent back to ${label(reworkStage as Stage).toLowerCase()}` : `${roll.rollNo} rejected. Priority order ${saved.replacementOrder?.orderNo ?? ''} created`,
+      )
       onClose()
-      setDefectType('')
-      setNotes('')
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Something went wrong.')
+      setBusy(false)
     }
   }
 
@@ -149,33 +242,54 @@ function DefectDialog({ target, onClose, onSaved }: { target: { roll: Roll; resu
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>
-            {verb} {target.roll.rollNo}
+            {result === 'REWORK' ? 'Rework' : 'Reject'} {roll.rollNo} · {length}
           </DialogTitle>
+          <DialogDescription>{[roll.order.orderNo, roll.order.fabricType, roll.order.colour, `made on ${roll.machine.code}`].filter(Boolean).join(' · ')}</DialogDescription>
         </DialogHeader>
-        <p className="text-xs text-muted-foreground">
-          {target.roll.order.orderNo} · made on {target.roll.machine.code}
-        </p>
-        <p className="rounded-lg bg-zinc-50 p-2 text-sm text-ink-2">
-          {target.result === 'REJECT'
-            ? 'The roll goes to Waste, and a new priority order is opened to make its metres again for the same buyer.'
-            : 'The roll goes back to the finishing line. Its order jumps the production queue, with this reason, until it is redone and returned here.'}
-        </p>
-        <form id="defect" onSubmit={submit} className="space-y-4">
-          <Field label="Defect" htmlFor="defectType">
-            <select id="defectType" required className={selectClass} value={defectType} onChange={(e) => setDefectType(e.target.value)}>
-              <option value="">Select…</option>
+        <form id="check-roll" onSubmit={submit} className="grid gap-4">
+          {before && (
+            <p className="rounded-lg bg-watch-bg px-3 py-2 text-xs text-watch">
+              Back from rework{before.defectType ? `: ${before.defectType.toLowerCase()}` : ''}.
+            </p>
+          )}
+          <Field label="Reason" htmlFor="defect">
+            <div id="defect" role="radiogroup" className="flex flex-wrap gap-1.5">
               {DEFECTS.map((d) => (
-                <option key={d}>{d}</option>
+                <button
+                  key={d}
+                  type="button"
+                  role="radio"
+                  aria-checked={defectType === d}
+                  onClick={() => setDefectType(d)}
+                  className={cn('h-7 rounded-full border px-2.5 text-xs transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50', defectType === d ? 'border-brand bg-brand-tint font-medium text-brand' : 'border-input text-zinc-600 hover:bg-zinc-50')}
+                >
+                  {d}
+                </button>
               ))}
-            </select>
+            </div>
           </Field>
-          <Field label="Notes" htmlFor="notes">
+          {result === 'REWORK' && (
+            <Field label="Send back to" htmlFor="rework-stage">
+              <div id="rework-stage" role="radiogroup" className="grid grid-cols-2 gap-2">
+                {REWORK_STAGES.map((st) => (
+                  <button key={st} type="button" role="radio" aria-checked={reworkStage === st} onClick={() => setReworkStage(st)} className={cn('h-9', choice(reworkStage === st, 'border-brand bg-brand-tint text-brand'))}>
+                    {label(st)}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
+          <Field label="Notes (optional)" htmlFor="notes">
             <Textarea id="notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
+          {outcome && <p className="rounded-lg bg-zinc-50 px-3 py-2 text-xs text-ink-2">{outcome}</p>}
         </form>
         <DialogFooter>
-          <Button type="submit" form="defect" variant={target.result === 'REJECT' ? 'destructive' : 'default'}>
-            {verb} roll
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="check-roll" variant={result === 'REJECT' ? 'destructive' : 'default'} disabled={busy || !ready}>
+            {cta}
           </Button>
         </DialogFooter>
       </DialogContent>

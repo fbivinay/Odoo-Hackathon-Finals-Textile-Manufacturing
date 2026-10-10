@@ -29,6 +29,10 @@ async function main() {
   console.log(machines ? `Set the standard daily capacity on ${machines} machine(s).` : 'Every machine already has a daily capacity.');
   await trimWorkers();
   await trimMachines();
+
+  // Rolls the dataset left "in rework" with no stage to go back to: put them back in the check queue.
+  const rechecks = await prisma.roll.updateMany({ where: { status: 'REWORK', reworkStage: null }, data: { status: 'PENDING_QC' } });
+  if (rechecks.count) console.log(`${rechecks.count} roll(s) back from rework are waiting for a re-check.`);
 }
 
 // The mill runs 4 machines in each stage. Extra ones in the dataset come off the floor (their

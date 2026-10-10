@@ -1,6 +1,6 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { ClipboardCheck, Factory, FlaskConical, Landmark, Lightbulb, LayoutDashboard, Menu, Package, Recycle, ShoppingCart, SlidersHorizontal, Truck, UserCog, Users } from 'lucide-react'
-import { useState, type ComponentType } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { ClipboardCheck, Factory, FlaskConical, Landmark, LayoutDashboard, Lightbulb, Menu, Package, Recycle, ShoppingCart, SlidersHorizontal, Truck, UserCog, Users } from 'lucide-react'
+import { useEffect, useRef, useState, type ComponentType } from 'react'
 import { Assistant } from '@/components/Assistant'
 import { Logo } from '@/components/Logo'
 import { SettingsMenu } from '@/components/SettingsMenu'
@@ -69,7 +69,7 @@ export function Wordmark() {
 function SidebarNav({ user, onNavigate, onSignOut }: { user: User; onNavigate?: () => void; onSignOut: () => void }) {
   return (
     <>
-      <div className="flex h-14 items-center gap-2 border-b border-border px-5">
+      <div className="flex h-14 items-center gap-2 px-5">
         <div className="flex h-6 w-6 items-center justify-center rounded bg-brand text-white">
           <Logo className="size-3.5" />
         </div>
@@ -98,7 +98,7 @@ function SidebarNav({ user, onNavigate, onSignOut }: { user: User; onNavigate?: 
         ))}
       </nav>
 
-      <div className="border-t border-border p-3">
+      <div className="p-3">
         <SettingsMenu user={user} onSignOut={onSignOut} />
       </div>
     </>
@@ -110,6 +110,12 @@ export function AppShell() {
   const navigate = useNavigate()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [confirmLogout, setConfirmLogout] = useState(false)
+  // The page panel scrolls, not the window: each screen opens at its top.
+  const panel = useRef<HTMLDivElement>(null)
+  const { pathname } = useLocation()
+  useEffect(() => {
+    panel.current?.scrollTo({ top: 0 })
+  }, [pathname])
   if (!user) return null
 
   // Log out asks first, so a stray click doesn't end the session.
@@ -125,8 +131,10 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 flex-col border-r border-border bg-white md:flex print:hidden">
+    // The frame: sidebar and the gutter around the page share one surface; the page itself is an
+    // inset panel with a hairline border that scrolls on its own, starting at the top of the window.
+    <div className="flex h-dvh overflow-hidden bg-white print:h-auto print:overflow-visible">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 flex-col md:flex print:hidden">
         <SidebarNav user={user} onSignOut={askSignOut} />
       </aside>
 
@@ -151,24 +159,22 @@ export function AppShell() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex min-w-0 flex-1 flex-col md:pl-60 print:pl-0">
-        <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-white/80 px-4 backdrop-blur sm:px-6 print:hidden">
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setMobileNavOpen(true)}>
-              <Menu className="size-4.5" />
-              <span className="sr-only">Open menu</span>
-            </Button>
-          </div>
-          <div className="text-right leading-tight">
-            <p className="text-xs font-medium">{user.name}</p>
-            <p className="text-[11px] text-muted-foreground">{ROLE_LABEL[user.role]}</p>
-          </div>
+      <div className="flex min-w-0 flex-1 flex-col md:py-3 md:pr-3 md:pl-60 print:p-0">
+        {/* Phones have no sidebar, so a slim bar carries the menu button. */}
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3 md:hidden print:hidden">
+          <Button variant="ghost" size="icon-sm" onClick={() => setMobileNavOpen(true)}>
+            <Menu className="size-4.5" />
+            <span className="sr-only">Open menu</span>
+          </Button>
+          <span className="text-sm font-medium">Everest</span>
         </header>
 
-        {/* Extra room at the bottom so the last row can scroll clear of the Ask Everest button. */}
-        <main className="mx-auto w-full max-w-7xl flex-1 p-4 pb-24 sm:p-6 sm:pb-24">
-          <Outlet />
-        </main>
+        <div ref={panel} data-scroll-root className="min-h-0 flex-1 overflow-y-auto bg-ground md:rounded-2xl md:border md:border-border print:overflow-visible print:rounded-none print:border-0">
+          {/* Extra room at the bottom so the last row can scroll clear of the Ask Everest button. */}
+          <main className="mx-auto w-full max-w-7xl p-4 pb-24 sm:p-6 sm:pb-24">
+            <Outlet />
+          </main>
+        </div>
       </div>
 
       {/* Hidden while a first-time password is still pending: nothing answers until it is set. */}

@@ -25,10 +25,25 @@ const stageTarget = (order, stage) => Number(stage === 'SPINNING' ? order.yarnRe
 // Anything under 1% of the target counts as finished, so rounding never leaves a phantom job.
 const leftOf = (target, done) => (target - done > target * 0.01 ? Math.round((target - done) * 100) / 100 : 0);
 
-// Output so far per order and stage, across every job whatever its status.
-async function stageOutput(orderIds) {
-  const rows = await prisma.productionJob.groupBy({
-    by: ['orderId', 'stage', 'status'],
+// Fabric sent back from quality check, per order: a roll reworked from weaving has to be woven
+// and dyed again, one reworked from dyeing only dyed again. Returns (orderId, stage) => metres.
+async function reworkExtra(orderIds, db = prisma) {
+  const rows = await db.roll.groupBy({
+    by: ['orderId', 'reworkStage'],
+    where: { orderId: { in: orderIds }, status: 'REWORK', reworkStage: { not: null } },
+    _sum: { qty: true },
+  });
+  return (orderId, stage) =>
+    rows
+      .filter((r) => r.orderId === orderId && STAGES.indexOf(r.reworkStage) <= STAGES.indexOf(stage))
+      .reduce((total, r) => total + Number(r._sum.qty || 0), 0);
+}
+
+// Output so far per order and stage, across every job whatever its status. `done` is the order's
+// own quantity; `reworkDone` is fabric made again after quality check sent it back.
+async function stageOutput(orderIds, db = prisma) {
+  const rows = await db.productionJob.groupBy({
+    by: ['orderId', 'stage', 'status', 'rework'],
     where: { orderId: { in: orderIds } },
     _sum: { qtyProduced: true },
     _count: true,
@@ -36,12 +51,12 @@ async function stageOutput(orderIds) {
   const out = new Map();
   for (const row of rows) {
     const key = `${row.orderId}|${row.stage}`;
-    const entry = out.get(key) || { done: 0, running: 0 };
-    entry.done += Number(row._sum.qtyProduced || 0);
+    const entry = out.get(key) || { done: 0, reworkDone: 0, running: 0 };
+    entry[row.rework ? 'reworkDone' : 'done'] += Number(row._sum.qtyProduced || 0);
     if (row.status === 'RUNNING') entry.running += row._count;
     out.set(key, entry);
   }
-  return (orderId, stage) => out.get(`${orderId}|${stage}`) || { done: 0, running: 0 };
+  return (orderId, stage) => out.get(`${orderId}|${stage}`) || { done: 0, reworkDone: 0, running: 0 };
 }
 
 // Orders with work still left in a stage, earliest deadline first. A job closed short of
@@ -50,27 +65,42 @@ async function queue({ stage } = {}) {
   if (!STAGES.includes(stage)) throw badRequest('stage must be SPINNING, WEAVING or DYEING');
   const orders = await prisma.order.findMany({
     where: OPEN,
-    orderBy: [{ deadline: 'asc' }, { id: 'asc' }],
+    // Priority orders (replacements for rejected fabric) jump the list.
+    orderBy: [{ priority: 'desc' }, { deadline: 'asc' }, { id: 'asc' }],
     include: { buyer: { select: { id: true, name: true } } },
   });
-  const output = await stageOutput(orders.map((o) => o.id));
+  const ids = orders.map((o) => o.id);
+  const [output, rework] = await Promise.all([stageOutput(ids), reworkExtra(ids)]);
   const before = STAGES[STAGES.indexOf(stage) - 1];
 
   return orders
     .map((order) => {
-      const target = stageTarget(order, stage);
-      const { done, running } = output(order.id, stage);
-      const remaining = leftOf(target, done);
+      // Two things a stage can owe: the order's own quantity, and rework sent back by quality check.
+      const owed = (st) => {
+        const made = output(order.id, st);
+        const extra = rework(order.id, st);
+        return { own: leftOf(stageTarget(order, st), made.done), again: extra > 0 ? leftOf(extra, made.reworkDone) : 0, extra, made };
+      };
+      const here = owed(stage);
+      const { extra } = here;
+      const target = stageTarget(order, stage) + extra;
+      const done = here.made.done + here.made.reworkDone;
+      const { running } = here.made;
+      const remaining = Math.round((here.own + here.again) * 100) / 100;
       // An order moves on whole: weaving opens only once all its yarn is spun, dyeing only once
       // all its fabric is woven. `available` is then everything this stage still has to make.
-      const handedOver = !before || leftOf(stageTarget(order, before), output(order.id, before).done) === 0;
+      const prior = before ? owed(before) : null;
+      const handedOver = !prior || prior.own + prior.again === 0;
       const available = handedOver ? remaining : 0;
       return {
         id: order.id, orderNo: order.orderNo, fabricType: order.fabricType, buyer: order.buyer, deadline: order.deadline,
         status: order.status, target, done: Math.round(done * 100) / 100, remaining, available, running,
+        priority: order.priority, rework: here.again > 0,
       };
     })
-    .filter((row) => row.remaining > 0 && row.available > 0);
+    .filter((row) => row.remaining > 0 && row.available > 0)
+    // Rework is as urgent as a replacement order: both go ahead of the deadline queue.
+    .sort((x, y) => Number(y.priority || y.rework) - Number(x.priority || x.rework));
 }
 
 // Machines on the floor. Removed ones stay only in old jobs, rolls and reports.
@@ -188,8 +218,12 @@ async function startJob({ orderId, machineId, workerId, shift, qtyPlanned }) {
     });
     if (count === 0) throw conflict(`Machine ${machine.code} is ${machine.status}`, 'MACHINE_BUSY');
 
+    // The order's own quantity is done in this stage and rework is owed: this job is the rework.
+    const [made, again] = await Promise.all([stageOutput([orderId], tx), reworkExtra([orderId], tx)]);
+    const rework = again(orderId, machine.type) > 0 && leftOf(stageTarget(order, machine.type), made(orderId, machine.type).done) === 0;
+
     const job = await tx.productionJob.create({
-      data: { orderId, machineId, workerId, shift, qtyPlanned, stage: machine.type },
+      data: { orderId, machineId, workerId, shift, qtyPlanned, stage: machine.type, rework },
       include: jobInclude,
     });
     await syncStatus(tx, orderId);
@@ -240,8 +274,9 @@ async function finishJob(jobId, status) {
     let produced = Number(job.qtyProduced);
     if (status === 'COMPLETED') {
       const order = await tx.order.findUnique({ where: { id: job.orderId } });
-      const made = await tx.productionJob.aggregate({ where: { orderId: job.orderId, stage: job.stage }, _sum: { qtyProduced: true } });
-      const stageLeft = stageTarget(order, job.stage) - Number(made._sum.qtyProduced || 0);
+      const made = await tx.productionJob.aggregate({ where: { orderId: job.orderId, stage: job.stage, rework: job.rework }, _sum: { qtyProduced: true } });
+      const owed = job.rework ? (await reworkExtra([job.orderId], tx))(job.orderId, job.stage) : stageTarget(order, job.stage);
+      const stageLeft = owed - Number(made._sum.qtyProduced || 0);
       const fill = Math.round(Math.max(0, Math.min(Number(job.qtyPlanned) - produced, stageLeft)) * 100) / 100;
       if (fill > 0) {
         await tx.productionLog.create({ data: { jobId, machineId: job.machineId, qty: fill } });

@@ -151,11 +151,14 @@ export function OrderDetail() {
     <div className="space-y-6">
       {back}
       <PageHead
-        eyebrow={`Ordered ${formatDate(o.createdAt)}`}
+        eyebrow={`Ordered ${formatDate(o.createdAt)}${o.replacesOrderNo ? ` · replaces rejected fabric of ${o.replacesOrderNo}` : ''}`}
         title={o.orderNo}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill status={o.status} />
+            {o.reworkStage && <Pill tone="watch">Rework · back in {o.reworkStage.toLowerCase()}</Pill>}
+            {o.replacesOrderNo && <Pill tone="problem">From reject</Pill>}
+            {(o.priority || o.reworkStage) && <Pill tone="watch">Priority</Pill>}
             {o.isDelayed && <Pill tone="problem">Late</Pill>}
             {o.priority && <Pill tone="problem">Priority</Pill>}
             <Button variant="outline" size="sm" className="gap-1.5" asChild>

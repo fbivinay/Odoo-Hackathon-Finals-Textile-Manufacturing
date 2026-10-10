@@ -1,6 +1,7 @@
 const prisma = require('../lib/prisma');
 const { notFound, badRequest } = require('../lib/errors');
-const { syncStatus, remake } = require('./orderService');
+const orderService = require('./orderService');
+const { syncStatus } = orderService;
 const { pageArgs, toPage, dateRange } = require('../lib/paging');
 
 const ROLL_STATUS = { PASS: 'PASSED', REWORK: 'REWORK', REJECT: 'REJECTED' };
@@ -11,11 +12,13 @@ const rollInclude = {
   qcRecords: { orderBy: { checkedAt: 'desc' }, include: { inspector: { select: { id: true, name: true } } } },
 };
 
-// from/to filter on createdAt.
+// from/to filter on createdAt. `status` takes one value or several, comma separated.
 async function listRolls(query = {}) {
-  const { status, orderId, machineId, from, to } = query;
-  // The QC queue and the rework list skip rolls of cancelled orders: those are unsold stock.
-  const queue = ['PENDING_QC', 'REWORK'].includes(status) ? { order: { status: { not: 'CANCELLED' } } } : {};
+  const { orderId, machineId, from, to } = query;
+  const wanted = String(query.status || '').split(',').filter(Boolean);
+  const status = wanted.length > 1 ? { in: wanted } : wanted[0];
+  // The QC queue skips rolls of cancelled orders: those are unsold stock.
+  const queue = wanted.includes('PENDING_QC') ? { order: { status: { not: 'CANCELLED' } } } : {};
   const rolls = await prisma.roll.findMany({
     where: { status, orderId, machineId, createdAt: dateRange(from, to), ...queue },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -39,14 +42,15 @@ async function getRoll(id) {
   return roll;
 }
 
-// Pass: the roll is finished stock for Dispatch. Reject: it is waste, and a priority remake order is
-// opened for its metres. Rework: it goes back to the finishing line and its order jumps the queue
-// until production sends it back to QC (reworked below).
-async function inspect(rollId, { result, defectType, notes }, userId) {
-  return prisma.$transaction(async (tx) => {
+// Pass: the roll is finished stock, ready for Dispatch.
+// Rework: the roll's fabric goes back to weaving or dyeing under the same order, to be made again;
+//   what comes off that job is cut into new rolls and checked afresh.
+// Reject: the roll is waste, and a priority order is raised to make the same fabric again.
+async function inspect(rollId, { result, defectType, notes, reworkStage }, userId) {
+  const checked = await prisma.$transaction(async (tx) => {
     const roll = await tx.roll.findUnique({ where: { id: rollId }, include: { order: { select: { status: true, note: true } } } });
     if (!roll) throw notFound('Roll not found');
-    if (roll.status !== 'PENDING_QC') throw badRequest(roll.status === 'REWORK' ? 'Roll is in rework; production sends it back to QC when done' : `Roll is already ${roll.status}`);
+    if (roll.status !== 'PENDING_QC') throw badRequest(`Roll is already ${roll.status}`);
     if (roll.order.status === 'CANCELLED') throw badRequest('Order is cancelled; this roll is unsold stock');
 
     await tx.qCRecord.create({
@@ -54,30 +58,51 @@ async function inspect(rollId, { result, defectType, notes }, userId) {
     });
     const updated = await tx.roll.update({
       where: { id: rollId },
-      data: { status: ROLL_STATUS[result] },
+      data: { status: ROLL_STATUS[result], reworkStage: result === 'REWORK' ? reworkStage : null },
       include: rollInclude,
     });
     if (result === 'REWORK') {
+      // Shown on the Orders page: why this order is back on the floor.
       const why = `Rework ${roll.rollNo}${defectType ? `: ${defectType}` : ''}`;
       const kept = (roll.order.note || '').startsWith('Rework ') ? `${roll.order.note}; ` : '';
       await tx.order.update({ where: { id: roll.orderId }, data: { note: kept + why } });
     }
-    const remakeOrder = result === 'REJECT' ? await remake(tx, roll, defectType) : null;
     await syncStatus(tx, roll.orderId);
-    return { ...updated, remake: remakeOrder && { id: remakeOrder.id, orderNo: remakeOrder.orderNo } };
+    return updated;
   });
+  if (result !== 'REJECT') return checked;
+
+  const replacementOrder = await replace(checked, defectType);
+  // `remake` is the same order under the name the Orders screens read.
+  return { ...checked, replacementOrderId: replacementOrder.id, replacementOrder, remake: { id: replacementOrder.id, orderNo: replacementOrder.orderNo } };
 }
 
-// Production has redone a rework roll: it joins the QC queue again.
-async function reworked(rollId) {
-  return prisma.$transaction(async (tx) => {
-    const { count } = await tx.roll.updateMany({ where: { id: rollId, status: 'REWORK' }, data: { status: 'PENDING_QC' } });
-    const roll = await tx.roll.findUnique({ where: { id: rollId }, include: rollInclude });
-    if (!roll) throw notFound('Roll not found');
-    if (!count) throw badRequest(`Roll is ${roll.status}, not in rework`);
-    await syncStatus(tx, roll.orderId);
-    return { ...roll, status: 'PENDING_QC' };
+// A priority order for the rejected roll's length: same buyer, fabric, colour, yarn, price and deadline.
+async function replace(roll, defectType) {
+  const from = await prisma.order.findUnique({ where: { id: roll.orderId } });
+  // A remake of a remake still points at the first order.
+  const rootId = from.remakeOfId || from.id;
+  const root = rootId === from.id ? from : await prisma.order.findUnique({ where: { id: rootId }, select: { orderNo: true } });
+  const share = Number(from.qty) > 0 ? Number(roll.qty) / Number(from.qty) : 0;
+  const made = await orderService.create({
+    buyerId: from.buyerId,
+    materialId: from.materialId || undefined,
+    fabricType: from.fabricType,
+    colour: from.colour || '',
+    qty: Number(roll.qty),
+    yarnRequired: Math.round(Number(from.yarnRequired) * share * 100) / 100,
+    pricePerUnit: Number(from.pricePerUnit),
+    deadline: from.deadline,
+    priority: true,
+    replacesOrderId: from.id,
+    remakeOfId: rootId,
+    note: `Remake for ${root.orderNo}: ${roll.rollNo} rejected${defectType ? ` (${defectType})` : ''}`,
   });
+  await prisma.$transaction(async (tx) => {
+    await tx.roll.update({ where: { id: roll.id }, data: { replacementOrderId: made.id } });
+    await syncStatus(tx, roll.orderId);
+  });
+  return { id: made.id, orderNo: made.orderNo, qty: made.qty };
 }
 
 // Rolls by status, with the share that passed out of everything checked.
@@ -120,4 +145,4 @@ async function summary({ from, to } = {}) {
   };
 }
 
-module.exports = { listRolls, getRoll, inspect, reworked, counts, summary };
+module.exports = { listRolls, getRoll, inspect, counts, summary };

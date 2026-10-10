@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, Plus, Search, UserPlus } from 'lucide-react'
+import { Check, Plus, Search, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { GRANTABLE, ROLE_LABEL } from '@/components/AppShell'
@@ -10,14 +9,11 @@ import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
 import { PageHead } from '@/components/PageHead'
 import { Pill } from '@/components/StatusPill'
-import { KpiCard } from '@/components/tremor/KpiCard'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/ui/password-input'
-import { Skeleton } from '@/components/ui/skeleton'
 import { api, ApiError } from '@/lib/api'
-import { formatDate, formatMoney } from '@/lib/format'
 import { PASSWORD_HINT, PASSWORD_PATTERN } from '@/lib/password'
 import { cn } from '@/lib/utils'
 import { useApi } from '@/lib/useApi'
@@ -83,140 +79,32 @@ function ExtraTabs({ role, value, onChange }: { role: Role; value: string[]; onC
   )
 }
 
-// A floor worker with the machine they last ran and their mark on the latest register day.
-interface Operator {
-  id: string
-  code: string
-  name: string
-  shift: Shift
-  dailyWage: number | string
-  isActive: boolean
-  machine: { code: string; name: string; stage: string } | null
-  status: 'PRESENT' | 'HALF_DAY' | 'ABSENT' | null
-  daysWorked: number
-}
-interface Roster {
-  date: string | null
-  workers: Operator[]
-}
-
-// Staff with no login who report to a role. Only the production floor has a crew today.
-const CREW: Partial<Record<Role, string>> = { PRODUCTION: 'machine operators' }
-const slug = (r: Role) => r.toLowerCase()
-const TEAMS = ROLES.filter((r) => r !== 'OWNER')
-// Chart lines: dark and 2px so the flow reads at a glance.
-const LINE = 'bg-zinc-600 dark:bg-zinc-300'
-
-// Front page: the mill as a chart of roles. Open a role to see its people.
 export function Employees() {
-  const navigate = useNavigate()
-  const employees = useApi<Employee[]>('/users')
-  const roster = useApi<Roster>('/workers/roster')
-  const [adding, setAdding] = useState(false)
-  const loading = (employees.loading && !employees.data) || (roster.loading && !roster.data)
-  // Centre of the first and last column: half a column, where columns share the row minus the 1rem gaps.
-  const inset = `calc((100% - ${TEAMS.length - 1}rem) / ${TEAMS.length * 2})`
-
-  const box = (r: Role) => {
-    const logins = (employees.data ?? []).filter((e) => e.role === r && e.isActive).length
-    const crew = CREW[r] ? (roster.data?.workers ?? []).filter((w) => w.isActive).length : 0
-    return (
-      <button
-        type="button"
-        onClick={() => navigate(`/employees/${slug(r)}`)}
-        className="figure w-full cursor-pointer rounded-xl transition hover:ring-2 hover:ring-brand/30 focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
-      >
-        {loading ? (
-          <Skeleton className="mx-auto h-7 w-40" />
-        ) : (
-          <>
-            <p className="text-xl font-bold text-brand">{ROLE_LABEL[r]}</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {logins} {logins === 1 ? 'login' : 'logins'}
-              {CREW[r] && ` · ${crew} ${CREW[r]}`}
-            </p>
-          </>
-        )}
-      </button>
-    )
-  }
-
-  return (
-    <div className="space-y-5">
-      <PageHead
-        eyebrow="Logins and roles"
-        title="Employees"
-        lede="Open a role to see everyone in it."
-        actions={
-          <Button className="gap-1.5" onClick={() => setAdding(true)}>
-            <UserPlus className="size-4" />
-            New employee
-          </Button>
-        }
-      />
-      {(employees.error || roster.error) && <p className="text-sm text-problem">{employees.error || roster.error}</p>}
-
-      <section className="figures-panel">
-        <div className="mx-auto max-w-sm">{box('OWNER')}</div>
-        <div className={cn('mx-auto h-8 w-0.5', LINE)} />
-        <div className="relative grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Connector bar across the team row, with a stub down to each box (wide screens only). */}
-          <div className={cn('absolute top-0 hidden h-0.5 lg:block', LINE)} style={{ left: inset, right: inset }} />
-          {TEAMS.map((r) => (
-            <div key={r} className="relative lg:pt-8">
-              <div className={cn('absolute top-0 left-1/2 hidden h-8 w-0.5 -translate-x-1/2 lg:block', LINE)} />
-              {box(r)}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {adding && <NewEmployeeDialog onClose={() => setAdding(false)} onSaved={employees.reload} />}
-    </div>
-  )
-}
-
-const MARK = { PRESENT: ['Present', 'good'], HALF_DAY: ['Half day', 'watch'], ABSENT: ['Absent', 'problem'] } as const
-const stageName = (s: string) => s.charAt(0) + s.slice(1).toLowerCase()
-
-// Inside a role: its logins, and for production the machine operators shift by shift.
-export function EmployeeRole() {
-  const { role: param } = useParams()
-  const role = ROLES.find((r) => slug(r) === param)
   const { user } = useSession()
   const employees = useApi<Employee[]>('/users')
-  const roster = useApi<Roster>(role && CREW[role] ? '/workers/roster' : null)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
   const [search, setSearch] = useState('')
-  const [shift, setShift] = useState<Shift | 'ALL'>('ALL')
-  const [state, setState] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL')
+  const [role, setRole] = useState<Role | 'ALL'>('ALL')
+  const [shift, setShift] = useState<Shift | 'ALL' | 'NONE'>('ALL')
 
-  if (!role) return <EmptyState icon={Search} line="No such role." />
-
+  // Matches name, email, role or an additional access, e.g. "store" or "waste".
   const q = search.trim().toLowerCase()
-  const keep = (active: boolean, s: Shift | null | undefined, words: string[]) =>
-    (shift === 'ALL' || s === shift) && (state === 'ALL' || active === (state === 'ACTIVE')) && (!q || words.some((v) => v.toLowerCase().includes(q)))
+  const rows = (employees.data ?? []).filter(
+    (e) =>
+      (role === 'ALL' || e.role === role) &&
+      (shift === 'ALL' || (shift === 'NONE' ? !e.shift : e.shift === shift)) &&
+      (!q || [e.name, e.email, ROLE_LABEL[e.role], e.shift ? SHIFTS[e.shift].name : '', ...keepExtras(e.role, e.extraTabs ?? []).map(tabLabel)].some((v) => v.toLowerCase().includes(q))),
+  )
 
-  const logins = (employees.data ?? []).filter((e) => e.role === role && keep(e.isActive, e.shift, [e.name, e.email, ...keepExtras(e.role, e.extraTabs ?? []).map(tabLabel)]))
-  const crew = roster.data?.workers ?? []
-  const operators = crew.filter((w) => keep(w.isActive, w.shift, [w.name, w.code, w.machine?.code ?? '', w.machine?.name ?? '']))
-  const active = crew.filter((w) => w.isActive)
-  const on = roster.data?.date ? formatDate(roster.data.date) : null
-  const marked = active.filter((w) => w.status)
-  const present = marked.reduce((t, w) => t + (w.status === 'PRESENT' ? 1 : w.status === 'HALF_DAY' ? 0.5 : 0), 0)
-  const crewLoading = roster.loading && !roster.data
-  const filtered = !!q || shift !== 'ALL' || state !== 'ALL'
-  const clear = () => {
-    setSearch('')
-    setShift('ALL')
-    setState('ALL')
-  }
+  const filtered = !!q || role !== 'ALL' || shift !== 'ALL'
 
-  const loginCols: ColumnDef<Employee>[] = [
+  // No column sorting: the list keeps its own order (latest on top, deactivated last).
+  const cols: ColumnDef<Employee>[] = [
     {
       accessorKey: 'name',
-      header: 'Name',
+      header: 'Employee',
+      enableSorting: false,
       cell: ({ row: { original: e } }) => (
         <div className="leading-tight">
           <p className="font-medium">{e.name}</p>
@@ -224,23 +112,38 @@ export function EmployeeRole() {
         </div>
       ),
     },
-    { id: 'shift', header: 'Shift', accessorFn: (e) => (e.shift ? `${SHIFTS[e.shift].name} · ${SHIFTS[e.shift].hours}` : '—') },
+    { id: 'role', header: 'Role', enableSorting: false, accessorFn: (e) => ROLE_LABEL[e.role] },
+    {
+      id: 'shift',
+      header: 'Shift',
+      enableSorting: false,
+      cell: ({ row: { original: e } }) =>
+        e.shift ? (
+          <div className="leading-tight">
+            <p>{SHIFTS[e.shift].name}</p>
+            <p className="text-xs whitespace-nowrap text-muted-foreground">{SHIFTS[e.shift].hours}</p>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
     {
       id: 'extra',
       header: 'Additional access',
       enableSorting: false,
       cell: ({ row: { original: e } }) => {
         const extras = keepExtras(e.role, e.extraTabs ?? [])
-        return extras.length ? (
-          <div className="flex flex-wrap gap-1">
-            {extras.map((t) => (
+        if (!extras.length) return <span className="text-muted-foreground">—</span>
+        return (
+          // Two fit on a row; the rest fold into a count so every row stays one line tall.
+          <div className="flex items-center gap-1" title={extras.map(tabLabel).join(', ')}>
+            {extras.slice(0, 2).map((t) => (
               <span key={t} className="rounded-full bg-brand-tint px-2 py-0.5 text-xs font-medium whitespace-nowrap text-brand">
                 {tabLabel(t)}
               </span>
             ))}
+            {extras.length > 2 && <span className="text-xs text-muted-foreground">+{extras.length - 2}</span>}
           </div>
-        ) : (
-          <span className="text-muted-foreground">—</span>
         )
       },
     },
@@ -251,58 +154,25 @@ export function EmployeeRole() {
       cell: ({ row: { original: e } }) =>
         !e.isActive ? <Pill>Inactive</Pill> : e.mustChangePassword ? <Pill tone="watch">Password not set</Pill> : <Pill tone="good">Active</Pill>,
     },
-  ]
-
-  const crewCols: ColumnDef<Operator>[] = [
-    { accessorKey: 'code', header: 'Code' },
     {
-      accessorKey: 'name',
-      header: 'Name',
-      cell: ({ row: { original: w } }) => <span className={cn('font-medium', !w.isActive && 'text-muted-foreground')}>{w.name}</span>,
-    },
-    {
-      id: 'machine',
-      header: 'Last machine',
-      accessorFn: (w) => w.machine?.code ?? '',
-      cell: ({ row: { original: w } }) =>
-        w.machine ? (
-          <div className="leading-tight">
-            <p>
-              {w.machine.code} · {w.machine.name}
-            </p>
-            <p className="text-xs text-muted-foreground">{stageName(w.machine.stage)}</p>
-          </div>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
-    },
-    {
-      id: 'today',
-      header: on ? `On ${on}` : 'Attendance',
-      accessorFn: (w) => w.status ?? '',
-      cell: ({ row: { original: w } }) =>
-        w.status ? <Pill tone={MARK[w.status][1]}>{MARK[w.status][0]}</Pill> : <span className="text-muted-foreground">Not marked</span>,
-    },
-    { accessorKey: 'daysWorked', header: 'Days this month', cell: ({ row: { original: w } }) => <span className="tabular-nums">{w.daysWorked}</span> },
-    { id: 'wage', header: 'Daily wage', accessorFn: (w) => Number(w.dailyWage), cell: ({ getValue }) => <span className="tabular-nums">{formatMoney(getValue() as number)}</span> },
-    {
-      id: 'status',
-      header: 'Status',
-      accessorFn: (w) => w.isActive,
-      cell: ({ row: { original: w } }) => (w.isActive ? <Pill tone="good">Working</Pill> : <Pill>Left</Pill>),
+      id: 'action',
+      header: '',
+      enableSorting: false,
+      cell: ({ row: { original: e } }) => (
+        <div className="flex justify-end">
+          <Button size="xs" variant="outline" onClick={() => setEditing(e)}>
+            Edit
+          </Button>
+        </div>
+      ),
     },
   ]
 
   return (
-    <div className="space-y-6">
-      <Link to="/employees" className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline">
-        <ArrowLeft className="size-3" />
-        Employees
-      </Link>
+    <div className="space-y-5">
       <PageHead
-        eyebrow="Role"
-        title={ROLE_LABEL[role]}
-        lede={CREW[role] ? `Their logins, and the ${CREW[role]} on each shift.` : 'Everyone with this login role.'}
+        eyebrow="Logins and roles"
+        title="Employees"
         actions={
           <Button className="gap-1.5" onClick={() => setAdding(true)}>
             <UserPlus className="size-4" />
@@ -311,100 +181,54 @@ export function EmployeeRole() {
         }
       />
 
-      {CREW[role] && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCard label="Machine operators" loading={crewLoading} value={String(active.length)} hint={`${crew.length - active.length} have left`} />
-          <KpiCard
-            label={on ? `Present on ${on}` : 'Present'}
-            loading={crewLoading}
-            value={marked.length ? `${present} of ${marked.length}` : '—'}
-            hint={marked.length ? 'Of those marked that day' : 'No register yet'}
-          />
-          <KpiCard
-            label="Average daily wage"
-            loading={crewLoading}
-            value={active.length ? formatMoney(Math.round(active.reduce((t, w) => t + Number(w.dailyWage), 0) / active.length)) : '—'}
-            hint="Working operators"
-          />
-          <KpiCard
-            label="Per shift"
-            loading={crewLoading}
-            value={(Object.keys(SHIFTS) as Shift[]).map((s) => active.filter((w) => w.shift === s).length).join(' / ')}
-            hint="Morning / Evening / Night"
-          />
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:max-w-xs">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            aria-label="Search people"
-            placeholder={CREW[role] ? 'Search name, code or machine' : 'Search name or email'}
-            className="bg-white pl-8"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <Input id="employee-search" type="search" aria-label="Search employees" placeholder="Search name, email or role" className="bg-white pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <select aria-label="Filter by shift" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={shift} onChange={(e) => setShift(e.target.value as Shift | 'ALL')}>
+        <select id="role-filter" aria-label="Filter by role" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-44')} value={role} onChange={(e) => setRole(e.target.value as Role | 'ALL')}>
+          <option value="ALL">All roles</option>
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {ROLE_LABEL[r]}
+            </option>
+          ))}
+        </select>
+        <select id="shift-filter" aria-label="Filter by shift" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={shift} onChange={(e) => setShift(e.target.value as Shift | 'ALL' | 'NONE')}>
           <option value="ALL">All shifts</option>
           {(Object.keys(SHIFTS) as Shift[]).map((s) => (
             <option key={s} value={s}>
               {SHIFTS[s].name}
             </option>
           ))}
+          <option value="NONE">No shift</option>
         </select>
-        <select aria-label="Filter by status" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={state} onChange={(e) => setState(e.target.value as typeof state)}>
-          <option value="ALL">Everyone</option>
-          <option value="ACTIVE">Active</option>
-          <option value="INACTIVE">Inactive or left</option>
-        </select>
-        {filtered && (
-          <Button variant="ghost" size="sm" onClick={clear}>
-            Reset filters
-          </Button>
-        )}
       </div>
 
       {employees.error && <p className="text-sm text-problem">{employees.error}</p>}
-      <section className="space-y-3">
-        <h2 className="section-head">Logins ({logins.length})</h2>
-        <DataTable
-          columns={loginCols}
-          data={logins}
-          loading={employees.loading}
-          onRowClick={setEditing}
-          empty={
-            filtered ? (
-              <EmptyState icon={Search} line="No login matches these filters." actionLabel="Reset filters" onAction={clear} />
-            ) : (
-              <EmptyState icon={UserPlus} line="No one has this role yet." actionLabel="New employee" onAction={() => setAdding(true)} />
-            )
-          }
-        />
-      </section>
+      <DataTable
+        columns={cols}
+        data={rows}
+        loading={employees.loading}
+        empty={
+          filtered ? (
+            <EmptyState
+              icon={Search}
+              line={q ? `No employee matches "${search.trim()}".` : 'No employee matches these filters.'}
+              actionLabel="Clear filters"
+              onAction={() => {
+                setSearch('')
+                setRole('ALL')
+                setShift('ALL')
+              }}
+            />
+          ) : (
+            <EmptyState icon={UserPlus} line="No employees yet." actionLabel="New employee" onAction={() => setAdding(true)} />
+          )
+        }
+      />
 
-      {CREW[role] && roster.error && <p className="text-sm text-problem">{roster.error}</p>}
-      {CREW[role] &&
-        (Object.keys(SHIFTS) as Shift[])
-          .filter((s) => shift === 'ALL' || s === shift)
-          .map((s) => {
-            const rows = operators.filter((w) => w.shift === s)
-            return (
-              <section key={s} className="space-y-3">
-                <h2 className="section-head">
-                  {SHIFTS[s].name} shift · {SHIFTS[s].hours}{' '}
-                  <span className="font-normal text-muted-foreground">
-                    ({rows.length} {CREW[role]})
-                  </span>
-                </h2>
-                <DataTable columns={crewCols} data={rows} loading={roster.loading} empty={filtered ? 'No operator on this shift matches these filters.' : 'No operators on this shift.'} />
-              </section>
-            )
-          })}
-
-      {adding && <NewEmployeeDialog role={role} onClose={() => setAdding(false)} onSaved={employees.reload} />}
+      {adding && <NewEmployeeDialog onClose={() => setAdding(false)} onSaved={employees.reload} />}
       {editing && <EditEmployeeDialog e={editing} self={editing.id === user?.id} onClose={() => setEditing(null)} onSaved={employees.reload} />}
     </div>
   )
@@ -412,8 +236,8 @@ export function EmployeeRole() {
 
 const failed = (err: unknown) => toast.error(err instanceof ApiError ? err.message : 'Something went wrong.')
 
-function NewEmployeeDialog({ role = 'STORE', onClose, onSaved }: { role?: Role; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ name: '', email: '', password: '', role })
+function NewEmployeeDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'STORE' as Role })
   const [extraTabs, setExtraTabs] = useState<string[]>([])
   const [shift, setShift] = useState<Shift | ''>('')
   const [busy, setBusy] = useState(false)
