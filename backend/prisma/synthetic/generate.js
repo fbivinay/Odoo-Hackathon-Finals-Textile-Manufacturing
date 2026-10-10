@@ -11,9 +11,9 @@
 const H = 3600 * 1000;
 const D = 24 * H;
 const IST = 5.5 * H;
-// The mill is simulated from 1 Nov 2022 so that January 2023 opens with orders already on the floor
+// The mill is simulated from 1 Oct 2022 so that January 2023 opens with orders already on the floor
 // and yarn already in the store; the two warm-up months carry over as opening work in progress.
-const START = Date.UTC(2022, 10, 1) - IST; // 2022-11-01 00:00 IST
+const START = Date.UTC(2022, 9, 1) - IST; // 2022-10-01 00:00 IST
 const SHIFT_HOURS = 8;
 const SEED = 20230101;
 
@@ -261,13 +261,16 @@ function generate({ asOfDate }) {
       const buyer = r.weighted(buyers, (b) => b.weight);
       const qty = Math.min(8000, Math.max(500, roundTo(Math.exp(r.normal(Math.log(2300), 0.33)), 100)));
       const material = materials[r.pick(mats)];
-      const booked = createdAt > T - 21 * D && r.chance(0.7); // the extra order book for the coming quarter
+      const booked = createdAt > T - 21 * D && r.chance(1 - 1 / 2.8); // only the boost is book-ahead; the regular flow carries on
       const rush = !booked && r.chance(0.18);
-      const lead = booked ? r.between(25, 92) : rush ? 4 + qty / 600 + r.between(0, 3) : 14 + qty / 260 + r.between(-2, 12);
+      // Pricing spread: rush jobs carry a premium, the biggest buyers negotiate harder, and a few
+      // orders are taken thin to keep looms busy or hold an account.
+      const deal = (rush ? 1.1 : 1) * (buyers.indexOf(buyer) < 5 ? r.between(0.95, 0.97) : 1) * (r.chance(0.03) ? r.between(0.8, 0.86) : 1);
+      const lead = booked ? r.between(25, 92) : rush ? 3 + qty / 700 + r.between(0, 2.5) : 14 + qty / 260 + r.between(-2, 12);
       orders.push({
         id: id('ord'), buyer, material, fabricType: fabric, colour: r.pick(colours), qty,
         yarnRequired: roundTo(qty * kgPerM * 1.04, 5),
-        pricePerUnit: round2(kgPerM * 1.04 * material.base * priceTrend(createdAt) * 1.75 * factor * (1 - buyer.discount) * r.between(0.96, 1.04)),
+        pricePerUnit: round2(kgPerM * 1.04 * material.base * priceTrend(createdAt) * 1.55 * factor * (1 - buyer.discount) * deal * r.between(0.96, 1.04)),
         deadline: createdAt + Math.round(lead * D),
         createdAt, booked, cancelled: r.chance(0.02), badBatch: r.chance(0.05),
       });
@@ -409,7 +412,10 @@ function generate({ asOfDate }) {
   // the deadline. Machines are booked in planned-start order so nothing queues behind the future.
   for (const order of orders) {
     const earliest = order.booked ? order.deadline - Math.round((12 + order.qty / 350 + r.between(5, 12)) * D) : 0;
-    order.plannedStart = Math.max(order.createdAt + Math.round(r.between(6, 36) * H), earliest);
+    // About one regular order in twenty waits 5–12 days for a special yarn or shade before it can start:
+    // the commonest real reason a mill delivers late.
+    const yarnWait = !order.booked && r.chance(0.05) ? Math.round(r.between(5, 12) * D) : 0;
+    order.plannedStart = Math.max(order.createdAt + Math.round(r.between(6, 36) * H) + yarnWait, earliest);
   }
   const trips = [];
   for (const order of [...orders].sort((a, b) => a.plannedStart - b.plannedStart)) {

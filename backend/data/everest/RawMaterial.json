@@ -1,12 +1,12 @@
 [
-{"id":"mat_000001","yarnType":"Cotton 40s","colour":"Raw White","unit":"kg","qtyInStock":955,"reorderLevel":800,"avgCost":261.83,"createdAt":"2022-10-31T18:30:00.000Z"},
-{"id":"mat_000002","yarnType":"Cotton 60s Combed","colour":"Raw White","unit":"kg","qtyInStock":1155,"reorderLevel":500,"avgCost":326.31,"createdAt":"2022-10-31T18:30:00.000Z"},
-{"id":"mat_000003","yarnType":"Cotton 30s","colour":"Raw White","unit":"kg","qtyInStock":1535,"reorderLevel":550,"avgCost":233.52,"createdAt":"2022-10-31T18:30:00.000Z"},
-{"id":"mat_000004","yarnType":"Cotton 10s OE","colour":"Raw White","unit":"kg","qtyInStock":2900,"reorderLevel":1750,"avgCost":178.3,"createdAt":"2022-10-31T18:30:00.000Z"},
-{"id":"mat_000005","yarnType":"Cotton 20s Rope-dyed","colour":"Indigo","unit":"kg","qtyInStock":7700,"reorderLevel":2650,"avgCost":294.07,"createdAt":"2022-10-31T18:30:00.000Z"},
-{"id":"mat_000006","yarnType":"Poly-Cotton 2/40","colour":"Grey","unit":"kg","qtyInStock":3105,"reorderLevel":1850,"avgCost":213.18,"createdAt":"2022-10-31T18:30:00.000Z"},
-{"id":"mat_000007","yarnType":"Polyester 150D Semi-dull","colour":"Raw White","unit":"kg","qtyInStock":2240,"reorderLevel":550,"avgCost":167.22,"createdAt":"2022-10-31T18:30:00.000Z"},
-{"id":"mat_000008","yarnType":"Polyester 75D Bright","colour":"Raw White","unit":"kg","qtyInStock":655,"reorderLevel":250,"avgCost":195.6,"createdAt":"2022-10-31T18:30:00.000Z"},
-{"id":"mat_000009","yarnType":"Viscose 30s","colour":"Natural","unit":"kg","qtyInStock":1390,"reorderLevel":650,"avgCost":256.55,"createdAt":"2022-10-31T18:30:00.000Z"},
-{"id":"mat_000010","yarnType":"Linen 25s","colour":"Natural","unit":"kg","qtyInStock":620,"reorderLevel":450,"avgCost":616.51,"createdAt":"2022-10-31T18:30:00.000Z"}
+{"id":"mat_000001","yarnType":"Cotton 40s","colour":"Raw White","unit":"kg","qtyInStock":1795,"reorderLevel":750,"avgCost":264.17,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"mat_000002","yarnType":"Cotton 60s Combed","colour":"Raw White","unit":"kg","qtyInStock":710,"reorderLevel":450,"avgCost":325.78,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"mat_000003","yarnType":"Cotton 30s","colour":"Raw White","unit":"kg","qtyInStock":1595,"reorderLevel":550,"avgCost":236.4,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"mat_000004","yarnType":"Cotton 10s OE","colour":"Raw White","unit":"kg","qtyInStock":2755,"reorderLevel":1700,"avgCost":180.65,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"mat_000005","yarnType":"Cotton 20s Rope-dyed","colour":"Indigo","unit":"kg","qtyInStock":2615,"reorderLevel":2400,"avgCost":302.74,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"mat_000006","yarnType":"Poly-Cotton 2/40","colour":"Grey","unit":"kg","qtyInStock":3745,"reorderLevel":1750,"avgCost":214.26,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"mat_000007","yarnType":"Polyester 150D Semi-dull","colour":"Raw White","unit":"kg","qtyInStock":2710,"reorderLevel":500,"avgCost":166.65,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"mat_000008","yarnType":"Polyester 75D Bright","colour":"Raw White","unit":"kg","qtyInStock":430,"reorderLevel":300,"avgCost":194.8,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"mat_000009","yarnType":"Viscose 30s","colour":"Natural","unit":"kg","qtyInStock":1945,"reorderLevel":750,"avgCost":257.31,"createdAt":"2022-09-30T18:30:00.000Z"},
+{"id":"mat_000010","yarnType":"Linen 25s","colour":"Natural","unit":"kg","qtyInStock":1750,"reorderLevel":400,"avgCost":606.59,"createdAt":"2022-09-30T18:30:00.000Z"}
 ]

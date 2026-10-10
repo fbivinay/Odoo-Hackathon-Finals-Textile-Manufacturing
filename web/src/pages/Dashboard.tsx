@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { DataTable } from '@/components/DataTable'
-import { label } from '@/components/StatusPill'
+import { Pill, label } from '@/components/StatusPill'
 import { selectClass } from '@/components/Field'
 import { CountUp } from '@/components/CountUp'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -51,14 +51,23 @@ const orderCols: ColumnDef<OrderCost>[] = [
     cell: ({ row: { original: o } }) => (o.costPerUnit === null ? '—' : formatINR(o.costPerUnit)),
   },
   {
-    accessorKey: 'margin',
+    // An order with no yarn issued and no shift worked has no cost yet, so its "margin" would be
+    // the whole order value. Show it as not started (or cancelled) instead, and sort it last.
+    id: 'margin',
     header: 'Margin',
-    cell: ({ row: { original: o } }) => (
-      <span className={o.margin < 0 ? 'text-problem' : 'text-good'}>
-        {formatINR(o.margin)}
-        {o.orderValue > 0 && <span className="ml-1 text-xs text-muted-foreground">{Math.round((o.margin / o.orderValue) * 100)}%</span>}
-      </span>
-    ),
+    accessorFn: (o) => (o.status === 'CANCELLED' || o.totalCost === 0 ? -Infinity : o.margin / (o.orderValue || 1)),
+    cell: ({ row: { original: o } }) =>
+      o.status === 'CANCELLED' ? (
+        <Pill tone="neutral">Cancelled</Pill>
+      ) : o.totalCost === 0 ? (
+        <Pill tone="neutral">Not started</Pill>
+      ) : (
+        <span className={o.margin < 0 ? 'text-problem' : 'text-good'}>
+          {formatINR(o.margin)}
+          {o.orderValue > 0 && <span className="ml-1 text-xs text-muted-foreground">{Math.round((o.margin / o.orderValue) * 100)}%</span>}
+          {!['DISPATCHED', 'READY'].includes(o.status) && <span className="ml-1 text-xs text-ink-3">so far</span>}
+        </span>
+      ),
   },
 ]
 

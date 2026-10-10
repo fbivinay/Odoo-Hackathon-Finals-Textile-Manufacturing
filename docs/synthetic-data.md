@@ -35,8 +35,8 @@ The stream writes only through the API, so the backend's own rules keep data con
 ## How the history is built
 
 - **Calendar.** The mill runs 24 hours in three shifts (06/14/22 IST), Monday to Saturday. It is closed on Sundays and festival holidays. Orders arrive on working days; QC checks happen 07:00–21:00, and trucks leave 09:00–18:00.
-- **Warm start.** Simulation begins 1 Nov 2022, so January 2023 opens with yarn in the store and orders on the floor. The two warm-up months exist only as opening work in progress; the dashboard's year picker starts at 2023.
-- **Orders.** About 55 a month, with an Aug–Oct festive lift and a mild monsoon dip. Quantities are 500–8,000 m, 12 fabrics and 36 buyers. 18% are rush orders. The last three weeks add the order book for the next quarter.
+- **Warm start.** Simulation begins 1 Oct 2022, so January 2023 opens with yarn in the store and orders on the floor. The two warm-up months exist only as opening work in progress; the dashboard's year picker starts at 2023.
+- **Orders.** About 55 a month, with an Aug–Oct festive lift and a mild monsoon dip. Quantities are 500–8,000 m, 12 fabrics and 36 buyers. 18% are rush orders, and about one in twenty waits 5–12 days for a special yarn or shade, which is why about 18% of deliveries run late. The last three weeks add the order book for the next quarter.
 - **Production.** 17 machines (4 spinning, 9 weaving, 4 dyeing). One job is one machine for one shift. There is planned maintenance every 45–75 days and occasional breakdowns.
 - **Yarn and pricing.** Every Monday the store orders roughly what the floor used over the last four weeks, steered toward the next two weeks of planned issues. Each order arrives as two or three trucks spread over the week, so bills follow consumption. Quotes are made off the yarn price index on the day of the order, so the mid-2024 cotton spike passes through to prices instead of sinking a month.
 - **Quality.** About 90% of rolls pass, 6% go to rework and 4% are rejected. Rates are worse in the monsoon, on worse machines and on "bad batch" orders.
@@ -46,20 +46,22 @@ The stream writes only through the API, so the backend's own rules keep data con
 
 | Model | Nov–Dec 2022 | 2023 | 2024 | 2025 | 2026 (to 10 Oct) | Total |
 |---|---|---|---|---|---|---|
-| Order | 107 | 638 | 658 | 703 | 658 | 2764 |
-| MaterialInward | 108 | 736 | 735 | 754 | 573 | 2906 |
-| MaterialIssue | 100 | 627 | 644 | 697 | 555 | 2623 |
-| ProductionJob | 1523 | 10181 | 10543 | 11358 | 8837 | 42442 |
-| Roll | 248 | 1800 | 1830 | 1943 | 1535 | 7356 |
-| QCRecord | 258 | 1916 | 1952 | 2058 | 1629 | 7813 |
-| Dispatch | 83 | 640 | 668 | 704 | 551 | 2646 |
-| Invoice | 83 | 640 | 668 | 704 | 551 | 2646 |
-| Payment | 29 | 720 | 770 | 752 | 637 | 2908 |
-| Attendance | 3286 | 19149 | 19183 | 19887 | 15730 | 77235 |
+| Order | 91 | 627 | 631 | 682 | 625 | 2656 |
+| MaterialInward | 103 | 751 | 764 | 813 | 648 | 3079 |
+| MaterialIssue | 87 | 615 | 614 | 667 | 556 | 2539 |
+| ProductionJob | 1368 | 9792 | 9907 | 10971 | 8766 | 40804 |
+| Roll | 218 | 1710 | 1729 | 1877 | 1514 | 7048 |
+| QCRecord | 229 | 1805 | 1839 | 1988 | 1596 | 7457 |
+| Dispatch | 70 | 627 | 630 | 681 | 550 | 2558 |
+| Invoice | 70 | 627 | 630 | 681 | 550 | 2558 |
+| Payment | 20 | 693 | 711 | 742 | 610 | 2776 |
+| Attendance | 3286 | 19454 | 20182 | 19921 | 15730 | 78573 |
 
-Masters: 8 users, 10 suppliers, 36 buyers, 10 yarns, 72 workers and 17 machines. Suppliers and yarns are a starter set of 10 each; the store adds more from the delivery form.
+Masters: 8 users, 10 suppliers, 36 buyers, 10 yarns (the store can add more), 72 workers and 17 machines.
 
-Invoiced per year: ₹13.46 Cr in 2023, ₹14.78 Cr in 2024, ₹15.30 Cr in 2025 and ₹12.50 Cr in 2026 to 10 Oct. Every month invoices ₹80 L–₹1.7 Cr, with profit after yarn and wages typically 25–45%. Energy, dyes and overheads aren't in the schema, so this is a gross figure.
+Invoiced per year: ₹10.98 Cr in 2023, ₹11.71 Cr in 2024, ₹14.05 Cr in 2025 and ₹11.27 Cr in 2026 to 10 Oct. Every month makes a profit after yarn and wages, from about 4% in the leanest month to 35–40% in the best; 15–30% is typical. Energy, dyes and overheads aren't in the schema, so this is a gross figure.
+
+Per order, a finished order earns a median of about 25% after yarn and labour (10th–90th percentile 18–33%). A few are thin or slightly negative: bad batches, and deals taken to hold an account. Rush orders carry a 10% premium and the five biggest buyers negotiate harder. Orders not yet started, or cancelled, have no cost yet, so the overview shows them as such instead of a 100% margin.
 
 ## Schema notes
 
