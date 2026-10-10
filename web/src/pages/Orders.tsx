@@ -10,19 +10,31 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { formatDate, formatINR, formatQty, toISODate } from '@/lib/format'
-import { isOverdue, yarnShortfall } from '@/lib/textile'
+import { yarnNeed } from '@/lib/textile'
 import { mutate, useApi } from '@/lib/useApi'
-import type { Order, OrderStatus, RawMaterial, Ref } from '@/types'
+import type { MaterialIssue, Order, OrderStatus, RawMaterial, Ref } from '@/types'
 
 const trackingUrl = (token: string) => `${location.origin}/track/${token}`
 
-// ponytail: checks each pending order against current stock on its own; orders competing for
+// ponytail: each order is checked against current stock on its own; orders competing for
 // the same yarn aren't netted against each other.
-function YarnCheck({ o }: { o: Order }) {
-  if (o.status !== 'PENDING') return <span className="text-muted-foreground">Issued</span>
-  if (!o.material) return <span className="text-muted-foreground">—</span>
-  const short = yarnShortfall(o.material.qtyInStock, o.yarnRequired)
-  return short > 0 ? <Pill tone="red">Short {formatQty(short, 'kg')}</Pill> : <Pill tone="green">Enough yarn</Pill>
+function YarnCheck({ o, material, issued, canIssue, onIssued }: { o: Order; material?: RawMaterial; issued: number; canIssue: boolean; onIssued: () => void }) {
+  if (!material || !o.yarnRequired) return <span className="text-muted-foreground">—</span>
+  const { remaining, shortBy } = yarnNeed(o.yarnRequired, issued, material.qtyInStock)
+  if (remaining === 0) return <span className="text-muted-foreground">Issued</span>
+  if (shortBy > 0) return <Pill tone="red">Short {formatQty(shortBy, material.unit)}</Pill>
+  if (!canIssue || ['DISPATCHED', 'CANCELLED'].includes(o.status)) return <Pill tone="green">Enough yarn</Pill>
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      onClick={async () => {
+        if (await mutate('/materials/issues', 'POST', { materialId: material.id, orderId: o.id, qty: remaining }, `${formatQty(remaining, material.unit)} issued to ${o.orderNo}`)) onIssued()
+      }}
+    >
+      Issue {formatQty(remaining, material.unit)}
+    </Button>
+  )
 }
 
 const FILTERS: { label: string; match: (s: OrderStatus) => boolean }[] = [
@@ -36,24 +48,35 @@ const FILTERS: { label: string; match: (s: OrderStatus) => boolean }[] = [
 export function Orders() {
   const { user } = useSession()
   const orders = useApi<Order[]>('/orders')
+  const materials = useApi<RawMaterial[]>('/materials')
+  const issues = useApi<MaterialIssue[]>('/materials/issues')
   const [filter, setFilter] = useState(0)
   const [open, setOpen] = useState(false)
-  const canCreate = user?.role === 'OWNER' || user?.role === 'STORE'
+  const canCreate = ['OWNER', 'STORE', 'DISPATCH'].includes(user?.role ?? '')
+  const canIssue = user?.role === 'OWNER' || user?.role === 'STORE'
+  const issuedTo = (oid: string) => (issues.data ?? []).filter((i) => i.orderId === oid).reduce((a, i) => a + i.qty, 0)
+  const reloadYarn = () => {
+    materials.reload()
+    issues.reload()
+  }
 
   const columns: ColumnDef<Order>[] = [
     { accessorKey: 'orderNo', header: 'Order' },
     { id: 'buyer', header: 'Buyer', accessorFn: (o) => o.buyer.name },
     { id: 'fabric', header: 'Fabric', accessorFn: (o) => `${o.fabricType} · ${o.colour}` },
-    { id: 'qty', header: 'Qty', accessorFn: (o) => Number(o.qty), cell: ({ row: { original: o } }) => formatQty(o.qty) },
+    { id: 'qty', header: 'Qty', accessorFn: (o) => o.qty, cell: ({ row: { original: o } }) => formatQty(o.qty) },
     {
       id: 'deadline',
       header: 'Deadline',
       accessorFn: (o) => o.deadline,
       cell: ({ row: { original: o } }) =>
-        isOverdue(o) ? <span className="font-medium text-rose-600">{formatDate(o.deadline)} · late</span> : formatDate(o.deadline),
+        o.isDelayed ? <span className="font-medium text-rose-600">{formatDate(o.deadline)} · late</span> : formatDate(o.deadline),
     },
     { accessorKey: 'status', header: 'Status', cell: ({ row: { original: o } }) => <StatusPill status={o.status} /> },
-    { id: 'yarn', header: 'Yarn', enableSorting: false, cell: ({ row: { original: o } }) => <YarnCheck o={o} /> },
+    { id: 'yarn', header: 'Yarn', enableSorting: false, cell: ({ row: { original: o } }) => (
+        <YarnCheck o={o} material={materials.data?.find((m) => m.id === o.materialId)} issued={issuedTo(o.id)} canIssue={canIssue} onIssued={reloadYarn} />
+      ),
+    },
     {
       id: 'track',
       header: '',
@@ -108,7 +131,7 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
   const [busy, setBusy] = useState(false)
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value })
   const mat = materials.data?.find((m) => m.id === form.materialId)
-  const short = mat && form.yarnRequired ? yarnShortfall(mat.qtyInStock, form.yarnRequired) : null
+  const short = mat && form.yarnRequired ? yarnNeed(Number(form.yarnRequired), 0, mat.qtyInStock).shortBy : null
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -116,7 +139,7 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
     const ok = await mutate(
       '/orders',
       'POST',
-      { ...form, qty: Number(form.qty), yarnRequired: Number(form.yarnRequired), pricePerUnit: Number(form.pricePerUnit) },
+      { ...form, materialId: form.materialId || undefined, qty: Number(form.qty), yarnRequired: Number(form.yarnRequired), pricePerUnit: Number(form.pricePerUnit) },
       'Order created',
     )
     setBusy(false)

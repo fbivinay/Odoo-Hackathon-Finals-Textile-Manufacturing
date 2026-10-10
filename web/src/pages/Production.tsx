@@ -9,27 +9,29 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatQty, unitFor } from '@/lib/format'
 import { mutate, useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
-import type { MachineBoardRow, MachineStatus, Order, Shift, Stage } from '@/types'
+import type { Board, MachineStatus, Order, Shift, Stage } from '@/types'
+
+type BoardMachine = Board['machines'][number]
 
 const STAGES: Stage[] = ['SPINNING', 'WEAVING', 'DYEING']
 const SHIFTS: Shift[] = ['MORNING', 'EVENING', 'NIGHT']
-const MACHINE_STATUSES: MachineStatus[] = ['IDLE', 'RUNNING', 'BREAKDOWN', 'MAINTENANCE']
+const SETTABLE: MachineStatus[] = ['IDLE', 'BREAKDOWN', 'MAINTENANCE']
 
 export function Production() {
-  const board = useApi<MachineBoardRow[]>('/machines')
-  const [assigning, setAssigning] = useState<MachineBoardRow | null>(null)
-  const ms = board.data ?? []
-  const count = (s: MachineStatus) => ms.filter((m) => m.status === s).length
+  const board = useApi<Board>('/production/board')
+  const [assigning, setAssigning] = useState<BoardMachine | null>(null)
+  const ms = board.data?.machines ?? []
+  const sum = board.data?.summary
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-4">
-        <KpiCard label="Running" value={<span className="text-emerald-600">{count('RUNNING')}</span>} loading={board.loading} />
-        <KpiCard label="Idle" value={<span className="text-amber-600">{count('IDLE')}</span>} hint="Ready for an order" loading={board.loading} />
-        <KpiCard label="Down" value={<span className="text-rose-600">{count('BREAKDOWN') + count('MAINTENANCE')}</span>} hint="Breakdown or maintenance" loading={board.loading} />
+        <KpiCard label="Running" value={<span className="text-emerald-600">{sum?.running}</span>} loading={board.loading} />
+        <KpiCard label="Idle" value={<span className="text-amber-600">{sum?.idle}</span>} hint="Ready for an order" loading={board.loading} />
+        <KpiCard label="Down" value={<span className="text-rose-600">{(sum?.breakdown ?? 0) + (sum?.maintenance ?? 0)}</span>} hint="Breakdown or maintenance" loading={board.loading} />
         <KpiCard
           label="Woven + dyed today"
-          value={formatQty(ms.filter((m) => m.type !== 'SPINNING').reduce((a, m) => a + Number(m.producedToday), 0))}
+          value={formatQty(ms.filter((m) => m.type !== 'SPINNING').reduce((a, m) => a + m.producedToday, 0))}
           loading={board.loading}
         />
       </div>
@@ -52,12 +54,12 @@ export function Production() {
   )
 }
 
-function MachineCard({ m, onChange, onAssign }: { m: MachineBoardRow; onChange: () => void; onAssign: () => void }) {
+function MachineCard({ m, onChange, onAssign }: { m: BoardMachine; onChange: () => void; onAssign: () => void }) {
   const job = m.currentJob
   const unit = unitFor(m.type)
   const [output, setOutput] = useState('')
   const [roll, setRoll] = useState('')
-  const pct = job ? Math.min(100, (Number(job.qtyProduced) / Number(job.qtyPlanned)) * 100) : 0
+  const pct = job?.percent ?? 0
 
   async function run(path: string, method: string, body: unknown, msg: string) {
     if (await mutate(path, method, body, msg)) onChange()
@@ -82,12 +84,12 @@ function MachineCard({ m, onChange, onAssign }: { m: MachineBoardRow; onChange: 
             aria-label={`Set ${m.code} status`}
             className={cn(selectClass, 'h-6 w-auto text-xs')}
             value=""
-            onChange={(e) => run(`/machines/${m.id}`, 'PATCH', { status: e.target.value }, `${m.code} marked ${label(e.target.value)}`)}
+            onChange={(e) => run(`/machines/${m.id}/status`, 'PATCH', { status: e.target.value }, job ? `${m.code} marked ${label(e.target.value)}, job stopped` : `${m.code} marked ${label(e.target.value)}`)}
           >
             <option value="" disabled>
               Change
             </option>
-            {MACHINE_STATUSES.filter((s) => s !== m.status && s !== 'RUNNING').map((s) => (
+            {SETTABLE.filter((s) => s !== m.status).map((s) => (
               <option key={s} value={s}>
                 {label(s)}
               </option>
@@ -116,12 +118,12 @@ function MachineCard({ m, onChange, onAssign }: { m: MachineBoardRow; onChange: 
             className="flex gap-2"
             onSubmit={(e: FormEvent) => {
               e.preventDefault()
-              run(`/jobs/${job.id}`, 'PATCH', { qtyProduced: Number(output) }, 'Output updated').then(() => setOutput(''))
+              run(`/production/jobs/${job.id}/progress`, 'POST', { qty: Number(output) }, `${formatQty(Number(output), unit)} logged`).then(() => setOutput(''))
             }}
           >
-            <Input type="number" min="0" step="0.01" required placeholder={`Total produced (${unit})`} value={output} onChange={(e) => setOutput(e.target.value)} aria-label="Total produced" />
+            <Input type="number" min="0" step="0.01" required placeholder={`Produced since last report (${unit})`} value={output} onChange={(e) => setOutput(e.target.value)} aria-label="Produced since last report" />
             <Button type="submit" size="sm" variant="outline">
-              Update
+              Log output
             </Button>
           </form>
           {m.type === 'DYEING' && (
@@ -129,7 +131,7 @@ function MachineCard({ m, onChange, onAssign }: { m: MachineBoardRow; onChange: 
               className="flex gap-2"
               onSubmit={(e: FormEvent) => {
                 e.preventDefault()
-                run('/rolls', 'POST', { jobId: job.id, qty: Number(roll) }, 'Roll sent to QC').then(() => setRoll(''))
+                run('/production/rolls', 'POST', { jobId: job.id, qty: Number(roll) }, 'Roll sent to QC').then(() => setRoll(''))
               }}
             >
               <Input type="number" min="0.01" step="0.01" required placeholder="Roll length (m)" value={roll} onChange={(e) => setRoll(e.target.value)} aria-label="Roll length" />
@@ -138,7 +140,7 @@ function MachineCard({ m, onChange, onAssign }: { m: MachineBoardRow; onChange: 
               </Button>
             </form>
           )}
-          <Button size="sm" className="w-full" onClick={() => run(`/jobs/${job.id}`, 'PATCH', { status: 'COMPLETED' }, `${job.order.orderNo} done on ${m.code}`)}>
+          <Button size="sm" className="w-full" onClick={() => run(`/production/jobs/${job.id}/complete`, 'POST', undefined, `${job.order.orderNo} done on ${m.code}`)}>
             Complete {label(m.type).toLowerCase()}
           </Button>
         </>
@@ -163,7 +165,7 @@ const READY_FOR: Record<Stage, Order['status'][]> = {
   DYEING: ['WEAVING', 'DYEING'],
 }
 
-function AssignDialog({ machine, onClose, onSaved }: { machine: MachineBoardRow | null; onClose: () => void; onSaved: () => void }) {
+function AssignDialog({ machine, onClose, onSaved }: { machine: BoardMachine | null; onClose: () => void; onSaved: () => void }) {
   const orders = useApi<Order[]>(machine ? '/orders' : null)
   const [form, setForm] = useState({ orderId: '', shift: 'MORNING', qtyPlanned: '' })
   const [busy, setBusy] = useState(false)
@@ -174,7 +176,7 @@ function AssignDialog({ machine, onClose, onSaved }: { machine: MachineBoardRow 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
-    const ok = await mutate('/jobs', 'POST', { ...form, machineId: machine!.id, qtyPlanned: Number(form.qtyPlanned) }, `Job started on ${machine!.code}`)
+    const ok = await mutate('/production/jobs', 'POST', { ...form, machineId: machine!.id, qtyPlanned: Number(form.qtyPlanned) }, `Job started on ${machine!.code}`)
     setBusy(false)
     if (ok) {
       onSaved()
@@ -201,7 +203,7 @@ function AssignDialog({ machine, onClose, onSaved }: { machine: MachineBoardRow 
                 value={form.orderId}
                 onChange={(e) => {
                   const o = eligible.find((x) => x.id === e.target.value)
-                  setForm({ ...form, orderId: e.target.value, qtyPlanned: o ? (machine.type === 'SPINNING' ? o.yarnRequired : o.qty) : '' })
+                  setForm({ ...form, orderId: e.target.value, qtyPlanned: o ? String(machine.type === 'SPINNING' ? o.yarnRequired : o.qty) : '' })
                 }}
               >
                 <option value="">Select…</option>
@@ -226,7 +228,6 @@ function AssignDialog({ machine, onClose, onSaved }: { machine: MachineBoardRow 
             <Input id="qtyPlanned" type="number" min="0.01" step="0.01" required value={form.qtyPlanned} onChange={(e) => setForm({ ...form, qtyPlanned: e.target.value })} />
           </Field>
         </form>
-        {machine.type === 'SPINNING' && <p className="text-xs text-muted-foreground">Starting spinning issues the order's yarn from the store.</p>}
         <DialogFooter>
           <Button type="submit" form="assign" disabled={busy}>
             {busy ? 'Starting…' : 'Start job'}

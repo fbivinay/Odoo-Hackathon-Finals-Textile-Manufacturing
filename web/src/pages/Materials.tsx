@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { formatDateTime, formatINR, formatQty } from '@/lib/format'
-import { isLowStock } from '@/lib/textile'
 import { mutate, useApi } from '@/lib/useApi'
 import type { MaterialInward, Order, RawMaterial, Ref } from '@/types'
 
@@ -19,11 +18,11 @@ const stockCols: ColumnDef<RawMaterial>[] = [
   {
     id: 'stock',
     header: 'In stock',
-    accessorFn: (m) => Number(m.qtyInStock),
+    accessorFn: (m) => m.qtyInStock,
     cell: ({ row: { original: m } }) => (
       <span className="inline-flex items-center gap-2 tabular-nums">
         {formatQty(m.qtyInStock, m.unit)}
-        {isLowStock(m) && (
+        {m.lowStock && (
           <Pill tone="red">
             <AlertTriangle className="mr-1 size-3" />
             Low stock
@@ -32,8 +31,8 @@ const stockCols: ColumnDef<RawMaterial>[] = [
       </span>
     ),
   },
-  { id: 'reorder', header: 'Reorder at', accessorFn: (m) => Number(m.reorderLevel), cell: ({ row: { original: m } }) => formatQty(m.reorderLevel, m.unit) },
-  { id: 'cost', header: 'Avg cost / kg', accessorFn: (m) => Number(m.avgCost), cell: ({ row: { original: m } }) => formatINR(m.avgCost) },
+  { id: 'reorder', header: 'Reorder at', accessorFn: (m) => m.reorderLevel, cell: ({ row: { original: m } }) => formatQty(m.reorderLevel, m.unit) },
+  { id: 'cost', header: 'Avg cost / kg', accessorFn: (m) => m.avgCost, cell: ({ row: { original: m } }) => formatINR(m.avgCost) },
 ]
 
 const inwardCols: ColumnDef<MaterialInward>[] = [
@@ -41,15 +40,16 @@ const inwardCols: ColumnDef<MaterialInward>[] = [
   { id: 'yarn', header: 'Yarn', accessorFn: (i) => `${i.material.yarnType} · ${i.material.colour}` },
   { id: 'supplier', header: 'Supplier', accessorFn: (i) => i.supplier.name },
   { id: 'order', header: 'For order', accessorFn: (i) => i.order?.orderNo ?? '—' },
-  { id: 'qty', header: 'Qty', accessorFn: (i) => Number(i.qty), cell: ({ row: { original: i } }) => formatQty(i.qty, 'kg') },
-  { id: 'bill', header: 'Bill', accessorFn: (i) => Number(i.billAmount), cell: ({ row: { original: i } }) => formatINR(i.billAmount) },
+  { id: 'qty', header: 'Qty', accessorFn: (i) => i.qty, cell: ({ row: { original: i } }) => formatQty(i.qty, i.material.unit) },
+  { id: 'by', header: 'Received by', accessorFn: (i) => i.receivedBy.name },
+  { id: 'bill', header: 'Bill', accessorFn: (i) => i.billAmount, cell: ({ row: { original: i } }) => formatINR(i.billAmount) },
 ]
 
 export function Materials() {
   const stock = useApi<RawMaterial[]>('/materials')
-  const inwards = useApi<MaterialInward[]>('/inwards')
+  const inwards = useApi<MaterialInward[]>('/materials/inwards')
   const [open, setOpen] = useState(false)
-  const low = stock.data?.filter(isLowStock) ?? []
+  const low = stock.data?.filter((m) => m.lowStock) ?? []
 
   return (
     <div className="space-y-6">
@@ -57,7 +57,7 @@ export function Materials() {
         <KpiCard label="Yarn types" value={stock.data?.length ?? 0} loading={stock.loading} />
         <KpiCard
           label="Total yarn in store"
-          value={formatQty(stock.data?.reduce((a, m) => a + Number(m.qtyInStock), 0) ?? 0, 'kg')}
+          value={formatQty(stock.data?.reduce((a, m) => a + m.qtyInStock, 0) ?? 0, 'kg')}
           loading={stock.loading}
         />
         <KpiCard
@@ -119,7 +119,7 @@ function InwardDialog({
   async function submit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
-    const ok = await mutate('/inwards', 'POST', { ...form, qty: Number(form.qty), rate: Number(form.rate) }, 'Inward recorded, stock updated')
+    const ok = await mutate('/materials/inwards', 'POST', { ...form, orderId: form.orderId || undefined, qty: Number(form.qty), rate: Number(form.rate) }, 'Inward recorded, stock updated')
     setBusy(false)
     if (ok) {
       onSaved()

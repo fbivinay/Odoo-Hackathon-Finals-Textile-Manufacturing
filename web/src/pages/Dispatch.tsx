@@ -11,13 +11,13 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { formatDate, formatINR, formatQty } from '@/lib/format'
 import { mutate, useApi } from '@/lib/useApi'
-import type { Dispatch as DispatchRow, Invoice, Roll } from '@/types'
+import type { Dispatch as DispatchRow, ShelfStock } from '@/types'
 
-const paidOf = (inv: Invoice) => inv.payments.reduce((a, p) => a + Number(p.amount), 0)
+type ShelfGroup = ShelfStock['orders'][number]
 
 export function Dispatch() {
-  const shelf = useApi<Roll[]>('/rolls?status=PASSED')
-  const dispatches = useApi<DispatchRow[]>('/dispatches')
+  const shelf = useApi<ShelfStock>('/dispatch/stock')
+  const dispatches = useApi<DispatchRow[]>('/dispatch')
   const [invoiceOf, setInvoiceOf] = useState<DispatchRow | null>(null)
   const [paying, setPaying] = useState<DispatchRow | null>(null)
   const reload = () => {
@@ -25,19 +25,17 @@ export function Dispatch() {
     dispatches.reload()
   }
 
-  // Passed rolls grouped by order — the finished-goods shelf.
-  const byOrder = new Map<string, Roll[]>()
-  for (const r of shelf.data ?? []) byOrder.set(r.orderId, [...(byOrder.get(r.orderId) ?? []), r])
-  const outstanding = (dispatches.data ?? []).reduce((a, d) => a + (d.invoice ? Number(d.invoice.amount) - paidOf(d.invoice) : 0), 0)
+  const groups = shelf.data?.orders ?? []
+  const outstanding = (dispatches.data ?? []).reduce((a, d) => a + (d.invoice?.balance ?? 0), 0)
 
   const columns: ColumnDef<DispatchRow>[] = [
     { accessorKey: 'dispatchNo', header: 'Dispatch' },
     { id: 'date', header: 'Date', accessorFn: (d) => d.dispatchedAt, cell: ({ row: { original: d } }) => formatDate(d.dispatchedAt) },
     { id: 'buyer', header: 'Buyer', accessorFn: (d) => d.buyer.name },
     { id: 'order', header: 'Order', accessorFn: (d) => d.order.orderNo },
-    { id: 'rolls', header: 'Rolls', accessorFn: (d) => `${d.rolls.length} · ${formatQty(d.rolls.reduce((a, r) => a + Number(r.qty), 0))}` },
+    { id: 'rolls', header: 'Rolls', accessorFn: (d) => `${d.rolls.length} · ${formatQty(d.totalQty)}` },
     { id: 'vehicle', header: 'Vehicle', accessorFn: (d) => d.vehicleNo ?? '—' },
-    { id: 'amount', header: 'Invoice', accessorFn: (d) => Number(d.invoice?.amount ?? 0), cell: ({ row: { original: d } }) => (d.invoice ? formatINR(d.invoice.amount) : '—') },
+    { id: 'amount', header: 'Invoice', accessorFn: (d) => d.invoice?.amount ?? 0, cell: ({ row: { original: d } }) => (d.invoice ? formatINR(d.invoice.amount) : '—') },
     { id: 'status', header: 'Payment', cell: ({ row: { original: d } }) => d.invoice && <StatusPill status={d.invoice.status} /> },
     {
       id: 'act',
@@ -64,8 +62,8 @@ export function Dispatch() {
       <div className="grid gap-4 sm:grid-cols-3">
         <KpiCard
           label="Finished fabric on shelf"
-          value={formatQty((shelf.data ?? []).reduce((a, r) => a + Number(r.qty), 0))}
-          hint={`${shelf.data?.length ?? 0} passed rolls`}
+          value={formatQty(shelf.data?.totalQty ?? 0)}
+          hint={`${shelf.data?.totalRolls ?? 0} passed rolls`}
           loading={shelf.loading}
         />
         <KpiCard label="Dispatches" value={dispatches.data?.length ?? 0} loading={dispatches.loading} />
@@ -74,14 +72,14 @@ export function Dispatch() {
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Ready to load</h2>
-        {!shelf.loading && byOrder.size === 0 ? (
+        {!shelf.loading && groups.length === 0 ? (
           <div className="rounded-lg border bg-card">
             <EmptyState icon={PackageOpen} line="No passed rolls on the shelf." />
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {[...byOrder.values()].map((rolls) => (
-              <LoadCard key={rolls[0].orderId} rolls={rolls} onDone={reload} />
+            {groups.map((g) => (
+              <LoadCard key={g.order.id} group={g} onDone={reload} />
             ))}
           </div>
         )}
@@ -98,12 +96,12 @@ export function Dispatch() {
   )
 }
 
-function LoadCard({ rolls, onDone }: { rolls: Roll[]; onDone: () => void }) {
+function LoadCard({ group, onDone }: { group: ShelfGroup; onDone: () => void }) {
+  const { order: o, rolls } = group
   const [picked, setPicked] = useState<Set<string>>(() => new Set(rolls.map((r) => r.id)))
   const [vehicleNo, setVehicleNo] = useState('')
   const [busy, setBusy] = useState(false)
-  const o = rolls[0].order
-  const qty = rolls.filter((r) => picked.has(r.id)).reduce((a, r) => a + Number(r.qty), 0)
+  const qty = rolls.filter((r) => picked.has(r.id)).reduce((a, r) => a + r.qty, 0)
 
   function toggle(id: string) {
     const next = new Set(picked)
@@ -114,7 +112,7 @@ function LoadCard({ rolls, onDone }: { rolls: Roll[]; onDone: () => void }) {
   async function submit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
-    const ok = await mutate('/dispatches', 'POST', { orderId: rolls[0].orderId, rollIds: [...picked], vehicleNo }, `${o.orderNo} dispatched, invoice raised`)
+    const ok = await mutate('/dispatch', 'POST', { orderId: o.id, rollIds: [...picked], vehicleNo: vehicleNo || undefined }, `${o.orderNo} dispatched, invoice raised`)
     setBusy(false)
     if (ok) onDone()
   }
@@ -122,7 +120,9 @@ function LoadCard({ rolls, onDone }: { rolls: Roll[]; onDone: () => void }) {
   return (
     <form onSubmit={submit} className="space-y-3 rounded-lg border bg-white p-4 shadow-sm">
       <div>
-        <p className="text-sm font-medium">{o.orderNo}</p>
+        <p className="text-sm font-medium">
+          {o.orderNo} · {o.buyer.name}
+        </p>
         <p className="text-xs text-muted-foreground">
           {o.fabricType} · {o.colour}
         </p>
@@ -148,6 +148,8 @@ function LoadCard({ rolls, onDone }: { rolls: Roll[]; onDone: () => void }) {
 
 function InvoiceDialog({ d, onClose }: { d: DispatchRow; onClose: () => void }) {
   const inv = d.invoice
+  // The dispatch carries no price; the invoice amount over the shipped length gives the rate.
+  const rate = inv && d.totalQty ? inv.amount / d.totalQty : 0
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="print-area sm:max-w-lg">
@@ -188,10 +190,10 @@ function InvoiceDialog({ d, onClose }: { d: DispatchRow; onClose: () => void }) 
               <tr key={r.id} className="border-b last:border-0">
                 <td className="py-1">{r.rollNo}</td>
                 <td className="py-1">
-                  {d.order.fabricType} {d.order.colour} @ {formatINR(d.order.pricePerUnit)}/m
+                  {d.order.fabricType} {d.order.colour} @ {formatINR(rate)}/m
                 </td>
                 <td className="py-1 text-right tabular-nums">{formatQty(r.qty)}</td>
-                <td className="py-1 text-right tabular-nums">{formatINR(Number(r.qty) * Number(d.order.pricePerUnit))}</td>
+                <td className="py-1 text-right tabular-nums">{formatINR(r.qty * rate)}</td>
               </tr>
             ))}
           </tbody>
@@ -200,7 +202,7 @@ function InvoiceDialog({ d, onClose }: { d: DispatchRow; onClose: () => void }) 
           <div className="space-y-1 text-right text-sm">
             <p className="font-medium">Total {formatINR(inv.amount)}</p>
             <p className="text-muted-foreground">
-              Paid {formatINR(paidOf(inv))} · <StatusPill status={inv.status} />
+              Paid {formatINR(inv.paid)} · <StatusPill status={inv.status} />
             </p>
           </div>
         )}
@@ -217,7 +219,7 @@ function InvoiceDialog({ d, onClose }: { d: DispatchRow; onClose: () => void }) 
 
 function PaymentDialog({ d, onClose, onSaved }: { d: DispatchRow; onClose: () => void; onSaved: () => void }) {
   const inv = d.invoice!
-  const due = Number(inv.amount) - paidOf(inv)
+  const due = inv.balance
   const [amount, setAmount] = useState(String(due))
   const [method, setMethod] = useState('NEFT')
 

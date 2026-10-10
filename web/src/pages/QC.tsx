@@ -13,9 +13,11 @@ import { formatDateTime, formatQty } from '@/lib/format'
 import { mutate, useApi } from '@/lib/useApi'
 import type { QCRecord, QCResult, Roll } from '@/types'
 
+type LogRow = QCRecord & { roll: Roll }
+
 const DEFECTS = ['Holes', 'Colour mismatch', 'Uneven weaving', 'Stains', 'Broken ends', 'Other']
 
-const historyCols: ColumnDef<QCRecord>[] = [
+const historyCols: ColumnDef<LogRow>[] = [
   { id: 'when', header: 'Checked', accessorKey: 'checkedAt', cell: ({ getValue }) => formatDateTime(getValue<string>()) },
   { id: 'roll', header: 'Roll', accessorFn: (q) => q.roll.rollNo },
   { id: 'order', header: 'Order', accessorFn: (q) => q.roll.order.orderNo },
@@ -26,24 +28,25 @@ const historyCols: ColumnDef<QCRecord>[] = [
 ]
 
 export function QC() {
-  const waiting = useApi<Roll[]>('/rolls?status=PENDING_QC,REWORK')
-  const history = useApi<QCRecord[]>('/qc')
+  // One list of all rolls: the queue is what's waiting, the log is every inspection on them.
+  const rolls = useApi<Roll[]>('/qc/rolls')
+  const waiting = (rolls.data ?? []).filter((r) => r.status === 'PENDING_QC' || r.status === 'REWORK')
+  const history = (rolls.data ?? [])
+    .flatMap((roll) => roll.qcRecords.map((q) => ({ ...q, roll })))
+    .sort((a, b) => (a.checkedAt < b.checkedAt ? 1 : -1))
   const [defectFor, setDefectFor] = useState<{ roll: Roll; result: QCResult } | null>(null)
-  const reload = () => {
-    waiting.reload()
-    history.reload()
-  }
-  const count = (r: QCResult) => history.data?.filter((q) => q.result === r).length ?? 0
+  const reload = rolls.reload
+  const count = (s: Roll['status']) => (rolls.data ?? []).filter((r) => r.status === s).length
 
   async function pass(roll: Roll) {
-    if (await mutate('/qc', 'POST', { rollId: roll.id, result: 'PASS' }, `${roll.rollNo} passed`)) reload()
+    if (await mutate(`/qc/rolls/${roll.id}/inspect`, 'POST', { result: 'PASS' }, `${roll.rollNo} passed`)) reload()
   }
 
   const waitingCols: ColumnDef<Roll>[] = [
     { accessorKey: 'rollNo', header: 'Roll' },
     { id: 'order', header: 'Order', accessorFn: (r) => `${r.order.orderNo} · ${r.order.fabricType} ${r.order.colour}` },
     { id: 'machine', header: 'Machine', accessorFn: (r) => r.machine.code },
-    { id: 'qty', header: 'Length', accessorFn: (r) => Number(r.qty), cell: ({ row: { original: r } }) => formatQty(r.qty) },
+    { id: 'qty', header: 'Length', accessorFn: (r) => r.qty, cell: ({ row: { original: r } }) => formatQty(r.qty) },
     { accessorKey: 'status', header: 'Status', cell: ({ row: { original: r } }) => <StatusPill status={r.status} /> },
     {
       id: 'act',
@@ -68,25 +71,25 @@ export function QC() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-4">
-        <KpiCard label="Waiting for check" value={<span className="text-amber-600">{waiting.data?.length ?? 0}</span>} loading={waiting.loading} />
-        <KpiCard label="Passed" value={<span className="text-emerald-600">{count('PASS')}</span>} loading={history.loading} />
-        <KpiCard label="Rework" value={<span className="text-violet-600">{count('REWORK')}</span>} loading={history.loading} />
-        <KpiCard label="Rejected" value={<span className="text-rose-600">{count('REJECT')}</span>} loading={history.loading} />
+        <KpiCard label="Waiting for check" value={<span className="text-amber-600">{waiting.length}</span>} loading={rolls.loading} />
+        <KpiCard label="Passed" value={<span className="text-emerald-600">{count('PASSED') + count('DISPATCHED')}</span>} loading={rolls.loading} />
+        <KpiCard label="Rework" value={<span className="text-violet-600">{count('REWORK')}</span>} loading={rolls.loading} />
+        <KpiCard label="Rejected" value={<span className="text-rose-600">{count('REJECTED')}</span>} loading={rolls.loading} />
       </div>
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Waiting for check</h2>
         <DataTable
           columns={waitingCols}
-          data={waiting.data ?? []}
-          loading={waiting.loading}
+          data={waiting}
+          loading={rolls.loading}
           empty={<EmptyState icon={ClipboardCheck} line="No rolls waiting. Nice." />}
         />
       </section>
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">QC log</h2>
-        <DataTable columns={historyCols} data={history.data ?? []} loading={history.loading} />
+        <DataTable columns={historyCols} data={history} loading={rolls.loading} />
       </section>
 
       <DefectDialog target={defectFor} onClose={() => setDefectFor(null)} onSaved={reload} />
@@ -102,7 +105,7 @@ function DefectDialog({ target, onClose, onSaved }: { target: { roll: Roll; resu
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    const ok = await mutate('/qc', 'POST', { rollId: target!.roll.id, result: target!.result, defectType, notes }, `${target!.roll.rollNo}: ${verb.toLowerCase()}`)
+    const ok = await mutate(`/qc/rolls/${target!.roll.id}/inspect`, 'POST', { result: target!.result, defectType, notes: notes || undefined }, `${target!.roll.rollNo}: ${verb.toLowerCase()}`)
     if (ok) {
       onSaved()
       onClose()

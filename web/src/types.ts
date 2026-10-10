@@ -1,5 +1,5 @@
-// Mirrors backend/prisma/schema.prisma. Prisma Decimals arrive as strings in JSON.
-export type Dec = string
+// Shapes returned by the backend (see docs/api.md and backend/src/services).
+// Decimals arrive as JSON numbers; dates as ISO strings.
 
 export type Role = 'OWNER' | 'STORE' | 'PRODUCTION' | 'QC' | 'DISPATCH'
 export type Shift = 'MORNING' | 'EVENING' | 'NIGHT'
@@ -28,30 +28,42 @@ export interface Ref {
   name: string
 }
 
+// GET /materials
 export interface RawMaterial {
   id: string
   yarnType: string
   colour: string
   unit: string
-  qtyInStock: Dec
-  reorderLevel: Dec
-  avgCost: Dec
+  qtyInStock: number
+  reorderLevel: number
+  avgCost: number
+  lowStock: boolean
 }
 
+// GET /materials/inwards
 export interface MaterialInward {
   id: string
-  materialId: string
-  supplierId: string
-  orderId: string | null
-  qty: Dec
-  rate: Dec
-  billAmount: Dec
+  qty: number
+  rate: number
+  billAmount: number
   receivedAt: string
-  material: RawMaterial
+  material: Pick<RawMaterial, 'id' | 'yarnType' | 'colour' | 'unit'>
   supplier: Ref
   order: { id: string; orderNo: string } | null
+  receivedBy: Ref
 }
 
+// GET /materials/issues
+export interface MaterialIssue {
+  id: string
+  materialId: string
+  orderId: string
+  qty: number
+  cost: number
+  issuedAt: string
+}
+
+// GET /orders
 export interface Order {
   id: string
   orderNo: string
@@ -60,17 +72,15 @@ export interface Order {
   materialId: string | null
   fabricType: string
   colour: string
-  qty: Dec
-  yarnRequired: Dec
-  pricePerUnit: Dec
+  qty: number
+  yarnRequired: number
+  pricePerUnit: number
   deadline: string
   status: OrderStatus
   createdAt: string
+  isDelayed: boolean
   buyer: Ref
-  material: RawMaterial | null
 }
-
-export type OrderRef = Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour'>
 
 export interface Machine {
   id: string
@@ -87,47 +97,59 @@ export interface ProductionJob {
   stage: Stage
   shift: Shift
   status: JobStatus
-  qtyPlanned: Dec
-  qtyProduced: Dec
+  qtyPlanned: number
+  qtyProduced: number
+  percent: number
   startedAt: string
   completedAt: string | null
-  order: OrderRef
+  order: Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour' | 'qty' | 'deadline'>
+  machine: Pick<Machine, 'id' | 'code' | 'name' | 'type'>
+  worker: { id: string; code: string; name: string } | null
 }
 
-// GET /machines includes the running job (if any) and today's roll output.
-export interface MachineBoardRow extends Machine {
-  currentJob: ProductionJob | null
-  producedToday: Dec
+// GET /production/board
+export interface Board {
+  machines: (Machine & { producedToday: number; currentJob: ProductionJob | null })[]
+  summary: { total: number; running: number; idle: number; breakdown: number; maintenance: number; producedToday: number }
 }
 
+export interface QCRecord {
+  id: string
+  result: QCResult
+  defectType: string | null
+  notes: string | null
+  checkedAt: string
+  inspector: Ref
+}
+
+// GET /qc/rolls
 export interface Roll {
   id: string
   rollNo: string
   orderId: string
   machineId: string
-  jobId: string | null
-  dispatchId: string | null
-  qty: Dec
+  qty: number
   status: RollStatus
   createdAt: string
-  order: OrderRef
-  machine: Pick<Machine, 'id' | 'code' | 'type'>
+  order: Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour'> & { buyer: { name: string } }
+  machine: Pick<Machine, 'id' | 'code' | 'name'>
+  qcRecords: QCRecord[]
 }
 
-export interface QCRecord {
-  id: string
-  rollId: string
-  result: QCResult
-  defectType: string | null
-  notes: string | null
-  checkedAt: string
-  roll: Pick<Roll, 'id' | 'rollNo'> & { order: OrderRef; machine: Pick<Machine, 'id' | 'code'> }
-  inspector: Ref
+// GET /dispatch/stock
+export interface ShelfStock {
+  orders: {
+    order: Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour' | 'qty' | 'deadline'> & { buyer: Ref }
+    rolls: { id: string; rollNo: string; qty: number }[]
+    totalQty: number
+  }[]
+  totalRolls: number
+  totalQty: number
 }
 
 export interface Payment {
   id: string
-  amount: Dec
+  amount: number
   method: string | null
   paidAt: string
 }
@@ -135,46 +157,82 @@ export interface Payment {
 export interface Invoice {
   id: string
   invoiceNo: string
-  amount: Dec
+  amount: number
   status: InvoiceStatus
   issuedAt: string
   payments: Payment[]
+  paid: number
+  balance: number
 }
 
+// GET /dispatch
 export interface Dispatch {
   id: string
   dispatchNo: string
   vehicleNo: string | null
   dispatchedAt: string
-  order: Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour' | 'pricePerUnit'>
+  order: Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour' | 'qty'>
   buyer: Ref
-  rolls: Pick<Roll, 'id' | 'rollNo' | 'qty'>[]
+  rolls: { id: string; rollNo: string; qty: number }[]
+  totalQty: number
   invoice: Invoice | null
 }
 
-// GET /track/:token — public, no auth.
+// GET /track/:token — public, no prices.
 export interface Tracking {
   orderNo: string
-  buyerName: string
+  buyer: string
   fabricType: string
   colour: string
-  qty: Dec
+  qty: number
   deadline: string
   status: OrderStatus
-  producedQty: Dec
-  passedQty: Dec
-  dispatchedQty: Dec
-  updatedAt: string
+  statusLabel: string
+  isDelayed: boolean
+  timeline: { step: OrderStatus; label: string; done: boolean }[]
+  qtyReady: number
+  qtyDispatched: number
+  dispatches: { dispatchNo: string; vehicleNo: string | null; dispatchedAt: string }[]
 }
 
-// GET /reports/owner?month=YYYY-MM — OWNER only.
-export interface OwnerReport {
+// GET /reports/pnl?month=
+export interface Pnl {
   month: string
-  revenue: number // invoiced this month
-  received: number // buyer payments this month
-  materialCost: number // inward bills this month
-  wages: number // wage payments this month
-  profit: number // revenue - materialCost - wages
-  orders: { orderNo: string; buyer: string; materialCost: number; revenue: number; margin: number }[]
-  machines: { code: string; type: Stage; produced: number }[]
+  materialBills: number
+  wagesEarned: number
+  wagesPaid: number
+  invoiced: number
+  paymentsReceived: number
+  profit: number
+  cashFlow: number
+}
+
+// GET /reports/machine-output?month=
+export interface MachineOutput {
+  month: string
+  machines: (Machine & { produced: number })[]
+  daily: { date: string; qty: number }[]
+  total: number
+}
+
+// GET /reports/order-costs
+export interface OrderCost {
+  id: string
+  orderNo: string
+  buyer: Ref
+  fabricType: string
+  colour: string
+  status: OrderStatus
+  qty: number
+  goodQty: number
+  rolls: number
+  rejectedQty: number
+  materialCost: number
+  labourCost: number
+  totalCost: number
+  costPerUnit: number | null
+  costPerRoll: number | null
+  orderValue: number
+  invoiced: number
+  margin: number
 }
