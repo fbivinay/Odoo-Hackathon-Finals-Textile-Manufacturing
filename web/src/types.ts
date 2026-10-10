@@ -66,6 +66,20 @@ export interface MaterialInward {
   receivedBy: Ref
 }
 
+// GET /materials/purchase-orders
+export interface PurchaseOrder {
+  id: string
+  poNo: string
+  qty: number
+  rate: number
+  status: 'PENDING' | 'RECEIVED' | 'CANCELLED'
+  orderedAt: string
+  receivedAt: string | null
+  material: Pick<RawMaterial, 'id' | 'category' | 'yarnType' | 'colour' | 'unit'>
+  supplier: Ref & { phone: string | null }
+  orderedBy: Ref
+}
+
 // GET /materials/issues
 export interface MaterialIssue {
   id: string
@@ -153,7 +167,7 @@ export interface Roll {
 export interface ShelfStock {
   orders: {
     order: Pick<Order, 'id' | 'orderNo' | 'fabricType' | 'colour' | 'qty' | 'deadline'> & { buyer: Ref }
-    rolls: { id: string; rollNo: string; qty: number }[]
+    rolls: { id: string; rollNo: string; qty: number; createdAt?: string }[]
     totalQty: number
   }[]
   totalRolls: number

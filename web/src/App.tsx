@@ -27,6 +27,7 @@ const Customers = page(() => import('@/pages/Customers'), 'Customers')
 const Employees = page(() => import('@/pages/Employees'), 'Employees')
 const SetPassword = page(() => import('@/pages/SetPassword'), 'SetPassword')
 const Customer = page(() => import('@/pages/Customer'), 'Customer')
+const OrderDetail = page(() => import('@/pages/OrderDetail'), 'OrderDetail')
 
 const PAGES: Record<string, ReactNode> = {
   '/dashboard': <Dashboard />,
@@ -73,6 +74,9 @@ export default function App() {
                 {/* Pages reached from inside another page rather than the sidebar. */}
                 <Route element={<ProtectedRoute roles={['STORE', 'PRODUCTION']} tab="/raw-materials" />}>
                   <Route path="/raw-materials/:id" element={<RawMaterial />} />
+                </Route>
+                <Route element={<ProtectedRoute roles={['STORE', 'PRODUCTION', 'DISPATCH']} tab="/orders" />}>
+                  <Route path="/orders/:id" element={<OrderDetail />} />
                 </Route>
                 <Route element={<ProtectedRoute roles={[]} />}>
                   <Route path="/clients/:id" element={<Customer />} />

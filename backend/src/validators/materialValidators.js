@@ -25,4 +25,11 @@ const inwardSchema = z.object({
 
 const issueSchema = z.object({ materialId: id, orderId: id.optional(), qty });
 
-module.exports = { CATEGORIES, createMaterialSchema, updateMaterialSchema, inwardSchema, issueSchema };
+const purchaseOrderSchema = z.object({
+  lines: z.array(z.object({ materialId: id, supplierId: id, qty, rate: money })).min(1),
+});
+
+// What actually arrived; defaults to what was ordered.
+const receiveSchema = z.object({ qty: qty.optional(), rate: money.optional() });
+
+module.exports = { CATEGORIES, createMaterialSchema, updateMaterialSchema, inwardSchema, issueSchema, purchaseOrderSchema, receiveSchema };

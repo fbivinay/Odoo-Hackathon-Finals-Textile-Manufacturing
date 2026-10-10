@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
-import { PackageSearch, Plus, ShoppingCart } from 'lucide-react'
+import { Plus, Search, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
 import { actsAs } from '@/components/AppShell'
@@ -9,49 +10,95 @@ import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { DeliveryEstimate, type Delivery } from '@/components/DeliveryEstimate'
 import { Field, selectClass } from '@/components/Field'
+import { Figure } from '@/components/Figure'
 import { Pill, StatusPill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { formatDate, formatINR, formatQty } from '@/lib/format'
-import { yarnNeed } from '@/lib/textile'
+import { dayFromToday, formatDate, formatINR, formatMoney, formatQty, toISODate } from '@/lib/format'
+import { orderBoxes } from '@/lib/orderStats'
 import { api, ApiError } from '@/lib/api'
-import { useApi, usePaged } from '@/lib/useApi'
-import { LoadMore } from '@/components/LoadMore'
-import { dayFromToday } from '@/lib/format'
-import type { MaterialIssue, Order, OrderStatus, RawMaterial, Ref } from '@/types'
+import { useAll, useApi } from '@/lib/useApi'
+import { cn } from '@/lib/utils'
+import type { Dispatch, Order, OrderStatus, Planning, RawMaterial, Ref } from '@/types'
 
-const trackingUrl = (token: string) => `${location.origin}/track/${token}`
-
-// Yarn is issued by the system when an order is taken or a delivery arrives, so the only
-// thing worth showing is an order still waiting for yarn the store doesn't have.
-function YarnCheck({ o, material, issued }: { o: Order; material?: RawMaterial; issued: number }) {
-  if (!material || !o.yarnRequired || ['DISPATCHED', 'CANCELLED'].includes(o.status)) return null
-  const { remaining } = yarnNeed(o.yarnRequired, issued, 0)
-  return remaining > 0 ? <Pill tone="problem">Short {formatQty(remaining, material.unit)}</Pill> : null
-}
-
-const OPEN = (s: OrderStatus) => !['DISPATCHED', 'CANCELLED'].includes(s)
-const FILTERS = ['All Orders', 'Open', 'Short of yarn', 'Ready for dispatch'] as const
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const THIS_MONTH = new Date().toISOString().slice(0, 7)
+const YEARS = Array.from({ length: +THIS_MONTH.slice(0, 4) - 2022 }, (_, i) => String(+THIS_MONTH.slice(0, 4) - i))
+const STATUS_GROUPS: { label: string; match: (s: OrderStatus) => boolean }[] = [
+  { label: 'All statuses', match: () => true },
+  { label: 'Open', match: (s) => !['DISPATCHED', 'CANCELLED'].includes(s) },
+  { label: 'Not started', match: (s) => s === 'PENDING' },
+  { label: 'In production', match: (s) => ['SPINNING', 'WEAVING', 'DYEING'].includes(s) },
+  { label: 'Quality check', match: (s) => s === 'QC' },
+  { label: 'Ready', match: (s) => s === 'READY' },
+  { label: 'Dispatched', match: (s) => s === 'DISPATCHED' },
+  { label: 'Cancelled', match: (s) => s === 'CANCELLED' },
+]
+const PAGE = 50
+const plural = (n: number, word: string) => `${n.toLocaleString('en-IN')} ${word}${n === 1 ? '' : 's'}`
 
 export function Orders() {
   const { user } = useSession()
-  // "Recent" is the working order book (due from 90 days ago on); a year shows everything placed that year.
-  const [period, setPeriod] = useState('recent')
-  const orders = usePaged<Order>(
-    period === 'recent' ? `/orders?dueFrom=${dayFromToday(-90)}` : `/orders?from=${period}-01-01&to=${period}-12-31`,
-    period === 'recent' ? 500 : 250,
-  )
-  const materials = useApi<RawMaterial[]>('/materials')
-  const issues = useApi<MaterialIssue[]>(`/materials/issues?from=${dayFromToday(-180)}&limit=500`)
-  const [filter, setFilter] = useState(0)
-  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
   const canCreate = actsAs(user, 'STORE', 'DISPATCH')
-  const issuedTo = (oid: string) => (issues.data ?? []).filter((i) => i.orderId === oid).reduce((a, i) => a + i.qty, 0)
+  const [open, setOpen] = useState(false)
 
-  // Yarn still to be issued for an open order.
-  const needsYarn = (o: Order) => OPEN(o.status) && o.yarnRequired > 0 && yarnNeed(o.yarnRequired, issuedTo(o.id), 0).remaining > 0
-  const matches = [() => true, (o: Order) => OPEN(o.status), needsYarn, (o: Order) => o.status === 'READY']
+  // Period for the boxes: a month, or the whole year.
+  const [year, setYear] = useState(THIS_MONTH.slice(0, 4))
+  const [mm, setMm] = useState(THIS_MONTH.slice(5, 7))
+  const whole = mm === 'all'
+  const from = whole ? `${year}-01-01` : `${year}-${mm}-01`
+  const to = whole ? `${year}-12-31` : new Date(Date.UTC(+year, +mm, 0)).toISOString().slice(0, 10)
+  const periodLabel = whole ? year : `${MONTHS[+mm - 1]} ${year}`
+
+  const orders = useAll<Order>('/orders')
+  const dispatches = useAll<Dispatch>(`/dispatch?from=${from}`)
+  const plan = useApi<Planning>('/planning/schedule')
+  const materials = useApi<RawMaterial[]>('/materials?category=YARN')
+  const yarnOf = (id: string | null) => materials.data?.find((m) => m.id === id)
+  const shortOf = useMemo(() => new Map(plan.data?.orders.filter((o) => o.yarnShortBy > 0).map((o) => [o.id, o.yarnShortBy])), [plan.data])
+
+  const today = toISODate(new Date())
+  const boxes = useMemo(
+    () =>
+      orders.rows &&
+      dispatches.rows &&
+      orderBoxes(
+        orders.rows,
+        dispatches.rows.map((d) => ({ ...d, orderId: d.order.id })),
+        { from, to, today, waitingForYarn: plan.data?.orders.filter((o) => o.status === 'PENDING' && o.yarnShortBy > 0).length ?? 0 },
+      ),
+    [orders.rows, dispatches.rows, plan.data, from, to, today],
+  )
+  const loadingBoxes = !boxes
+
+  // The list: every order, searchable and filterable.
+  const [q, setQ] = useState('')
+  const [group, setGroup] = useState(0)
+  const [buyer, setBuyer] = useState('')
+  const [fabric, setFabric] = useState('')
+  const [lateOnly, setLateOnly] = useState(false)
+  const [shown, setShown] = useState(PAGE)
+  const all = useMemo(() => orders.rows ?? [], [orders.rows])
+  const buyers = useMemo(() => [...new Map(all.map((o) => [o.buyer.id, o.buyer.name])).entries()].sort((a, b) => a[1].localeCompare(b[1])), [all])
+  const fabrics = useMemo(() => [...new Set(all.map((o) => o.fabricType))].sort(), [all])
+  const needle = q.trim().toLowerCase()
+  const rows = all
+    .filter(
+    (o) =>
+      STATUS_GROUPS[group].match(o.status) &&
+      (!buyer || o.buyer.id === buyer) &&
+      (!fabric || o.fabricType === fabric) &&
+      (!lateOnly || o.isDelayed) &&
+      (!needle || [o.orderNo, o.buyer.name, o.fabricType, o.colour].some((x) => x.toLowerCase().includes(needle))),
+    )
+    .sort((a, b) => b.orderNo.localeCompare(a.orderNo))
+  const filtersOn = Boolean(needle || group || buyer || fabric || lateOnly)
+  const resetPaging = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v)
+    setShown(PAGE)
+  }
 
   const columns: ColumnDef<Order>[] = [
     {
@@ -60,12 +107,28 @@ export function Orders() {
       cell: ({ row: { original: o } }) => (
         <div className="leading-tight">
           <p className="font-medium">{o.orderNo}</p>
-          <p className="text-xs text-muted-foreground">{o.buyer.name}</p>
+          <p className="text-xs text-muted-foreground">Ordered {formatDate(o.createdAt)}</p>
         </div>
       ),
     },
-    { id: 'fabric', header: 'Fabric', accessorFn: (o) => [o.fabricType, o.colour].filter(Boolean).join(' · ') },
-    { id: 'qty', header: 'Qty', accessorFn: (o) => o.qty, cell: ({ row: { original: o } }) => formatQty(o.qty) },
+    { id: 'client', header: 'Client', accessorFn: (o) => o.buyer.name },
+    {
+      id: 'fabric',
+      header: 'Fabric',
+      accessorFn: (o) => `${o.fabricType} ${o.colour}`,
+      cell: ({ row: { original: o } }) => {
+        const y = yarnOf(o.materialId)
+        return (
+          <div className="leading-tight">
+            <p>{[o.fabricType, o.colour].filter(Boolean).join(' · ')}</p>
+            <p className="text-xs text-muted-foreground">
+              {formatQty(o.qty)}
+              {y && ` · ${y.yarnType}`}
+            </p>
+          </div>
+        )
+      },
+    },
     {
       id: 'deadline',
       header: 'Deadline',
@@ -73,78 +136,192 @@ export function Orders() {
       cell: ({ row: { original: o } }) =>
         o.isDelayed ? <span className="font-medium text-problem">{formatDate(o.deadline)} · late</span> : formatDate(o.deadline),
     },
-    { accessorKey: 'status', header: 'Status', cell: ({ row: { original: o } }) => <StatusPill status={o.status} /> },
-    { id: 'yarn', header: 'Yarn', enableSorting: false, cell: ({ row: { original: o } }) => (
-        <YarnCheck o={o} material={materials.data?.find((m) => m.id === o.materialId)} issued={issuedTo(o.id)} />
-      ),
-    },
     {
-      id: 'track',
-      header: 'Track',
-      enableSorting: false,
+      accessorKey: 'status',
+      header: 'Status',
       cell: ({ row: { original: o } }) => (
-        <Button variant="ghost" size="icon-xs" title="Open tracking page" aria-label={`Open tracking page for ${o.orderNo}`} asChild>
-          <a href={trackingUrl(o.trackingToken)} target="_blank" rel="noreferrer">
-            <PackageSearch className="size-3.5" />
-          </a>
-        </Button>
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <StatusPill status={o.status} />
+          {shortOf.has(o.id) && <Pill tone="problem">Needs {formatQty(shortOf.get(o.id)!, 'kg')} yarn</Pill>}
+        </span>
       ),
     },
   ]
 
-  const rows = orders.rows.filter(matches[filter])
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHead
         eyebrow="From buyers"
-        title="Customer Orders"
+        title="Orders"
         actions={
           canCreate && (
             <Button className="gap-1.5" onClick={() => setOpen(true)}>
               <Plus className="size-4" />
-              New customer order
+              New order
             </Button>
           )
         }
       />
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1">
-          {FILTERS.map((label, i) => (
-            <Button key={label} size="sm" variant={i === filter ? 'secondary' : 'ghost'} onClick={() => setFilter(i)}>
-              {label}
-              <span className="ml-1 text-xs text-muted-foreground">{orders.rows.filter(matches[i]).length}</span>
-            </Button>
-          ))}
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="eyebrow">Orders at a glance</p>
+          <h2 className="section-head mt-1">{periodLabel}</h2>
         </div>
-        <select aria-label="Period" className={`${selectClass} w-28! shrink-0 bg-surface`} value={period} onChange={(e) => setPeriod(e.target.value)}>
-          <option value="recent">Current</option>
-          {Array.from({ length: new Date().getFullYear() - 2022 }, (_, i) => String(new Date().getFullYear() - i)).map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
+        <div className="flex gap-2">
+          <select aria-label="Month" className={cn(selectClass, 'w-36 bg-surface')} value={mm} onChange={(e) => setMm(e.target.value)}>
+            <option value="all">Whole year</option>
+            {MONTHS.map((name, i) => {
+              const v = String(i + 1).padStart(2, '0')
+              return (
+                <option key={v} value={v} disabled={`${year}-${v}` > THIS_MONTH}>
+                  {name}
+                </option>
+              )
+            })}
+          </select>
+          <select
+            aria-label="Year"
+            className={cn(selectClass, 'w-24 bg-surface')}
+            value={year}
+            onChange={(e) => {
+              setYear(e.target.value)
+              if (!whole && `${e.target.value}-${mm}` > THIS_MONTH) setMm(THIS_MONTH.slice(5, 7))
+            }}
+          >
+            {YEARS.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
-      {orders.error && <p className="text-sm text-problem">{orders.error}</p>}
-      <DataTable
-        columns={columns}
-        data={rows}
-        loading={orders.loading}
-        // All Orders lists the newest first; the working filters list the most urgent deadline first.
-        key={filter === 0 ? 'newest' : 'urgent'}
-        initialSorting={filter === 0 ? [{ id: 'orderNo', desc: true }] : [{ id: 'deadline', desc: false }]}
-        empty={
-          <EmptyState
-            icon={ShoppingCart}
-            line={['No orders in this period.', 'No open orders.', 'No order is short of yarn.', 'No orders are ready for dispatch.'][filter]}
-            actionLabel={canCreate && filter < 2 ? 'New customer order' : undefined}
-            onAction={canCreate && filter < 2 ? () => setOpen(true) : undefined}
+      {(orders.error || dispatches.error) && <p className="text-sm text-problem">{orders.error || dispatches.error}</p>}
+
+      <section className="figures-panel">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Figure
+            label="Orders received"
+            value={plural(boxes?.received.count ?? 0, 'order')}
+            note={`${formatQty(boxes?.received.metres ?? 0)} · ${formatMoney(boxes?.received.value ?? 0)}`}
+            loading={loadingBoxes}
           />
-        }
-      />
-      <LoadMore hasMore={orders.hasMore} more={orders.more} />
-      {canCreate && <OrderDialog open={open} onOpenChange={setOpen} onSaved={orders.reload} />}
+          <Figure
+            label="Open orders"
+            value={plural(boxes?.open.count ?? 0, 'order')}
+            note={`Today: ${boxes?.open.inProduction ?? 0} in production · ${boxes?.open.ready ?? 0} ready · ${boxes?.open.notStarted ?? 0} not started`}
+            loading={loadingBoxes}
+          />
+          <Figure
+            label="Waiting to start"
+            tone={boxes?.waiting.forYarn ? 'watch' : undefined}
+            value={plural(boxes?.waiting.count ?? 0, 'order')}
+            note={boxes?.waiting.forYarn ? `${boxes.waiting.forYarn} held up waiting for yarn` : 'None held up for yarn'}
+            loading={loadingBoxes}
+          />
+          <Figure
+            label="Dispatched"
+            tone="good"
+            value={plural(boxes?.dispatched.count ?? 0, 'order')}
+            note={`Fully sent · ${formatQty(boxes?.dispatched.metres ?? 0)} shipped · ${formatMoney(boxes?.dispatched.invoiced ?? 0)} invoiced`}
+            loading={loadingBoxes}
+          />
+          <Figure
+            label="Late / at risk"
+            tone={boxes?.late.count ? 'problem' : undefined}
+            value={plural(boxes?.late.count ?? 0, 'order')}
+            note={`Past deadline today · ${boxes?.late.dueSoon ?? 0} more due in 7 days`}
+            loading={loadingBoxes}
+          />
+          <Figure
+            label="On-time delivery"
+            tone={boxes?.onTime.pct == null ? undefined : boxes.onTime.pct >= 90 ? 'good' : boxes.onTime.pct >= 75 ? 'watch' : 'problem'}
+            value={boxes?.onTime.pct == null ? '—' : `${boxes.onTime.pct}%`}
+            note={boxes?.onTime.avgDays == null ? 'Nothing dispatched in this period' : `Average ${boxes.onTime.avgDays} days from order to dispatch`}
+            loading={loadingBoxes}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="section-head">All orders</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-52 flex-1">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input aria-label="Search orders" placeholder="Search order no., client or fabric" className="pl-8" value={q} onChange={(e) => resetPaging(setQ)(e.target.value)} />
+          </div>
+          <select aria-label="Status" className={cn(selectClass, 'w-40 bg-surface')} value={group} onChange={(e) => resetPaging(setGroup)(+e.target.value)}>
+            {STATUS_GROUPS.map((g, i) => (
+              <option key={g.label} value={i}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+          <select aria-label="Client" className={cn(selectClass, 'w-44 bg-surface')} value={buyer} onChange={(e) => resetPaging(setBuyer)(e.target.value)}>
+            <option value="">All clients</option>
+            {buyers.map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <select aria-label="Fabric" className={cn(selectClass, 'w-36 bg-surface')} value={fabric} onChange={(e) => resetPaging(setFabric)(e.target.value)}>
+            <option value="">All fabrics</option>
+            {fabrics.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+          <label className="flex items-center gap-1.5 text-sm">
+            <input type="checkbox" className="size-4 accent-[#714b67]" checked={lateOnly} onChange={(e) => resetPaging(setLateOnly)(e.target.checked)} />
+            Late only
+          </label>
+          {filtersOn && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setQ('')
+                setGroup(0)
+                setBuyer('')
+                setFabric('')
+                setLateOnly(false)
+                setShown(PAGE)
+              }}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {plural(rows.length, 'order')}
+          {filtersOn && ` of ${all.length.toLocaleString('en-IN')}`} · click an order for its full details
+        </p>
+        <DataTable
+          columns={columns}
+          data={rows.slice(0, shown)}
+          loading={orders.loading}
+          onRowClick={(o) => navigate(`/orders/${o.id}`)}
+          empty={
+            <EmptyState
+              icon={ShoppingCart}
+              line={filtersOn ? 'No orders match these filters.' : 'No orders yet.'}
+              actionLabel={canCreate && !filtersOn ? 'New order' : undefined}
+              onAction={canCreate && !filtersOn ? () => setOpen(true) : undefined}
+            />
+          }
+        />
+        {rows.length > shown && (
+          <div className="flex justify-center">
+            <Button variant="outline" size="sm" onClick={() => setShown((n) => n + PAGE)}>
+              Show more ({(rows.length - shown).toLocaleString('en-IN')} left)
+            </Button>
+          </div>
+        )}
+      </section>
+      {canCreate && <OrderDialog open={open} onOpenChange={setOpen} onSaved={() => {}} />}
     </div>
   )
 }
@@ -195,7 +372,7 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
       const next = { ...f, [k]: e.target.value }
       // A new fabric clears a yarn picked by hand for the previous one.
       if (k === 'fabricType') next.materialId = ''
-      const yarn = usualYarn(next.fabricType) || next.materialId
+      const yarn = next.materialId || usualYarn(next.fabricType)
       if ((k === 'fabricType' || k === 'materialId') && !priceEdited && next.fabricType && yarn) {
         const price = typicalPrice(next.fabricType, yarn)
         if (price) next.pricePerUnit = String(price)
@@ -207,11 +384,11 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
   const [delivery, setDelivery] = useState<Delivery>({ estimate: null, committed: '', reason: '', valid: false })
   const newBuyer = form.buyerId === NEW
   // Worked out on every render, so it is right even if the order history loads after the fabric was picked.
-  const materialId = usualYarn(form.fabricType) || form.materialId
+  // The yarn type is pre-filled with the one this fabric is usually made from; a hand pick wins.
+  const usual = usualYarn(form.fabricType)
+  const materialId = form.materialId || usual
   const yarnKg = Number(form.qty) > 0 ? Math.round(Number(form.qty) * kgPerMetre(form.fabricType)) : 0
   const mat = materials.data?.find((m) => m.id === materialId)
-  // Only a fabric nobody has ordered before needs its yarn picked by hand.
-  const askYarn = Boolean(form.fabricType) && !past.loading && !usualYarn(form.fabricType)
   const ready = Boolean(form.fabricType) && Number(form.qty) > 0 && Boolean(materialId) && yarnKg > 0
   const shortBy = mat ? Math.max(0, yarnKg - mat.qtyInStock) : 0
 
@@ -296,10 +473,22 @@ function OrderDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpenCha
           <Field label="Price (₹/m)" htmlFor="pricePerUnit" hint={form.pricePerUnit && !priceEdited ? 'Usual price' : undefined}>
             <Input id="pricePerUnit" type="number" min="0.01" step="0.01" inputMode="decimal" required value={form.pricePerUnit} onChange={set('pricePerUnit')} />
           </Field>
-          {askYarn && (
+          {form.fabricType && (
             <div className="sm:col-span-2">
-              <Field label="Yarn" htmlFor="materialId" hint="This fabric has not been ordered before, so pick the yarn it is made from.">
-                <select id="materialId" required className={selectClass} value={form.materialId} onChange={set('materialId')}>
+              <Field
+                label="Yarn type"
+                htmlFor="materialId"
+                hint={
+                  past.loading
+                    ? 'Finding the usual yarn…'
+                    : !usual
+                      ? 'This fabric has not been ordered before, so pick the yarn it is made from.'
+                      : materialId === usual
+                        ? `Usual yarn for ${form.fabricType}, change it if needed`
+                        : `Changed from the usual yarn for ${form.fabricType}`
+                }
+              >
+                <select id="materialId" required className={selectClass} value={materialId} onChange={set('materialId')}>
                   <option value="">Select yarn…</option>
                   {materials.data?.map((m) => (
                     <option key={m.id} value={m.id}>

@@ -14,7 +14,7 @@ const prisma = require('../src/lib/prisma');
 const MODELS = [
   'User', 'Supplier', 'Buyer', 'RawMaterial', 'Worker', 'Machine', 'Order', 'MaterialInward',
   'MaterialIssue', 'ProductionJob', 'ProductionLog', 'Dispatch', 'Roll', 'QCRecord', 'Invoice',
-  'Payment', 'Attendance', 'WagePayment',
+  'Payment', 'Attendance', 'WagePayment', 'PurchaseOrder',
 ];
 const delegate = (model) => prisma[model[0].toLowerCase() + model.slice(1)];
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;

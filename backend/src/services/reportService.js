@@ -59,10 +59,10 @@ async function summary() {
 // What it actually cost to make each order: yarn issued + labour time on its jobs.
 // Filters: status, buyerId, from/to (order created), limit/cursor. Totals are summed in the database.
 async function orderCosts(query = {}) {
-  const { status, buyerId, from, to } = query;
-  const filtered = Boolean(status || buyerId || from || to || query.limit);
+  const { id, status, buyerId, from, to } = query;
+  const filtered = Boolean(id || status || buyerId || from || to || query.limit);
   const orders = await prisma.order.findMany({
-    where: { status, buyerId, createdAt: dateRange(from, to) },
+    where: { id, status, buyerId, createdAt: dateRange(from, to) },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     include: { buyer: { select: { id: true, name: true } } },
     ...pageArgs(query),

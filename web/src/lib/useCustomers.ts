@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from './api'
+import { useDataVersion } from './changes'
 import type { Tone } from '@/components/StatusPill'
 import type { CBuyer, CCost, CInvoice, COrder, CustomerStats } from './customers'
 import { fetchAll } from './useApi'
@@ -27,8 +28,15 @@ export function useCustomerData() {
   const [data, setData] = useState<CustomerData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
+  // A save anywhere (an order, a dispatch, a payment) changes the history: drop the copy and reload.
+  const version = useDataVersion()
+  const seen = useRef(version)
 
   useEffect(() => {
+    if (seen.current !== version) {
+      seen.current = version
+      cache = null
+    }
     let live = true
     load()
       .then((d) => live && setData(d))
@@ -39,7 +47,7 @@ export function useCustomerData() {
     return () => {
       live = false
     }
-  }, [nonce])
+  }, [nonce, version])
 
   const reload = useCallback(() => {
     cache = null

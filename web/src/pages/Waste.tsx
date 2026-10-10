@@ -10,6 +10,7 @@ import { RollLink } from '@/components/RollTrace'
 import { KpiCard } from '@/components/tremor/KpiCard'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/auth/session'
+import { useDataVersion } from '@/lib/changes'
 import { api, ApiError } from '@/lib/api'
 import { fetchAll } from '@/lib/useApi'
 import { dayFromToday, formatDayMonth, formatINR, formatMoney, formatQty } from '@/lib/format'
@@ -40,10 +41,10 @@ export function Waste() {
   const [error, setError] = useState<string | null>(null)
   const [jobInfo, setJobInfo] = useState<Map<string, JobInfo>>(new Map())
   const isOwner = user?.role === 'OWNER'
+  const version = useDataVersion()
 
   useEffect(() => {
     let live = true
-    setRolls(null)
     setError(null)
     fetchAll<WasteRoll>(`/qc/rolls?from=${dayFromToday(-days + 1)}`)
       // Dates are bucketed by the mill's day (IST), not UTC.
@@ -52,7 +53,7 @@ export function Waste() {
     return () => {
       live = false
     }
-  }, [days])
+  }, [days, version])
 
   // Cost per metre comes from the owner's order-cost report; other roles see quantities only.
   useEffect(() => {
@@ -64,7 +65,7 @@ export function Waste() {
     return () => {
       live = false
     }
-  }, [days, isOwner])
+  }, [days, isOwner, version])
 
   const today = istIso(new Date().toISOString()).slice(0, 10)
   const summary = useMemo(() => (rolls ? summariseWaste(rolls, costs ?? new Map(), { trend: days <= 30 ? 'day' : 'month' }) : null), [rolls, costs, days])
