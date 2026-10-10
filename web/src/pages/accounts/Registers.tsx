@@ -6,12 +6,13 @@ import { toast } from 'sonner'
 import { DataTable } from '@/components/DataTable'
 import { Field, selectClass } from '@/components/Field'
 import { Pill } from '@/components/StatusPill'
+import { KpiCard } from '@/components/tremor/KpiCard'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { type Bill, type Expense, type Paged, type SalesInvoice, TREATMENT, todayIst } from '@/lib/accounts'
+import { type Bill, type Expense, type Paged, type SalesInvoice, todayIst } from '@/lib/accounts'
 import { api, ApiError } from '@/lib/api'
-import { formatDate, formatINR } from '@/lib/format'
+import { formatDate, formatINR, formatMoney } from '@/lib/format'
 import { useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
 import { usePeriod, type PeriodProps } from '@/pages/Accounts'
@@ -81,23 +82,23 @@ function Pager({ count }: { count: number }) {
   )
 }
 
-function Totals({ totals, label }: { totals?: Paged<unknown>['totals']; label: string }) {
-  if (!totals) return null
+function Totals({ totals, count, noun }: { totals?: Paged<unknown>['totals']; count?: number; noun: string }) {
   return (
-    <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span>
-        Taxable <b className="tabular-nums">{formatINR(totals.taxable)}</b>
-      </span>
-      <span>
-        GST <b className="tabular-nums">{formatINR(totals.tax)}</b>
-      </span>
-      <span>
-        Total <b className="tabular-nums">{formatINR(totals.total)}</b>
-      </span>
+    <div className="grid gap-3 sm:grid-cols-3">
+      <KpiCard label={noun} value={(count ?? 0).toLocaleString('en-IN')} loading={!totals} />
+      <KpiCard label="Before GST" value={formatMoney(totals?.taxable ?? 0)} loading={!totals} />
+      <KpiCard label="Total with GST" value={formatMoney(totals?.total ?? 0)} loading={!totals} />
     </div>
   )
 }
+
+// Number and date in one cell.
+const Doc = ({ no, date }: { no: string; date: string }) => (
+  <div className="leading-tight">
+    <p className="font-medium">{no}</p>
+    <p className="text-xs text-muted-foreground">{formatDate(date)}</p>
+  </div>
+)
 
 const query = (o: Record<string, string>) => new URLSearchParams(Object.entries(o).filter(([, v]) => v)).toString()
 
@@ -113,13 +114,11 @@ export function Invoices({ from, to }: PeriodProps) {
   const list = useApi<Paged<SalesInvoice>>(
     `/accounts/invoices?${query({ from, to, status: params.get('status') ?? '', buyerId: params.get('buyerId') ?? '', q: params.get('q') ?? '', page: params.get('page') ?? '', pageSize: String(PAGE_SIZE) })}`,
   )
+  // Five columns; the invoice page has GST, order and dispatch.
   const cols: ColumnDef<SalesInvoice>[] = [
-    { id: 'no', header: 'Invoice', cell: ({ row: { original: i } }) => <div className="leading-tight"><p className="font-medium">{i.invoiceNo}</p><p className="text-xs text-muted-foreground">{formatDate(i.issuedAt)}</p></div> },
-    { id: 'buyer', header: 'Buyer', cell: ({ row: { original: i } }) => <div className="leading-tight"><p>{i.dispatch.buyer.name}</p><p className="text-xs text-muted-foreground">{i.dispatch.order.orderNo} · {i.dispatch.dispatchNo}</p></div> },
-    { id: 'taxable', header: 'Taxable', cell: ({ row: { original: i } }) => money(i.amount) },
-    { id: 'gst', header: 'GST', cell: ({ row: { original: i } }) => <div className="leading-tight">{money(i.tax)}<p className="text-xs text-muted-foreground">{TREATMENT[i.taxTreatment ?? ''] ?? '—'}</p></div> },
-    { id: 'total', header: 'Total', cell: ({ row: { original: i } }) => <b>{money(i.payable)}</b> },
-    { id: 'balance', header: 'Balance', cell: ({ row: { original: i } }) => (i.balance > 0 ? money(i.balance) : '—') },
+    { id: 'no', header: 'Invoice', cell: ({ row: { original: i } }) => <Doc no={i.invoiceNo} date={i.issuedAt} /> },
+    { id: 'buyer', header: 'Buyer', cell: ({ row: { original: i } }) => i.dispatch.buyer.name },
+    { id: 'total', header: 'Amount', cell: ({ row: { original: i } }) => <b>{money(i.payable)}</b> },
     { id: 'due', header: 'Due', cell: ({ row: { original: i } }) => (i.dueDate ? formatDate(i.dueDate) : '—') },
     { id: 'status', header: 'Status', cell: ({ row: { original: i } }) => statusPill(i.status, i.overdueDays) },
   ]
@@ -130,7 +129,7 @@ export function Invoices({ from, to }: PeriodProps) {
         <Select label="Status" k="status" options={[['', 'All statuses'], ['UNPAID', 'Unpaid'], ['PARTIAL', 'Part paid'], ['PAID', 'Paid'], ['OVERDUE', 'Overdue']]} />
         <Select label="Buyer" k="buyerId" options={[['', 'All buyers'], ...(buyers.data ?? []).map((b): [string, string] => [b.id, b.name])]} className="w-52" />
       </Toolbar>
-      <Totals totals={list.data?.totals} label={`${list.data?.count ?? 0} invoices`} />
+      <Totals totals={list.data?.totals} count={list.data?.count} noun="Invoices" />
       {list.error && <p className="text-sm text-problem">{list.error}</p>}
       <DataTable columns={cols} data={list.data?.rows ?? []} loading={list.loading && !list.data} onRowClick={(i) => navigate(`/accounts/invoices/${i.id}`)} empty="No invoices in this period." />
       <Pager count={list.data?.count ?? 0} />
@@ -150,13 +149,10 @@ export function Bills({ from, to }: PeriodProps) {
     `/accounts/bills?${query({ from, to, status: params.get('status') ?? '', supplierId: params.get('supplierId') ?? '', category: params.get('category') ?? '', q: params.get('q') ?? '', page: params.get('page') ?? '', pageSize: String(PAGE_SIZE) })}`,
   )
   const cols: ColumnDef<Bill>[] = [
-    { id: 'no', header: 'Bill', cell: ({ row: { original: b } }) => <div className="leading-tight"><p className="font-medium">{b.billNo ?? '—'}</p><p className="text-xs text-muted-foreground">{formatDate(b.receivedAt)}</p></div> },
-    { id: 'supplier', header: 'Supplier', cell: ({ row: { original: b } }) => <div className="leading-tight"><p>{b.supplier.name}</p><p className="text-xs text-muted-foreground">{b.supplier.state}</p></div> },
-    { id: 'item', header: 'Material', cell: ({ row: { original: b } }) => <div className="leading-tight"><p>{b.material.yarnType}</p><p className="text-xs text-muted-foreground">{Number(b.qty).toLocaleString('en-IN')} {b.material.unit} × {formatINR(Number(b.rate))}</p></div> },
-    { id: 'taxable', header: 'Taxable', cell: ({ row: { original: b } }) => money(Number(b.billAmount)) },
-    { id: 'gst', header: 'GST', cell: ({ row: { original: b } }) => <div className="leading-tight">{b.tax ? money(b.tax) : '—'}<p className="text-xs text-muted-foreground">{TREATMENT[b.taxTreatment ?? ''] ?? 'Before GST fields'}{b.tax ? ` ${Number(b.taxRatePct)}%` : ''}</p></div> },
-    { id: 'total', header: 'Total', cell: ({ row: { original: b } }) => <b>{money(b.payable)}</b> },
-    { id: 'due', header: 'Due', cell: ({ row: { original: b } }) => (b.dueDate ? formatDate(b.dueDate) : '—') },
+    { id: 'no', header: 'Bill', cell: ({ row: { original: b } }) => <Doc no={b.billNo ?? '—'} date={b.receivedAt} /> },
+    { id: 'supplier', header: 'Supplier', cell: ({ row: { original: b } }) => b.supplier.name },
+    { id: 'item', header: 'Material', cell: ({ row: { original: b } }) => b.material.yarnType },
+    { id: 'total', header: 'Amount', cell: ({ row: { original: b } }) => <b>{money(b.payable)}</b> },
     { id: 'status', header: 'Status', cell: ({ row: { original: b } }) => statusPill(b.status, b.overdueDays) },
   ]
   return (
@@ -167,7 +163,7 @@ export function Bills({ from, to }: PeriodProps) {
         <Select label="Material" k="category" options={CATEGORIES} />
         <Select label="Supplier" k="supplierId" options={[['', 'All suppliers'], ...(suppliers.data ?? []).map((s): [string, string] => [s.id, s.name])]} className="w-52" />
       </Toolbar>
-      <Totals totals={list.data?.totals} label={`${list.data?.count ?? 0} bills`} />
+      <Totals totals={list.data?.totals} count={list.data?.count} noun="Bills" />
       {list.error && <p className="text-sm text-problem">{list.error}</p>}
       <DataTable columns={cols} data={list.data?.rows ?? []} loading={list.loading && !list.data} onRowClick={(b) => navigate(`/accounts/bills/${b.id}`)} empty="No supplier bills in this period." />
       <Pager count={list.data?.count ?? 0} />
@@ -192,6 +188,35 @@ const SUBCATEGORIES: Record<'LOGISTICS' | 'UTILITIES', [string, string, string][
   ],
 }
 
+// One picker for what the money was spent on: each type sits once, under its own category.
+function TypeSelect() {
+  const { params, set } = usePeriod()
+  const value = `${params.get('category') ?? ''}|${params.get('subcategory') ?? ''}`
+  return (
+    <select
+      aria-label="Expense type"
+      className={cn(selectClass, 'w-56 bg-surface')}
+      value={value}
+      onChange={(e) => {
+        const [category, subcategory] = e.target.value.split('|')
+        set({ category, subcategory, page: '' })
+      }}
+    >
+      <option value="|">All expenses</option>
+      {(['LOGISTICS', 'UTILITIES'] as const).map((cat) => (
+        <optgroup key={cat} label={cat === 'LOGISTICS' ? 'Logistics and transport' : 'Factory utilities'}>
+          <option value={`${cat}|`}>All {cat === 'LOGISTICS' ? 'logistics' : 'utilities'}</option>
+          {SUBCATEGORIES[cat].map(([sub]) => (
+            <option key={sub} value={`${cat}|${sub}`}>
+              {sub}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  )
+}
+
 export function Expenses({ from, to }: PeriodProps) {
   const navigate = useNavigate()
   const { params } = usePeriod()
@@ -200,30 +225,25 @@ export function Expenses({ from, to }: PeriodProps) {
   const list = useApi<ExpensePage>(
     `/accounts/expenses?${query({ from, to, category, subcategory: params.get('subcategory') ?? '', status: params.get('status') ?? '', costCentre: params.get('costCentre') ?? '', q: params.get('q') ?? '', page: params.get('page') ?? '', pageSize: String(PAGE_SIZE) })}`,
   )
-  const subs = category ? SUBCATEGORIES[category as 'LOGISTICS' | 'UTILITIES'] : [...SUBCATEGORIES.LOGISTICS, ...SUBCATEGORIES.UTILITIES]
   const cols: ColumnDef<Expense>[] = [
-    { id: 'no', header: 'Voucher', cell: ({ row: { original: e } }) => <div className="leading-tight"><p className="font-medium">{e.voucherNo}</p><p className="text-xs text-muted-foreground">{formatDate(e.incurredAt)}</p></div> },
-    { id: 'what', header: 'Expense', cell: ({ row: { original: e } }) => <div className="max-w-80 leading-tight"><p>{e.subcategory}</p><p className="truncate text-xs text-muted-foreground">{e.description}</p></div> },
-    { id: 'payee', header: 'Payee', cell: ({ row: { original: e } }) => <div className="leading-tight"><p>{e.payee}</p><p className="text-xs text-muted-foreground">{[e.costCentre, e.dispatch?.dispatchNo ?? e.order?.orderNo].filter(Boolean).join(' · ')}</p></div> },
-    { id: 'amount', header: 'Amount', cell: ({ row: { original: e } }) => money(Number(e.amount)) },
-    { id: 'gst', header: 'GST', cell: ({ row: { original: e } }) => <div className="leading-tight">{e.tax ? money(e.tax) : '—'}<p className="text-xs text-muted-foreground">{TREATMENT[e.taxTreatment ?? ''] ?? ''}</p></div> },
-    { id: 'total', header: 'Total', cell: ({ row: { original: e } }) => <b>{money(Number(e.totalAmount ?? e.amount))}</b> },
+    { id: 'no', header: 'Voucher', cell: ({ row: { original: e } }) => <Doc no={e.voucherNo} date={e.incurredAt} /> },
+    { id: 'what', header: 'Type', cell: ({ row: { original: e } }) => <div className="leading-tight"><p>{e.subcategory}</p><p className="text-xs text-muted-foreground">{e.category === 'UTILITIES' ? 'Utilities' : 'Logistics'}</p></div> },
+    { id: 'payee', header: 'Paid to', cell: ({ row: { original: e } }) => e.payee },
+    { id: 'total', header: 'Amount', cell: ({ row: { original: e } }) => <b>{money(Number(e.totalAmount ?? e.amount))}</b> },
     { id: 'status', header: 'Status', cell: ({ row: { original: e } }) => (e.status === 'PAID' ? <Pill tone="good">Paid</Pill> : e.status === 'ACCRUED' ? <Pill tone="watch">Accrued</Pill> : <Pill tone="problem">Unpaid</Pill>) },
   ]
   return (
     <div className="space-y-3">
       <Toolbar>
         <SearchBox placeholder="Voucher, payee, description or reference" />
-        <Select label="Category" k="category" options={[['', 'Logistics and utilities'], ['LOGISTICS', 'Logistics and transport'], ['UTILITIES', 'Factory utilities']]} className="w-52" />
-        <Select label="Type" k="subcategory" options={[['', 'All types'], ...subs.map(([s]): [string, string] => [s, s])]} className="w-52" />
+        <TypeSelect />
         <Select label="Status" k="status" options={[['', 'All statuses'], ['PAID', 'Paid'], ['UNPAID', 'Unpaid'], ['ACCRUED', 'Accrued']]} className="w-36" />
-        <Select label="Cost centre" k="costCentre" options={[['', 'All cost centres'], ['Dispatch', 'Dispatch'], ['Fleet', 'Fleet'], ['Utilities', 'Utilities']]} className="w-40" />
         <Button className="gap-1.5" onClick={() => setAdding(true)}>
           <Plus className="size-4" />
           New expense
         </Button>
       </Toolbar>
-      <Totals totals={list.data?.totals} label={`${list.data?.count ?? 0} entries`} />
+      <Totals totals={list.data?.totals} count={list.data?.count} noun="Expenses" />
       {list.error && <p className="text-sm text-problem">{list.error}</p>}
       <DataTable columns={cols} data={list.data?.rows ?? []} loading={list.loading && !list.data} onRowClick={(e) => navigate(`/accounts/expenses/${e.id}`)} empty="No expenses match." />
       <Pager count={list.data?.count ?? 0} />

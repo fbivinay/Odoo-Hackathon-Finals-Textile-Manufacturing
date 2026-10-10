@@ -4,7 +4,6 @@ import { ChevronRight, Search } from 'lucide-react'
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { selectClass } from '@/components/Field'
 import { Figure } from '@/components/Figure'
-import { PageHead } from '@/components/PageHead'
 import { Pill } from '@/components/StatusPill'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -84,16 +83,23 @@ export function Accounts() {
   const { from, to, params, set } = usePeriod()
   const tab = params.get('tab') ?? 'overview'
   return (
-    <div className="space-y-5">
-      <PageHead eyebrow="Books" title="Accounts" actions={<PeriodBar />} />
-      <Tabs value={tab} onValueChange={(v) => set({ tab: v === 'overview' ? '' : v, page: '' })}>
-        <TabsList className="flex-wrap">
-          {TABS.map(([k, label]) => (
-            <TabsTrigger key={k} value={k}>
-              {label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+    <div>
+      <Tabs value={tab} onValueChange={(v) => set({ tab: v === 'overview' ? '' : v, page: '' })} className="gap-3">
+        {/* Three columns on wide screens so the tabs sit in the middle of the page, not just right of the title. */}
+        <header className="flex flex-wrap items-center justify-between gap-4 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:gap-2">
+          <h1 className="display">Accounts</h1>
+          <TabsList className="flex-wrap lg:justify-self-center">
+            {TABS.map(([k, label]) => (
+              <TabsTrigger key={k} value={k}>
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </header>
+        {/* The period sits just above the first box: room under the tabs, the content's top margin pulled in. */}
+        <div className="mt-4 -mb-5 flex justify-end">
+          <PeriodBar />
+        </div>
         <Suspense fallback={<Skeleton className="mt-4 h-96 w-full" />}>
           <TabsContent value="overview">{tab === 'overview' && <Overview from={from} to={to} />}</TabsContent>
           <TabsContent value="invoices">{tab === 'invoices' && <Invoices from={from} to={to} />}</TabsContent>

@@ -141,7 +141,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | GET | `/reports/order-costs` | OWNER or Clients access | `?id=&status=&buyerId=` + paging; per order: material, labour, total, cost per unit and per roll, margin |
 | GET | `/planning/schedule` | | `?days=90` (1–365) forward plan, see below |
 | GET | `/reports/machine-output` | OWNER | `?month=` → per machine total + `daily[]` series |
-| GET | `/reports/pnl` | OWNER | `?month=` → bills, wages, invoiced, payments, `profit`, `cashFlow` |
+| GET | `/reports/pnl` | OWNER | `?month=` → the month's Accounts line: `invoiced, materialsUsed, wagesEarned, logistics, utilities, maintenance, expenses, profit` (= Accounts net profit), plus `materialBills` (bought, not a cost), `paymentsReceived, supplierPayments, wagesPaid, cashFlow` |
 
 ## Planning schedule
 
@@ -178,7 +178,7 @@ Rules and assumptions: `accounts.md`. `?from=&to=` are IST dates (YYYY-MM-DD); d
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/accounts/overview` | P&L lines, receivable/payable today, GST summary, cash movement, work in progress, month series, oldest open invoices, bills due |
+| GET | `/accounts/overview` | P&L lines, receivable/payable today, GST summary, cash movement, work in progress, month series, oldest open invoices, bills due. Wages and utilities count each month by the share of its days inside the period |
 | GET | `/accounts/invoices` | `?status=UNPAID\|PARTIAL\|PAID\|OVERDUE&buyerId=&q=` (invoice, order or buyer) |
 | GET | `/accounts/invoices/:id` | Buyer, order, dispatch, rolls, payments, audit, HSN |
 | POST | `/accounts/invoices/:id/payments` | `{ amount, method?, reference? }` → 400 above the balance |
@@ -202,7 +202,7 @@ What-if simulation on the real data. Nothing here writes to orders, stock, produ
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/lab/intelligence?from=&to=` | Default last 90 days. `{ period, freshness, summary (4 figures: open orders, on-time delivery, net profit, shortages), recommendations (top 4) }`. Each recommendation: `title, problem, evidence[{label,value,link}], action, why, benefit, cost, risks, confidencePct (30-95, by a fixed rule per kind), confidence, assumptions, limitations, scenario{ name, changes } \| null` |
+| GET | `/lab/intelligence?from=&to=` | Default last 90 days (IST). `{ period, freshness, summary (4 figures: open orders, on-time delivery, net profit, materials to order net of pending purchase orders), recommendations (top 4) }`. Each recommendation (four plain points): `title, problem, evidence[{label,value,link}], action, benefit, costAndRisk, confidencePct (30-95, by a fixed rule per kind), confidence, assumptions, limitations, scenario{ name, changes } \| null` |
 | GET | `/lab/options` | Pickers for the builder: stages with average output, machines, yarns, fabrics, unit economics (last 12 months), reject rate |
 | POST | `/lab/simulate` | `{ changes, costs, days: 30\|90\|180\|365 }` → `{ metrics[{key,label,unit,better,base,alt,change,changePct,effect}], money, capacity, weekly, orders, rushOrder, yarn, limitations, snapshotAt }`. Read-only: call with `quiet: true` |
 | POST | `/lab/explain` | Same body as simulate; re-runs it and explains only those figures. `{ source: 'gemini'\|'rules', sections[{title, points}] }`; falls back to rules without `GEMINI_API_KEY` |

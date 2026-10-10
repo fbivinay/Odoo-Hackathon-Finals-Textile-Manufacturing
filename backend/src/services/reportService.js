@@ -6,7 +6,6 @@ const materialService = require('./materialService');
 const orderService = require('./orderService');
 const productionService = require('./productionService');
 const qcService = require('./qcService');
-const workforceService = require('./workforceService');
 const { setting } = require('./configService');
 
 const round = (n) => Math.round(n * 100) / 100;
@@ -163,45 +162,39 @@ async function machineOutput({ month } = {}) {
   };
 }
 
-// Did the mill make money this month? Material bills, wages, logistics and utilities against sales.
+// Did the mill make money this month? The month's line from Accounts (materials charged when their
+// fabric is invoiced, not when bought), so the Overview, Accounts and Everest Lab show one profit.
 // All pre-tax: GST collected or paid is not income or cost (Accounts > GST shows it separately).
 async function pnl({ month } = {}) {
   const range = monthRange(month);
-  const within = { gte: range.start, lt: range.end };
-  const [inwards, invoices, payments, wageSheet, expenses, supplierPaid, expensePaid] = await Promise.all([
-    prisma.materialInward.findMany({ where: { receivedAt: within } }),
-    prisma.invoice.findMany({ where: { issuedAt: within } }),
-    prisma.payment.findMany({ where: { paidAt: within } }),
-    workforceService.wages({ month: range.month }),
-    prisma.expense.findMany({ where: { incurredAt: within } }),
-    prisma.supplierPayment.findMany({ where: { paidAt: within } }),
-    prisma.expense.findMany({ where: { paidAt: within } }),
+  // Required here, not at the top: accountsService requires this file.
+  const accounts = require('./accountsService');
+  const p = accounts.period({ from: `${range.month}-01`, to: new Date(range.end.getTime() - 86400000).toISOString().slice(0, 10) });
+  const within = { gte: p.start, lt: p.end };
+  const [[books], bills, supplierPaid, wagesPaid] = await Promise.all([
+    accounts.monthly(p),
+    prisma.materialInward.aggregate({ where: { receivedAt: within }, _sum: { billAmount: true } }),
+    prisma.supplierPayment.aggregate({ where: { paidAt: within }, _sum: { amount: true } }),
+    prisma.wagePayment.aggregate({ where: { paidAt: within }, _sum: { amount: true } }),
   ]);
-
-  const materialBills = sum(inwards, 'billAmount');
-  const invoiced = sum(invoices, 'amount');
-  const paymentsReceived = sum(payments, 'amount');
-  const { earned: wagesEarned, paid: wagesPaid } = wageSheet.totals;
-  // Tax the mill cannot claim back is a cost; claimable GST is not.
-  const costOf = (e) => Number(e.amount) + (e.itcEligible ? 0 : Number(e.cgst) + Number(e.sgst) + Number(e.igst));
-  const logistics = expenses.filter((e) => e.category === 'LOGISTICS').reduce((t, e) => t + costOf(e), 0);
-  const utilities = expenses.filter((e) => e.category === 'UTILITIES').reduce((t, e) => t + costOf(e), 0);
-  const paidOut = sum(supplierPaid, 'amount') + expensePaid.reduce((t, e) => t + Number(e.totalAmount ?? e.amount), 0);
 
   return {
     month: range.month,
-    materialBills: round(materialBills),
-    wagesEarned: round(wagesEarned),
-    wagesPaid: round(wagesPaid),
-    logistics: round(logistics),
-    utilities: round(utilities),
-    invoiced: round(invoiced),
-    paymentsReceived: round(paymentsReceived),
-    supplierPayments: round(sum(supplierPaid, 'amount')),
-    // Billed sales against the month's costs.
-    profit: round(invoiced - materialBills - wagesEarned - logistics - utilities),
-    // Money actually in minus money actually out (supplier bills paid, expenses paid, wages paid).
-    cashFlow: round(paymentsReceived - paidOut - wagesPaid),
+    invoiced: books.revenue,
+    materialsUsed: books.materials,
+    // Bought this month: stock until it is used, so not a cost.
+    materialBills: round(Number(bills._sum.billAmount || 0)),
+    wagesEarned: books.wages,
+    wagesPaid: round(Number(wagesPaid._sum.amount || 0)),
+    logistics: books.logistics,
+    utilities: books.utilities,
+    maintenance: books.maintenance,
+    expenses: round(books.materials + books.wages + books.logistics + books.utilities + books.maintenance),
+    paymentsReceived: books.cashIn,
+    supplierPayments: round(Number(supplierPaid._sum.amount || 0)),
+    profit: books.netProfit,
+    // Money actually in minus money actually out (supplier bills, expenses and wages paid).
+    cashFlow: round(books.cashIn - books.cashOut),
   };
 }
 

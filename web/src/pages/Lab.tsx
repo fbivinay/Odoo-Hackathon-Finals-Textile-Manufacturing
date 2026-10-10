@@ -1,6 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { PageHead } from '@/components/PageHead'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { emptyDraft, type Draft, type LabResult } from '@/lib/lab'
@@ -36,20 +35,20 @@ export function Lab() {
   const shared = { options: options.data, optionsError: options.error, draft, setDraft, go }
 
   return (
-    <div className="space-y-5">
-      <PageHead
-        eyebrow="Owner only · decision support"
-        title="Everest Lab"
-        lede="See what is happening, get recommendations backed by the records, and test decisions before you make them. Simulations never change real orders, stock or accounts."
-      />
-      <Tabs value={tab} onValueChange={(v) => go(v as Tab)}>
-        <TabsList className="flex-wrap">
-          {TABS.map(([k, label]) => (
-            <TabsTrigger key={k} value={k}>
-              {label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+    <div>
+      <Tabs value={tab} onValueChange={(v) => go(v as Tab)} className="gap-3">
+        {/* Three columns on wide screens so the tabs sit in the middle of the page, as in Accounts. */}
+        <header className="flex flex-wrap items-center justify-between gap-4 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:gap-2">
+          <h1 className="display">Everest Lab</h1>
+          <TabsList className="flex-wrap lg:justify-self-center">
+            {TABS.map(([k, label]) => (
+              // 15% larger than the shared tab size (15.5px text).
+              <TabsTrigger key={k} value={k} className="group-data-[variant=default]/tabs-list:px-[16.5px] group-data-[variant=default]/tabs-list:py-[10px] group-data-[variant=default]/tabs-list:text-[17.8px]">
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </header>
         <Suspense fallback={<Skeleton className="mt-4 h-96 w-full" />}>
           <TabsContent value="intelligence">{tab === 'intelligence' && <Intelligence {...shared} />}</TabsContent>
           <TabsContent value="builder">

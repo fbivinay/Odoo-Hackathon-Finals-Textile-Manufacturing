@@ -139,8 +139,8 @@ export function Dashboard() {
           />
           <Figure
             label="Total expenses"
-            value={formatMoney((p?.materialBills ?? 0) + (p?.wagesEarned ?? 0) + (p?.logistics ?? 0) + (p?.utilities ?? 0))}
-            note={`Materials ${formatMoney(p?.materialBills ?? 0)} + wages ${formatMoney(p?.wagesEarned ?? 0)} + logistics and utilities ${formatMoney((p?.logistics ?? 0) + (p?.utilities ?? 0))}`}
+            value={formatMoney(p?.expenses ?? 0)}
+            note={`Materials used ${formatMoney(p?.materialsUsed ?? 0)} + wages ${formatMoney(p?.wagesEarned ?? 0)} + running costs ${formatMoney((p?.logistics ?? 0) + (p?.utilities ?? 0) + (p?.maintenance ?? 0))}`}
             loading={loading}
           />
           <Figure

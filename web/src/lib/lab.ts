@@ -142,10 +142,8 @@ export interface Recommendation {
   problem: string
   evidence: { label: string; value: string; link: string | null }[]
   action: string
-  why: string
   benefit: string
-  cost: string
-  risks: string
+  costAndRisk: string
   confidence: 'HIGH' | 'MEDIUM' | 'LOW'
   confidencePct: number
   assumptions: string[]

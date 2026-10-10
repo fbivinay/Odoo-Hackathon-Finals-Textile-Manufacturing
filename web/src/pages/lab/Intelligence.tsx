@@ -5,7 +5,6 @@ import { selectClass } from '@/components/Field'
 import { Figure } from '@/components/Figure'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatDate, formatDateTime } from '@/lib/format'
 import { emptyDraft, show, type Intelligence as Data, type Recommendation, type SummaryMetric } from '@/lib/lab'
 import { useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
@@ -13,7 +12,8 @@ import type { Shared } from '@/pages/Lab'
 import { Confidence, Section, Tag } from './parts'
 
 const PERIODS = [30, 90, 180, 365]
-const ago = (days: number) => new Date(Date.now() - (days - 1) * 86400000).toISOString().slice(0, 10)
+// First day of the last `days` days by the local (mill) calendar, not UTC.
+const ago = (days: number) => new Date(Date.now() - (days - 1) * 86400000).toLocaleDateString('en-CA')
 
 export function Intelligence({ setDraft, go }: Shared) {
   const [days, setDays] = useState(90)
@@ -22,17 +22,11 @@ export function Intelligence({ setDraft, go }: Shared) {
 
   return (
     <div className="mt-4 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          {data ? (
-            <>
-              Period {formatDate(data.period.from)} to {formatDate(data.period.to)} · plan looks {data.freshness.planHorizonDays} days ahead · data read {formatDateTime(data.freshness.snapshotAt)}
-              {data.freshness.lastProductionLog && ` · last production entry ${formatDateTime(data.freshness.lastProductionLog)}`}
-            </>
-          ) : (
-            'Reading the mill’s records…'
-          )}
-        </p>
+      {/* Heading and period on one line just above the box (this margin replaces the list's 24px gap). */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="section-head flex items-center gap-2">
+          The mill right now <Tag kind="actual" />
+        </h2>
         <select aria-label="Period" className={cn(selectClass, 'w-44 bg-surface')} value={days} onChange={(e) => setDays(+e.target.value)}>
           {PERIODS.map((d) => (
             <option key={d} value={d}>
@@ -52,10 +46,6 @@ export function Intelligence({ setDraft, go }: Shared) {
       )}
 
       <section className="figures-panel">
-        <div className="mb-3 flex items-center gap-2">
-          <h2 className="section-head">The mill right now</h2>
-          <Tag kind="actual" />
-        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {(data?.summary ?? Array.from({ length: 4 }, (_, i): SummaryMetric => ({ key: String(i), label: '', value: null }))).map((m) => (
             <Figure
@@ -74,7 +64,7 @@ export function Intelligence({ setDraft, go }: Shared) {
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="section-head flex items-center gap-2">
-            Top recommendations <Tag kind="rules" />
+            Top recommendations <Tag kind="aiPowered" />
           </h2>
           <Button
             variant="outline"
@@ -89,9 +79,6 @@ export function Intelligence({ setDraft, go }: Shared) {
             Build your own scenario
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          The four the records back most strongly. Each comes from a fixed rule with its evidence; gains with figures were simulated on today’s plan. Nothing has been changed.
-        </p>
         {loading && !data ? (
           <div className="grid gap-4 lg:grid-cols-2">
             {[0, 1, 2, 3].map((i) => (
@@ -123,12 +110,13 @@ export function Intelligence({ setDraft, go }: Shared) {
 
 function Card({ r, onSimulate }: { r: Recommendation; onSimulate: () => void }) {
   const [open, setOpen] = useState(false)
-  const rows: [string, string][] = [
-    ['Recommended action', r.action],
-    ['Why this', r.why],
-    ['Expected benefit', r.benefit],
-    ['Cost', r.cost],
-    ['Risks and trade-offs', r.risks],
+  const [more, setMore] = useState(false)
+  // The reasons, four plain bullets.
+  const points: [string, string][] = [
+    ['Problem', r.problem],
+    ['What to do', r.action],
+    ['Gain', r.benefit],
+    ['Cost and risk', r.costAndRisk],
   ]
   return (
     <article className="data-table-wrap flex flex-col gap-3 p-4">
@@ -136,15 +124,18 @@ function Card({ r, onSimulate }: { r: Recommendation; onSimulate: () => void }) 
         <h3 className="text-base font-semibold leading-snug">{r.title}</h3>
         <Confidence level={r.confidence} pct={r.confidencePct} />
       </div>
-      <p className="text-sm text-muted-foreground">{r.problem}</p>
-      <dl className="space-y-2 text-sm">
-        {rows.map(([k, v]) => (
-          <div key={k}>
-            <dt className="text-xs font-medium text-muted-foreground">{k}</dt>
-            <dd>{v}</dd>
-          </div>
+      {/* Two points first; the other two open with "Read more". */}
+      <ul className="list-disc space-y-2 pl-5 text-sm marker:text-ink-2">
+        {points.slice(0, more ? 4 : 2).map(([k, v]) => (
+          <li key={k}>
+            <span className="font-medium">{k}:</span> {v}
+          </li>
         ))}
-      </dl>
+      </ul>
+      <button type="button" onClick={() => setMore(!more)} aria-expanded={more} className="-mt-1 inline-flex w-fit cursor-pointer items-center gap-1 pl-5 text-sm font-medium text-brand hover:underline">
+        {more ? 'Read less' : 'Read more'}
+        <ChevronDown className={cn('size-4 transition', more && 'rotate-180')} />
+      </button>
       {open && (
         <div className="space-y-2 rounded-lg border border-border bg-zinc-50/60 p-3 text-sm">
           <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">

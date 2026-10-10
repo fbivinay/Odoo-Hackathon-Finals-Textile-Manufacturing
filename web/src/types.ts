@@ -270,16 +270,19 @@ export interface Tracking {
   dispatches: { dispatchNo: string; vehicleNo: string | null; dispatchedAt: string }[]
 }
 
-// GET /reports/pnl?month=
+// GET /reports/pnl?month= — the month's line from Accounts, so every page shows one profit.
 export interface Pnl {
   month: string
-  materialBills: number
+  invoiced: number
+  materialsUsed: number
+  materialBills: number // bought in the month: stock, not a cost
   wagesEarned: number
   wagesPaid: number
   logistics?: number
   utilities?: number
+  maintenance?: number
+  expenses: number
   supplierPayments?: number
-  invoiced: number
   paymentsReceived: number
   profit: number
   cashFlow: number

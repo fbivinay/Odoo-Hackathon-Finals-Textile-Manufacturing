@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { Printer } from 'lucide-react'
 import { selectClass } from '@/components/Field'
 import { Pill } from '@/components/StatusPill'
+import { KpiCard } from '@/components/tremor/KpiCard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatDate, formatINR } from '@/lib/format'
+import { formatDate, formatINR, formatMoney } from '@/lib/format'
 import { useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
 import { usePeriod, type PeriodProps } from '@/pages/Accounts'
@@ -67,62 +68,64 @@ export function Payroll({ from, to }: PeriodProps) {
   })
   // Totals follow the filters.
   const t = sheet.data && { workers: rows.length, ...Object.fromEntries(SUMS.map((k) => [k, rows.reduce((sum, r) => sum + r[k], 0)])) } as Record<(typeof SUMS)[number] | 'workers', number>
+  const select = (label: string, value: string, onChange: (v: string) => void, options: Record<string, string>, all: string, w: string) => (
+    <select aria-label={label} className={cn(selectClass, w, 'bg-surface')} value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{all}</option>
+      {Object.entries(options).map(([k, v]) => (
+        <option key={k} value={k}>
+          {v}
+        </option>
+      ))}
+    </select>
+  )
   return (
     <div className="mt-4 space-y-5">
-      <section className="print-area space-y-3 print:bottom-auto">
-        <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
-          <select aria-label="Payroll month" className={cn(selectClass, 'w-52 bg-surface')} value={month} onChange={(e) => set({ month: e.target.value })}>
+      <section className="print-area space-y-4 print:bottom-auto">
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <select aria-label="Payroll month" className={cn(selectClass, 'w-40 bg-surface')} value={month} onChange={(e) => set({ month: e.target.value })}>
             {months.map((m) => (
               <option key={m} value={m}>
                 {monthName(m)}
               </option>
             ))}
           </select>
-          <div className="flex flex-wrap items-center gap-2">
-            <select aria-label="Shift" className={cn(selectClass, 'w-36 bg-surface')} value={shift} onChange={(e) => setShift(e.target.value)}>
-              <option value="">All shifts</option>
-              {Object.entries(SHIFT_NAMES).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </select>
-            <select aria-label="Role" className={cn(selectClass, 'w-44 bg-surface')} value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="">All roles</option>
-              {Object.entries(ROLE).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </select>
+          {select('Shift', shift, setShift, SHIFT_NAMES, 'All shifts', 'w-32')}
+          {select('Role', role, setRole, ROLE, 'All roles', 'w-40')}
+          <span className="flex items-center gap-1.5 whitespace-nowrap">
             <span className="text-sm text-muted-foreground">Joined</span>
-            <Input aria-label="Joined from" type="date" className="h-9 w-40" value={joinedFrom} max={joinedTo || undefined} onChange={(e) => setJoinedFrom(e.target.value)} />
-            <span className="text-sm text-muted-foreground">to</span>
-            <Input aria-label="Joined to" type="date" className="h-9 w-40" value={joinedTo} min={joinedFrom || undefined} onChange={(e) => setJoinedTo(e.target.value)} />
-            {filtered && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShift('')
-                  setRole('')
-                  setJoinedFrom('')
-                  setJoinedTo('')
-                }}
-              >
-                Reset
-              </Button>
-            )}
-          </div>
-          <Button variant="outline" className="gap-1.5" onClick={() => window.print()}>
+            <Input aria-label="Joined from" title="Joined from" type="date" className="h-9 w-36" value={joinedFrom} max={joinedTo || undefined} onChange={(e) => setJoinedFrom(e.target.value)} />
+          <span className="text-sm text-muted-foreground">to</span>
+          <Input aria-label="Joined to" title="Joined to" type="date" className="h-9 w-36" value={joinedTo} min={joinedFrom || undefined} onChange={(e) => setJoinedTo(e.target.value)} />
+          </span>
+          {filtered && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setShift('')
+                setRole('')
+                setJoinedFrom('')
+                setJoinedTo('')
+              }}
+            >
+              Reset
+            </Button>
+          )}
+          <Button variant="outline" className="ml-auto gap-1.5" onClick={() => window.print()}>
             <Printer className="size-4" />
-            Print payroll register
+            Print
           </Button>
         </div>
+
+        <div className="grid gap-3 sm:grid-cols-3 print:hidden">
+          <KpiCard label="Workers" value={String(t?.workers ?? 0)} loading={!t} />
+          <KpiCard label="Net pay" value={formatMoney(t?.net ?? 0)} loading={!t} />
+          <KpiCard label="Still due" tone={t?.due ? 'watch' : undefined} value={t?.due ? formatMoney(t.due) : 'All paid'} loading={!t} />
+        </div>
+
         <div className="data-table-wrap overflow-x-auto">
           <div className="hidden px-4 pt-4 print:block">
             <p className="text-lg font-semibold">Everest Textile Mills · Payroll register · {monthName(month)}</p>
-            <p className="text-xs">Synthetic demo data</p>
           </div>
           {!sheet.data ? (
             <Skeleton className="m-4 h-64" />
@@ -130,8 +133,8 @@ export function Payroll({ from, to }: PeriodProps) {
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
-                  {['Worker', 'Role', 'Shift', 'Joined', 'Days', 'Night', 'Daily wage', 'Basic', 'Allowances', 'Overtime', 'Deductions', 'Gross', 'Net', 'Status'].map((h) => (
-                    <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">
+                  {['Worker', 'Role', 'Days worked', 'Net pay', 'Status'].map((h) => (
+                    <th key={h} className="px-4 py-2.5 font-medium whitespace-nowrap">
                       {h}
                     </th>
                   ))}
@@ -140,68 +143,40 @@ export function Payroll({ from, to }: PeriodProps) {
               <tbody>
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={14} className="px-3 py-6 text-center text-muted-foreground">
+                    <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
                       No worker matches these filters.
                     </td>
                   </tr>
                 )}
                 {rows.map((r) => (
                   <tr key={r.worker.id} className="cursor-pointer border-t border-border hover:bg-zinc-50" onClick={() => navigate(`/accounts/payslip/${r.worker.id}/${month}`)}>
-                    <td className="px-3 py-1.5 whitespace-nowrap">
-                      <span className="font-medium">{r.worker.name}</span>
-                      <span className="ml-1.5 text-xs text-muted-foreground">{r.worker.code}</span>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <p className="font-medium">{r.worker.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.worker.code} · {SHIFT_NAMES[r.worker.shift] ?? r.worker.shift} shift
+                      </p>
                     </td>
-                    <td className="px-3 py-1.5 whitespace-nowrap text-ink-2">{r.worker.stage ? ROLE[r.worker.stage] : '—'}</td>
-                    <td className="px-3 py-1.5 text-ink-2">{SHIFT_NAMES[r.worker.shift] ?? r.worker.shift}</td>
-                    <td className="px-3 py-1.5 whitespace-nowrap text-ink-2">{formatDate(r.worker.joined)}</td>
-                    <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">
-                      {r.daysWorked}
-                      {r.absent > 0 && <span className="ml-1 text-xs text-muted-foreground">({r.absent} absent)</span>}
-                    </td>
-                    <td className="px-3 py-1.5 tabular-nums">{r.nightDays || '—'}</td>
-                    <td className="px-3 py-1.5 tabular-nums">{formatINR(Number(r.worker.dailyWage))}</td>
-                    <td className="px-3 py-1.5 tabular-nums">{formatINR(r.basic)}</td>
-                    <td className="px-3 py-1.5 tabular-nums">{r.allowances ? formatINR(r.allowances) : '—'}</td>
-                    <td className="px-3 py-1.5 tabular-nums">{r.overtime ? formatINR(r.overtime) : '—'}</td>
-                    <td className="px-3 py-1.5 tabular-nums">{r.deductions ? formatINR(r.deductions) : '—'}</td>
-                    <td className="px-3 py-1.5 tabular-nums">{formatINR(r.gross)}</td>
-                    <td className="px-3 py-1.5 font-medium tabular-nums">{formatINR(r.net)}</td>
-                    <td className="px-3 py-1.5">{r.paidAt ? <Pill tone="good">Paid {formatDate(r.paidAt)}</Pill> : r.net > 0 ? <Pill tone="watch">Due</Pill> : '—'}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-ink-2">{r.worker.stage ? ROLE[r.worker.stage] : '—'}</td>
+                    <td className="px-4 py-2 tabular-nums">{r.daysWorked}</td>
+                    <td className="px-4 py-2 font-medium tabular-nums">{formatINR(r.net)}</td>
+                    <td className="px-4 py-2">{r.paidAt ? <Pill tone="good">Paid {formatDate(r.paidAt)}</Pill> : r.net > 0 ? <Pill tone="watch">Due</Pill> : '—'}</td>
                   </tr>
                 ))}
               </tbody>
-              {t && (
-                <tfoot>
-                  <tr className="border-t-2 border-border font-semibold">
-                    <td className="px-3 py-2" colSpan={7}>
-                      {t.workers} workers
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">{formatINR(t.basic)}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatINR(t.allowances)}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatINR(t.overtime)}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatINR(t.deductions)}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatINR(t.gross)}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatINR(t.net)}</td>
-                    <td className="px-3 py-2 text-xs font-normal">{t.due > 0 ? `${formatINR(t.due)} still due` : 'All paid'}</td>
-                  </tr>
-                </tfoot>
-              )}
             </table>
           )}
         </div>
-        <p className="text-xs text-muted-foreground print:hidden">
-          Click a worker for the payslip. Rules: basic = days worked × daily wage (half day = half), ₹40 night-shift allowance per night worked. No statutory deductions are modelled in the demo data.
-        </p>
+        <p className="text-xs text-muted-foreground print:hidden">Click a worker to open the payslip with the full breakdown.</p>
       </section>
 
       <section className="space-y-2 print:hidden">
-        <h2 className="section-head">Payroll by month in the period</h2>
+        <h2 className="section-head">Month by month</h2>
         <div className="data-table-wrap overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
-                {['Month', 'Workers', 'Basic', 'Allowances', 'Overtime', 'Deductions', 'Gross', 'Net paid'].map((h) => (
-                  <th key={h} className="px-3 py-2 font-medium">
+                {['Month', 'Workers', 'Gross pay', 'Net paid'].map((h) => (
+                  <th key={h} className="px-4 py-2.5 font-medium">
                     {h}
                   </th>
                 ))}
@@ -210,13 +185,10 @@ export function Payroll({ from, to }: PeriodProps) {
             <tbody>
               {(year.data?.rows ?? []).map((r) => (
                 <tr key={r.month} className="cursor-pointer border-t border-border hover:bg-zinc-50" onClick={() => set({ month: r.month })}>
-                  <td className="px-3 py-1.5 font-medium">{monthName(r.month)}</td>
-                  <td className="px-3 py-1.5 tabular-nums">{r.workers}</td>
-                  {[r.basic, r.allowances, r.overtime, r.deductions, r.gross, r.net].map((v, i) => (
-                    <td key={i} className="px-3 py-1.5 tabular-nums">
-                      {formatINR(v)}
-                    </td>
-                  ))}
+                  <td className="px-4 py-2 font-medium">{monthName(r.month)}</td>
+                  <td className="px-4 py-2 tabular-nums">{r.workers}</td>
+                  <td className="px-4 py-2 tabular-nums">{formatINR(r.gross)}</td>
+                  <td className="px-4 py-2 tabular-nums">{formatINR(r.net)}</td>
                 </tr>
               ))}
             </tbody>

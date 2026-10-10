@@ -8,6 +8,7 @@ const KIND = {
   assumption: { text: 'Assumption', tone: 'neutral', title: 'Your input or a stated rule of thumb' },
   ai: { text: 'AI', tone: 'ink', title: 'Written by AI from the calculated figures' },
   rules: { text: 'Rule-based', tone: 'neutral', title: 'Written by fixed rules from the calculated figures' },
+  aiPowered: { text: 'AI Powered', tone: 'ink', title: 'Found automatically from the records and a simulation of the plan' },
 } as const
 
 export function Tag({ kind, className }: { kind: keyof typeof KIND; className?: string }) {

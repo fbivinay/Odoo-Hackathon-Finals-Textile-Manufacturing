@@ -9,8 +9,9 @@
 //                       plus store issues not tied to an order (QC kits, swatch boxes) when issued.
 //                       Materials on orders not yet billed are work in progress, not cost.
 //   maintenance       = maintenance stores issued (oil, spares)
-//   wages             = gross pay for the months in the period
-//   logistics, utilities = expenses incurred (+ any GST that cannot be claimed back)
+//   wages, utilities  = gross pay and utility bills of the months in the period, each month counted
+//                       for the share of its days that fall inside the period
+//   logistics         = expenses incurred (+ any GST that cannot be claimed back, as for utilities)
 // Purchases are not a P&L line: bought stock is inventory until it is issued, so it is never
 // counted both as stock and as cost.
 
@@ -58,18 +59,33 @@ const page = ({ page: p = 1, pageSize = 50 } = {}) => {
 
 // ------------------------------------------------------------ month series --
 
+// Payroll and utility bills cover a whole month, so a period holding part of a month carries that
+// part of them, by days. The current month is booked to date, so its part is of the days so far.
+function monthShare(m, p) {
+  const today = todayIst();
+  const days = (a, b) => Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / DAY) + 1);
+  const first = `${m}-01`;
+  const last = new Date(Date.UTC(+m.slice(0, 4), +m.slice(5, 7), 0)).toISOString().slice(0, 10);
+  const end = last < today ? last : today;
+  const covered = days(first, end);
+  return covered ? days(first > p.from ? first : p.from, end < p.to ? end : p.to) / covered : 0;
+}
+
 // Every money stream by IST month, from the database in one pass each.
 async function monthly(p) {
   const { start, end } = p;
+  // Whole months around the period, for the monthly costs spread by monthShare.
+  const wholeStart = new Date(`${p.from.slice(0, 7)}-01T00:00:00+05:30`);
+  const wholeEnd = new Date(`${new Date(Date.UTC(+p.to.slice(0, 4), +p.to.slice(5, 7), 1)).toISOString().slice(0, 10)}T00:00:00+05:30`);
   const by = async (sql) => new Map((await prisma.$queryRaw(sql)).map((x) => [x.m, x]));
-  const [sales, receipts, issues, purchases, supplierPaid, exp, expPaid, wageRows] = await Promise.all([
+  const [sales, receipts, issues, purchases, supplierPaid, exp, expPaid, wageRows, utilityRows] = await Promise.all([
     by(Prisma.sql`SELECT to_char("issuedAt" AT TIME ZONE ${tz}, 'YYYY-MM') m, SUM(amount)::float v, SUM(cgst+sgst+igst)::float tax FROM "Invoice" WHERE "issuedAt" >= ${start} AND "issuedAt" < ${end} GROUP BY 1`),
     by(Prisma.sql`SELECT to_char("paidAt" AT TIME ZONE ${tz}, 'YYYY-MM') m, SUM(amount)::float v FROM "Payment" WHERE "paidAt" >= ${start} AND "paidAt" < ${end} GROUP BY 1`),
     by(Prisma.sql`WITH oc AS (
                     SELECT i."orderId", SUM(i.cost) cost, SUM(CASE WHEN rm.category = 'YARN' THEN i.cost ELSE 0 END) yarn
                     FROM "MaterialIssue" i JOIN "RawMaterial" rm ON rm.id = i."materialId"
                     WHERE i."orderId" IS NOT NULL AND rm.category <> 'MAINTENANCE' GROUP BY 1),
-                  sent AS (SELECT d.id, d."orderId", (SELECT SUM(r.qty) FROM "Roll" r WHERE r."dispatchId" = d.id) metres FROM "Dispatch" d),
+                  sent AS (SELECT d.id, d."orderId", SUM(r.qty) metres FROM "Dispatch" d LEFT JOIN "Roll" r ON r."dispatchId" = d.id GROUP BY d.id),
                   shipped AS (SELECT "orderId", SUM(metres) metres FROM sent GROUP BY 1),
                   sold AS (
                     SELECT to_char(inv."issuedAt" AT TIME ZONE ${tz}, 'YYYY-MM') m,
@@ -90,12 +106,13 @@ async function monthly(p) {
     by(Prisma.sql`SELECT to_char("paidAt" AT TIME ZONE ${tz}, 'YYYY-MM') m, SUM(amount)::float v FROM "SupplierPayment" WHERE "paidAt" >= ${start} AND "paidAt" < ${end} GROUP BY 1`),
     by(Prisma.sql`SELECT to_char("incurredAt" AT TIME ZONE ${tz}, 'YYYY-MM') m,
                     SUM(CASE WHEN category = 'LOGISTICS' THEN amount + CASE WHEN "itcEligible" THEN 0 ELSE cgst+sgst+igst END ELSE 0 END)::float logistics,
-                    SUM(CASE WHEN category = 'UTILITIES' THEN amount + CASE WHEN "itcEligible" THEN 0 ELSE cgst+sgst+igst END ELSE 0 END)::float utilities,
                     SUM(CASE WHEN "itcEligible" THEN cgst+sgst+igst ELSE 0 END)::float itc,
                     SUM(CASE WHEN "taxTreatment" LIKE 'RCM%' THEN cgst+sgst+igst ELSE 0 END)::float rcm
                   FROM "Expense" WHERE "incurredAt" >= ${start} AND "incurredAt" < ${end} GROUP BY 1`),
     by(Prisma.sql`SELECT to_char("paidAt" AT TIME ZONE ${tz}, 'YYYY-MM') m, SUM(COALESCE("totalAmount", amount))::float v FROM "Expense" WHERE "paidAt" >= ${start} AND "paidAt" < ${end} GROUP BY 1`),
     by(Prisma.sql`SELECT month m, SUM(COALESCE(gross, amount))::float gross, SUM(amount)::float net FROM "WagePayment" WHERE month >= ${p.from.slice(0, 7)} AND month <= ${p.to.slice(0, 7)} GROUP BY 1`),
+    by(Prisma.sql`SELECT to_char("incurredAt" AT TIME ZONE ${tz}, 'YYYY-MM') m, SUM(amount + CASE WHEN "itcEligible" THEN 0 ELSE cgst+sgst+igst END)::float v
+                  FROM "Expense" WHERE category = 'UTILITIES' AND "incurredAt" >= ${wholeStart} AND "incurredAt" < ${wholeEnd} GROUP BY 1`),
   ]);
   const wagesPaidIn = await by(Prisma.sql`SELECT to_char("paidAt" AT TIME ZONE ${tz}, 'YYYY-MM') m, SUM(amount)::float v FROM "WagePayment" WHERE "paidAt" >= ${start} AND "paidAt" < ${end} GROUP BY 1`);
 
@@ -104,6 +121,7 @@ async function monthly(p) {
     // A month with no payroll yet (the current one) is accrued from the attendance register.
     let wages = wageRows.get(m)?.gross;
     if (wages == null) wages = (await workforceService.wages({ month: m })).totals.earned;
+    const part = monthShare(m, p);
     const e = exp.get(m) || {};
     const row = {
       month: m,
@@ -112,9 +130,9 @@ async function monthly(p) {
       materials: r2(issues.get(m)?.v),
       yarn: r2(issues.get(m)?.yarn),
       maintenance: r2(issues.get(m)?.maint),
-      wages: r2(wages),
+      wages: r2(wages * part),
       logistics: r2(e.logistics),
-      utilities: r2(e.utilities),
+      utilities: r2((utilityRows.get(m)?.v || 0) * part),
       purchases: r2(purchases.get(m)?.v),
       inputGst: r2((purchases.get(m)?.itc || 0) + (e.itc || 0)),
       rcm: r2(e.rcm),
@@ -578,5 +596,5 @@ async function report(name, query) {
 
 module.exports = {
   COMPANY, overview, listInvoices, getInvoice, listBills, getBill, payBill, listExpenses, getExpense, createExpense, payExpense,
-  payroll, payrollYear, getPayslip, gstRegister, taxRules, report, period, monthly, payslip,
+  payroll, payrollYear, getPayslip, gstRegister, taxRules, report, period, monthly, payslip, todayIst, monthShare,
 };

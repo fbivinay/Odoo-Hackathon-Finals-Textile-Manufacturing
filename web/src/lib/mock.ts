@@ -515,7 +515,8 @@ function handle(path: string, method: string, body: Record<string, any>): unknow
     const paymentsReceived = sum(payments.filter((p) => inMonth(p.paidAt, month)), (p) => p.amount)
     const wagesPaid = wagesPaidIn(month)
     const pnl: Pnl = {
-      month, materialBills, wagesEarned: WAGES_EARNED, wagesPaid, invoiced, paymentsReceived,
+      // ponytail: the mock charges materials when bought; the backend charges them when used.
+      month, materialBills, materialsUsed: materialBills, wagesEarned: WAGES_EARNED, wagesPaid, invoiced, paymentsReceived, expenses: round(materialBills + WAGES_EARNED),
       profit: round(invoiced - materialBills - WAGES_EARNED), cashFlow: round(paymentsReceived - materialBills - wagesPaid),
     }
     return pnl
