@@ -47,7 +47,7 @@ export function RawMaterial() {
     if (!m) return []
     const list = [
       ...(ins.data ?? []).map((i) => ({ id: i.id, at: i.receivedAt, kind: 'IN' as const, party: i.supplier.name, qty: i.qty, rate: i.rate, value: i.billAmount })),
-      ...(outs.data ?? []).map((i) => ({ id: i.id, at: i.issuedAt, kind: 'OUT' as const, party: i.order?.orderNo ?? 'Order', qty: -i.qty, rate: i.qty ? i.cost / i.qty : null, value: i.cost })),
+      ...(outs.data ?? []).map((i) => ({ id: i.id, at: i.issuedAt, kind: 'OUT' as const, party: i.order?.orderNo ?? 'General use', qty: -i.qty, rate: i.qty ? i.cost / i.qty : null, value: i.cost })),
     ].sort((a, b) => b.at.localeCompare(a.at))
     const out: Move[] = []
     for (let i = 0, balance = m.qtyInStock; i < list.length; i += 1) {

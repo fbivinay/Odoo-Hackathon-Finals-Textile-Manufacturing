@@ -158,17 +158,18 @@ model MaterialInward {
   @@index([receivedAt])
 }
 
-// Yarn leaving the store for an order — drives per-order material cost
+// Material leaving the store. Yarn goes to an order and drives its cost; dyes, chemicals
+// and packaging can be used without naming an order.
 model MaterialIssue {
   id         String   @id @default(cuid())
   materialId String
-  orderId    String
+  orderId    String?
   qty        Decimal  @db.Decimal(12, 2)
   cost       Decimal  @db.Decimal(14, 2)
   issuedAt   DateTime @default(now())
 
   material RawMaterial @relation(fields: [materialId], references: [id])
-  order    Order       @relation(fields: [orderId], references: [id])
+  order    Order?      @relation(fields: [orderId], references: [id])
 
   @@index([orderId])
 }

@@ -1,5 +1,5 @@
 const prisma = require('../lib/prisma');
-const { notFound, conflict } = require('../lib/errors');
+const { notFound, conflict, badRequest } = require('../lib/errors');
 const { pageArgs, toPage, dateRange } = require('../lib/paging');
 
 const withLowStock = (m) => ({ ...m, lowStock: Number(m.qtyInStock) <= Number(m.reorderLevel) });
@@ -73,7 +73,9 @@ async function issue({ materialId, orderId, qty }) {
   return prisma.$transaction(async (tx) => {
     const material = await tx.rawMaterial.findUnique({ where: { id: materialId } });
     if (!material) throw notFound('Material not found');
-    if (!(await tx.order.findUnique({ where: { id: orderId } }))) throw notFound('Order not found');
+    // Yarn always goes to an order; other materials may be used without one.
+    if (material.category === 'YARN' && !orderId) throw badRequest('Yarn must be issued to an order');
+    if (orderId && !(await tx.order.findUnique({ where: { id: orderId } }))) throw notFound('Order not found');
 
     const { count } = await tx.rawMaterial.updateMany({
       where: { id: materialId, qtyInStock: { gte: qty } },

@@ -57,7 +57,7 @@ npm run data:export -- data/<dataset>           # dump the current database
 | Machine | `id*` `code*`U `name*` `type*` (Stage) `status=IDLE` `createdAt` |
 | Order | `id*` `orderNo*`U `trackingToken*`U `buyerId*`→Buyer `materialId?`→RawMaterial `fabricType*` `colour*` `qty*` `yarnRequired=0` `pricePerUnit=0` `deadline*` `status*` `createdAt*` |
 | MaterialInward | `id*` `materialId*`→RawMaterial `supplierId*`→Supplier `orderId?`→Order `receivedById*`→User `qty*` `rate*` `billAmount*` `receivedAt*` |
-| MaterialIssue | `id*` `materialId*`→RawMaterial `orderId*`→Order `qty*` `cost*` `issuedAt*` |
+| MaterialIssue | `id*` `materialId*`→RawMaterial `orderId?`→Order (required for yarn) `qty*` `cost*` `issuedAt*` |
 | ProductionJob | `id*` `orderId*`→Order `machineId*`→Machine `workerId?`→Worker `stage*` `shift*` `status*` `qtyPlanned*` `qtyProduced*` `startedAt*` `completedAt?` |
 | ProductionLog | `id*` `jobId*`→ProductionJob `machineId*`→Machine `qty*` `loggedAt*` |
 | Dispatch | `id*` `dispatchNo*`U `orderId*`→Order `buyerId*`→Buyer `vehicleNo?` `dispatchedAt*` |

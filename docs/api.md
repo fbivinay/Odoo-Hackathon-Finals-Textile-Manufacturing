@@ -50,7 +50,7 @@ They answer `{ ok, data: [...], meta: { count, nextCursor } }`. Pass `nextCursor
 | GET | `/materials/inwards` | | `?materialId=&orderId=&supplierId=`, plus `?category=` or `?kind=other` |
 | POST | `/materials/inwards` | STORE | `{ materialId, supplierId, orderId?, qty, rate }` adds stock, re-averages cost |
 | GET | `/materials/issues` | | `?materialId=&orderId=`, plus `?category=` or `?kind=other` |
-| POST | `/materials/issues` | STORE | `{ materialId, orderId, qty }` → 409 `INSUFFICIENT_STOCK` if short |
+| POST | `/materials/issues` | STORE | `{ materialId, orderId?, qty }` → 409 `INSUFFICIENT_STOCK` if short; `orderId` is required for yarn and optional for other materials |
 
 ## Orders
 

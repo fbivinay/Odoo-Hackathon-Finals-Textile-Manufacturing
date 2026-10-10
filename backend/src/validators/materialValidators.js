@@ -23,6 +23,6 @@ const inwardSchema = z.object({
   rate: money,
 });
 
-const issueSchema = z.object({ materialId: id, orderId: id, qty });
+const issueSchema = z.object({ materialId: id, orderId: id.optional(), qty });
 
 module.exports = { CATEGORIES, createMaterialSchema, updateMaterialSchema, inwardSchema, issueSchema };

@@ -17,9 +17,8 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, ApiError } from '@/lib/api'
 import { formatDateTime, formatINR, formatQty } from '@/lib/format'
-import { recentOrdersPath } from '@/lib/queries'
 import { useApi, usePaged } from '@/lib/useApi'
-import type { MaterialCategory, MaterialInward, Order, RawMaterial, Ref } from '@/types'
+import type { MaterialCategory, MaterialInward, RawMaterial, Ref } from '@/types'
 
 // Everything the mill uses besides yarn. Yarn has its own tab (pages/Materials.tsx).
 type Category = Exclude<MaterialCategory, 'YARN'>
@@ -332,20 +331,17 @@ function ReceiveDialog({ materials, startWith, onClose, onSaved }: { materials: 
   )
 }
 
-// Using a material charges it to the order it went into, so it shows up in that order's cost.
+// Records what has been used up. Stock goes down; nothing else is asked.
 function UseDialog({ m, onClose, onSaved }: { m: RawMaterial; onClose: () => void; onSaved: () => void }) {
-  const orders = useApi<Order[]>(recentOrdersPath())
-  const [orderId, setOrderId] = useState('')
   const [qty, setQty] = useState('')
   const [busy, setBusy] = useState(false)
-  const open = (orders.data ?? []).filter((o) => !['DISPATCHED', 'CANCELLED', 'READY'].includes(o.status))
   const left = m.qtyInStock - Number(qty)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     try {
-      await api('/materials/issues', { method: 'POST', body: { materialId: m.id, orderId, qty: Number(qty) } })
+      await api('/materials/issues', { method: 'POST', body: { materialId: m.id, qty: Number(qty) } })
       toast.success(`${formatQty(Number(qty), m.unit)} of ${m.yarnType} used`)
       onSaved()
       onClose()
@@ -358,31 +354,21 @@ function UseDialog({ m, onClose, onSaved }: { m: RawMaterial; onClose: () => voi
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-xs">
         <DialogHeader>
           <DialogTitle>Use {m.yarnType}</DialogTitle>
           <DialogDescription>
             {m.colour} · {formatQty(m.qtyInStock, m.unit)} in stock
           </DialogDescription>
         </DialogHeader>
-        <form id="use-material" onSubmit={submit} className="grid gap-4">
-          <Field label="For order" htmlFor="orderId" hint={!orders.loading && !open.length && 'No open orders to charge this to.'}>
-            <select id="orderId" required className={selectClass} value={orderId} onChange={(e) => setOrderId(e.target.value)}>
-              <option value="">{orders.loading ? 'Loading…' : 'Select order…'}</option>
-              {open.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.orderNo} · {o.fabricType} · {o.buyer.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={`Quantity (${m.unit})`} htmlFor="useQty" hint={Number(qty) > 0 && left >= 0 ? `${formatQty(left, m.unit)} left after this` : undefined}>
-            <Input id="useQty" type="number" min="0.01" max={m.qtyInStock} step="0.01" inputMode="decimal" required value={qty} onChange={(e) => setQty(e.target.value)} />
+        <form id="use-material" onSubmit={submit}>
+          <Field label={`Quantity used (${m.unit})`} htmlFor="useQty" hint={Number(qty) > 0 && left >= 0 ? `${formatQty(left, m.unit)} left after this` : undefined}>
+            <Input id="useQty" type="number" min="0.01" max={m.qtyInStock} step="0.01" inputMode="decimal" required autoFocus value={qty} onChange={(e) => setQty(e.target.value)} />
           </Field>
         </form>
         <DialogFooter>
           <Button type="submit" form="use-material" disabled={busy}>
-            {busy ? 'Saving…' : 'Use'}
+            {busy ? 'Saving…' : 'Save'}
           </Button>
         </DialogFooter>
       </DialogContent>
