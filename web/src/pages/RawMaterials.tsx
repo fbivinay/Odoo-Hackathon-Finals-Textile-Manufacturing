@@ -17,7 +17,7 @@ import { api, ApiError } from '@/lib/api'
 import { formatDateTime, formatINR, formatQty } from '@/lib/format'
 import { recentOrdersPath } from '@/lib/queries'
 import { useApi, usePaged } from '@/lib/useApi'
-import type { MaterialCategory, MaterialInward, MaterialIssue, Order, RawMaterial, Ref } from '@/types'
+import type { MaterialCategory, MaterialInward, Order, RawMaterial, Ref } from '@/types'
 
 // Everything the mill uses besides yarn. Yarn has its own tab (pages/Materials.tsx).
 type Category = Exclude<MaterialCategory, 'YARN'>
@@ -30,7 +30,6 @@ const UNITS = [
   { value: 'rolls', label: 'rolls' },
   { value: 'm', label: 'metres' },
 ]
-type Issue = MaterialIssue & { material: { yarnType: string; colour: string; unit: string }; order: { orderNo: string } }
 
 const receivedCols: ColumnDef<MaterialInward>[] = [
   { id: 'when', header: 'Received', accessorKey: 'receivedAt', cell: ({ getValue }) => formatDateTime(getValue<string>()) },
@@ -40,20 +39,11 @@ const receivedCols: ColumnDef<MaterialInward>[] = [
   { id: 'bill', header: 'Bill', accessorFn: (i) => i.billAmount, cell: ({ row: { original: i } }) => formatINR(i.billAmount) },
 ]
 
-const usedCols: ColumnDef<Issue>[] = [
-  { id: 'when', header: 'Used', accessorKey: 'issuedAt', cell: ({ getValue }) => formatDateTime(getValue<string>()) },
-  { id: 'material', header: 'Material', accessorFn: (i) => `${i.material.yarnType} · ${i.material.colour}` },
-  { id: 'order', header: 'For order', accessorFn: (i) => i.order.orderNo },
-  { id: 'qty', header: 'Qty', accessorFn: (i) => i.qty, cell: ({ row: { original: i } }) => formatQty(i.qty, i.material.unit) },
-  { id: 'cost', header: 'Cost', accessorFn: (i) => i.cost, cell: ({ row: { original: i } }) => formatINR(i.cost) },
-]
-
 export function RawMaterials() {
   const { user } = useSession()
   const navigate = useNavigate()
   const stock = useApi<RawMaterial[]>('/materials?kind=other')
   const received = usePaged<MaterialInward>('/materials/inwards?kind=other')
-  const used = usePaged<Issue>('/materials/issues?kind=other')
   const [category, setCategory] = useState<Category | 'ALL'>('ALL')
   const [receiving, setReceiving] = useState(false)
   const [using, setUsing] = useState<RawMaterial | null>(null)
@@ -67,7 +57,6 @@ export function RawMaterials() {
   const reload = () => {
     stock.reload()
     received.reload()
-    used.reload()
   }
 
   const stockCols: ColumnDef<RawMaterial>[] = [
@@ -142,7 +131,6 @@ export function RawMaterials() {
         <TabsList>
           <TabsTrigger value="stock">Current Stock{low > 0 && ` · ${low} low`}</TabsTrigger>
           <TabsTrigger value="received">Received History</TabsTrigger>
-          <TabsTrigger value="used">Used History</TabsTrigger>
         </TabsList>
         <TabsContent value="stock" className="space-y-3">
           <div className="flex flex-wrap gap-1">
@@ -165,10 +153,6 @@ export function RawMaterials() {
         <TabsContent value="received" className="space-y-3">
           <DataTable columns={receivedCols} data={received.rows} loading={received.loading} empty="Nothing received yet." />
           <LoadMore hasMore={received.hasMore} more={received.more} />
-        </TabsContent>
-        <TabsContent value="used" className="space-y-3">
-          <DataTable columns={usedCols} data={used.rows} loading={used.loading} empty="Nothing used yet. Press Use on a material to charge it to an order." />
-          <LoadMore hasMore={used.hasMore} more={used.more} />
         </TabsContent>
       </Tabs>
 
