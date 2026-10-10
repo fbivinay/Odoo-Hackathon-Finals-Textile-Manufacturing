@@ -13,7 +13,8 @@
     "seed": "node prisma/seed.js",
     "data:export": "node prisma/dataset.js export",
     "data:check": "node prisma/dataset.js check",
-    "data:import": "node prisma/dataset.js import"
+    "data:import": "node prisma/dataset.js import",
+    "data:generate": "node prisma/synthetic/build.js"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
