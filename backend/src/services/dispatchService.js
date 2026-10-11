@@ -15,7 +15,7 @@ async function toShip(db, order) {
 
 const dispatchInclude = {
   order: { select: { id: true, orderNo: true, fabricType: true, colour: true, qty: true } },
-  buyer: { select: { id: true, name: true, phone: true } },
+  buyer: { select: { id: true, name: true, phone: true, address: true } },
   rolls: { select: { id: true, rollNo: true, qty: true } },
   invoice: { include: { payments: true } },
 };
@@ -43,7 +43,7 @@ async function stock() {
       order: {
         select: {
           id: true, orderNo: true, fabricType: true, colour: true, qty: true, deadline: true,
-          buyer: { select: { id: true, name: true } },
+          buyer: { select: { id: true, name: true, address: true } },
         },
       },
     },
@@ -152,10 +152,13 @@ const invoiceInclude = {
 
 // from/to filter on issuedAt.
 async function listInvoices(query = {}) {
-  const { status, from, to } = query;
+  const { from, to, buyerId } = query;
+  // ?open=true: everything still owed, whether untouched or part paid. ?buyerId= one client's invoices.
+  const status = query.open === 'true' ? { in: ['UNPAID', 'PARTIAL'] } : query.status;
   const rows = await prisma.invoice.findMany({
-    where: { status, issuedAt: dateRange(from, to) },
-    orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
+    where: { status, issuedAt: dateRange(from, to), ...(buyerId ? { dispatch: { buyerId } } : {}) },
+    // Oldest first when collecting, so the longest-owed order is at the top.
+    orderBy: query.open === 'true' ? [{ issuedAt: 'asc' }, { id: 'asc' }] : [{ issuedAt: 'desc' }, { id: 'desc' }],
     include: invoiceInclude,
     ...pageArgs(query),
   });

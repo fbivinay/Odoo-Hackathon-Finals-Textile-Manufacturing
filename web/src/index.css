@@ -801,11 +801,40 @@ html[data-no-cover] .splash { display: none; }
 }
 
 /* Print only the invoice dialog. */
+/* Printing: lib/print.ts copies the document being printed into `.print-root` at the top of the
+   page. While it is there, nothing else is laid out, so popups, the app frame and scrolling
+   panels can't clip, shift or stretch it. A page with no `.print-area` prints as it is. */
+.print-root { display: none; }
 @media print {
-  body * { visibility: hidden; }
+  @page { size: A4; margin: 14mm; }
+  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
   body::before { display: none; }
-  .print-area, .print-area * { visibility: visible; }
-  .print-area { position: absolute; inset: 0; transform: none; box-shadow: none; border: 0; }
+  body:has(> .print-root) > *:not(.print-root) { display: none !important; }
+  .print-root { display: block; color: #18181b; font-size: 12px; }
+  /* The copy drops whatever placed it on screen: a centred popup, a card, a scrolling box. */
+  .print-root > * {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    opacity: 1 !important;
+    animation: none !important;
+  }
+  .print-root * { animation: none !important; }
+  /* Nothing to press on paper. */
+  .print-root button, .print-root [data-slot="dialog-close"] { display: none !important; }
+  .print-root tr, .print-root .break-inside-avoid { break-inside: avoid; }
 }
 
 /* Chevron for native <select> (see components/Field.tsx). */

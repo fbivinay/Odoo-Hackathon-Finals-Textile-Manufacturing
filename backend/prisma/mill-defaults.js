@@ -30,6 +30,14 @@ async function main() {
   await trimWorkers();
   await trimMachines();
 
+  // A short delivery address for each demo client that has none (all in Bengaluru). Addresses
+  // typed in the app are never overwritten.
+  let addressed = 0;
+  for (const [name, address] of Object.entries(ADDRESSES)) {
+    addressed += (await prisma.buyer.updateMany({ where: { name, address: null }, data: { address } })).count;
+  }
+  if (addressed) console.log(`Added a delivery address to ${addressed} client(s).`);
+
   // Rolls the dataset left "in rework" with no stage to go back to: put them back in the check queue.
   const rechecks = await prisma.roll.updateMany({ where: { status: 'REWORK', reworkStage: null }, data: { status: 'PENDING_QC' } });
   if (rechecks.count) console.log(`${rechecks.count} roll(s) back from rework are waiting for a re-check.`);
@@ -52,6 +60,19 @@ async function trimMachines() {
   }
   console.log(`Kept ${PER_STAGE} machines in each stage; took ${off} off the floor.`);
 }
+
+const ADDRESSES = {
+  'Aditya Birla Fashion': 'Whitefield, Bengaluru 560066',
+  'Arvind Garments': 'Peenya Industrial Area, Bengaluru 560058',
+  'Fabindia Sourcing': 'Indiranagar, Bengaluru 560038',
+  'Gokaldas Exports': 'Mysore Road, Bengaluru 560026',
+  'Page Industries': 'Bommasandra, Bengaluru 560099',
+  'Raymond Apparel': 'Yeshwanthpur, Bengaluru 560022',
+  'Shahi Exports': 'Bommanahalli, Bengaluru 560068',
+  'Siyaram Silk Mills': 'Rajajinagar, Bengaluru 560010',
+  'Welspun Home': 'Electronic City, Bengaluru 560100',
+  'Westside Sourcing': 'Koramangala, Bengaluru 560034',
+};
 
 // The mill runs 36 floor workers, 12 on each shift. The dataset carries more (people who left,
 // spare hands): the extras stay in the old registers and payslips but come off the list. Skipped

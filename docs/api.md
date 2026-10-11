@@ -44,7 +44,8 @@ While `mustChangePassword` is true every other endpoint answers 403 `PASSWORD_CH
 | GET | `/suppliers` | | |
 | POST | `/suppliers` | STORE | `{ name, phone? }` |
 | GET | `/buyers` | | includes `_count.orders` |
-| POST | `/buyers` | STORE, DISPATCH | `{ name, phone?, email? }` |
+| POST | `/buyers` | STORE, DISPATCH | `{ name, phone?, email?, address? }`; `address` is the one-line delivery address |
+| PATCH | `/buyers/:id` | STORE, DISPATCH or `/clients` | `{ address?, phone? }` (`null` clears) |
 
 ## Raw material (yarn at the gate)
 
@@ -68,7 +69,8 @@ Yarn is issued automatically: when an order is created (if the store has it) and
 
 | Method | Path | Write | Body / notes |
 |---|---|---|---|
-| GET | `/orders` | | `?status=&buyerId=&q=&delayed=true` + paging; each row has `isDelayed` |
+| GET | `/orders` | | `?status=&group=&buyerId=&q=&delayed=true&sort=newest` + paging; each row has `isDelayed`. `group` is `open`, `pending`, `production`, `qc`, `ready`, `dispatched` or `cancelled`. Default order is priority, then deadline |
+| GET | `/orders/summary` | | `{ total, open, notStarted, inProduction, ready, late }`: counts for the Orders page, without loading the orders |
 | POST | `/orders` | STORE, DISPATCH | `{ buyerId, materialId?, fabricType, colour?, qty, yarnRequired?, pricePerUnit?, deadline }` → includes `availability`. When the fabric has Config figures (saved or from history), the server sets `yarnRequired` = qty × yarnPerMetre × (1 + wastage %, plus size/deadline bands), defaults `materialId` to the usual yarn and `pricePerUnit` to the Config price, and stores `yarnPerMetre`, `wastagePct`, `listPrice` on the order |
 | GET | `/orders/:id` | | buyer, material, issues (with `material`), jobs, rolls (with `qcRecords`), dispatches (with `invoice.payments`), `availability` |
 | PATCH | `/orders/:id/status` | OWNER | `{ status }` manual override, e.g. `CANCELLED` |
@@ -116,7 +118,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | GET | `/dispatch` | | `?orderId=&buyerId=` + paging; each has `rolls`, `totalQty`, `invoice` |
 | GET | `/dispatch/:id` | | |
 | POST | `/dispatch` | DISPATCH | `{ orderId, rollIds[], vehicleNo? }` creates the invoice; 409 `ROLLS_NOT_AVAILABLE` on wrong or already-sent rolls; 409 `ORDER_NOT_COMPLETE` when the truck would leave the order short (no part deliveries; the order's quantity less rejected fabric, within the dispatch tolerance). `GET /dispatch/stock` gives that figure per order as `order.toShip` |
-| GET | `/invoices` | | `?status=UNPAID/PARTIAL/PAID`; each has `paid`, `balance` |
+| GET | `/invoices` | | `?status=UNPAID/PARTIAL/PAID&buyerId=&open=true`; each has `paid`, `balance`. `open=true` is everything still owed, oldest first |
 | POST | `/invoices/:id/payments` | DISPATCH | `{ amount, method? }` |
 
 ## Workers, attendance, wages

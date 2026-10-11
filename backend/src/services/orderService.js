@@ -116,8 +116,39 @@ function reworkStageLeft(order) {
 const delayedWhere = () => ({ deadline: { lt: new Date() }, status: { notIn: CLOSED } });
 
 // from/to filter on createdAt, dueFrom/dueTo on deadline.
+// The status groups the Orders page filters by.
+const GROUPS = {
+  open: { notIn: CLOSED },
+  pending: 'PENDING',
+  production: { in: ['SPINNING', 'WEAVING', 'DYEING'] },
+  qc: 'QC',
+  ready: 'READY',
+  dispatched: 'DISPATCHED',
+  cancelled: 'CANCELLED',
+};
+
+// What the Orders page opens with, counted in the database rather than by loading every order:
+// open orders by where they stand, how many are past their deadline, and how many are ready to ship.
+async function summary() {
+  const [byStatus, late] = await Promise.all([
+    prisma.order.groupBy({ by: ['status'], _count: true }),
+    prisma.order.count({ where: delayedWhere() }),
+  ]);
+  const n = (...statuses) => byStatus.filter((r) => statuses.includes(r.status)).reduce((total, r) => total + r._count, 0);
+  return {
+    total: byStatus.reduce((total, r) => total + r._count, 0),
+    open: byStatus.filter((r) => !CLOSED.includes(r.status)).reduce((total, r) => total + r._count, 0),
+    notStarted: n('PENDING'),
+    inProduction: n('SPINNING', 'WEAVING', 'DYEING', 'QC'),
+    ready: n('READY'),
+    late,
+  };
+}
+
+// ?group= is one of GROUPS; ?sort=newest lists the latest orders first (default: priority, then deadline).
 async function list(query = {}) {
-  const { status, buyerId, q, delayed, from, to, dueFrom, dueTo } = query;
+  const { buyerId, q, delayed, from, to, dueFrom, dueTo, group, sort } = query;
+  const status = query.status || GROUPS[group];
   const orders = await prisma.order.findMany({
     where: {
       AND: [
@@ -134,7 +165,7 @@ async function list(query = {}) {
           : {},
       ],
     },
-    orderBy: [{ priority: 'desc' }, { deadline: 'asc' }, { id: 'asc' }],
+    orderBy: sort === 'newest' ? [{ createdAt: 'desc' }, { id: 'desc' }] : [{ priority: 'desc' }, { deadline: 'asc' }, { id: 'asc' }],
     include: { buyer: { select: { id: true, name: true } } },
     ...pageArgs(query),
   });
@@ -269,4 +300,4 @@ async function track(token) {
   };
 }
 
-module.exports = { list, create, get, updateStatus, availability, syncStatus, cancel, track, sumQty, decorate, delayedWhere, CLOSED };
+module.exports = { list, summary, create, get, updateStatus, availability, syncStatus, cancel, track, sumQty, decorate, delayedWhere, CLOSED };

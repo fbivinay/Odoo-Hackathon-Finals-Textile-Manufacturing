@@ -7,7 +7,7 @@ const createOrderSchema = z.object({
   materialId: id.optional(),
   fabricType: text,
   colour: z.string().trim().default(''), // optional: not every order names a colour
-  qty,
+  qty: qty.min(10, 'The smallest order is 10 m'), // remakes for rejected fabric are raised by the system and may be smaller
   yarnRequired: money.default(0),
   pricePerUnit: money.default(0),
   deadline: z.coerce.date(),

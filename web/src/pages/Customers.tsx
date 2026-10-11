@@ -1,14 +1,23 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Clock, Crown, Percent, TriangleAlert } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { DataTable } from '@/components/DataTable'
-import { selectClass } from '@/components/Field'
-import { PageHead } from '@/components/PageHead'
-import { KpiCard } from '@/components/tremor/KpiCard'
+import { EmptyState } from '@/components/EmptyState'
+import { Input } from '@/components/ui/input'
+import { toast } from 'sonner'
+import { useSession } from '@/auth/session'
+import { actsAs } from '@/components/AppShell'
+import { Field, selectClass } from '@/components/Field'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { api, ApiError } from '@/lib/api'
+import { useApi } from '@/lib/useApi'
+import { PageHead } from '@/components/PageHead'
+import { Figure } from '@/components/Figure'
 import { summariseCustomers, type CustomerStats } from '@/lib/customers'
-import { dayFromToday, formatDate, formatMoney } from '@/lib/format'
+import { dayFromToday, formatDate, formatINR, formatMoney } from '@/lib/format'
 import { PERIODS, useCustomerData } from '@/lib/useCustomers'
 
 const RANK_BY: { key: string; label: string; value: (r: CustomerStats) => number | null; asc?: boolean }[] = [
@@ -28,6 +37,10 @@ export function Customers() {
   const { data, error } = useCustomerData()
   const [period, setPeriod] = useState<string>('365')
   const [rankBy, setRankBy] = useState('score')
+  const { user } = useSession()
+  // Payments are taken by the owner or the dispatch desk.
+  const canCollect = actsAs(user, 'DISPATCH')
+  const [collecting, setCollecting] = useState<CustomerStats | null>(null)
   const p = PERIODS.find((x) => x.key === period)!
   const from = p.days ? dayFromToday(-p.days) : null
 
@@ -44,6 +57,9 @@ export function Customers() {
     })
   }, [stats, rankBy])
 
+  const [search, setSearch] = useState('')
+  const shown = ranked.filter((s) => s.buyer.name.toLowerCase().includes(search.trim().toLowerCase()))
+
   const active = stats?.filter((s) => s.orders > 0) ?? []
   const invoiced = active.reduce((t, s) => t + s.invoiced, 0)
   const outstanding = stats?.reduce((t, s) => t + s.outstanding, 0) ?? 0
@@ -51,7 +67,6 @@ export function Customers() {
   const top = [...active].sort((a, b) => b.invoiced - a.invoiced)[0]
   const best = (get: (s: CustomerStats) => number | null, asc = false) =>
     active.filter((s) => get(s) !== null).sort((a, b) => (asc ? get(a)! - get(b)! : get(b)! - get(a)!))[0]
-  const fastest = best((s) => s.daysToPay, true)
   const slowest = best((s) => s.daysToPay)
   const margin = best((s) => s.marginPct)
   const owing = best((s) => s.overdue || null)
@@ -67,6 +82,26 @@ export function Customers() {
       cell: ({ row: { original: s } }) => <span className={s.overdue > 0 ? 'text-problem' : undefined}>{s.outstanding > 0 ? formatMoney(s.outstanding) : '—'}</span>,
     },
     { id: 'last', header: 'Last order', accessorFn: (s) => s.lastOrder ?? '', cell: ({ row: { original: s } }) => (s.lastOrder ? formatDate(s.lastOrder) : '—') },
+    {
+      id: 'act',
+      header: '',
+      enableSorting: false,
+      cell: ({ row: { original: s } }) =>
+        canCollect && s.outstanding > 0.5 ? (
+          <div className="flex justify-end">
+            <Button
+              size="xs"
+              onClick={(e) => {
+                // The row itself opens the client; this button only opens the payment popup.
+                e.stopPropagation()
+                setCollecting(s)
+              }}
+            >
+              Receive payment
+            </Button>
+          </div>
+        ) : null,
+    },
   ]
 
   const loading = !stats && !error
@@ -97,34 +132,40 @@ export function Customers() {
       />
       {error && <p className="text-sm text-problem">{error}</p>}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Active clients" value={String(active.length)} hint={stats ? `of ${stats.length} on the books` : undefined} loading={loading} />
-        <KpiCard label="Revenue" value={formatMoney(invoiced)} hint={`Invoiced, ${p.label.toLowerCase()}`} loading={loading} />
-        <KpiCard label="Outstanding today" tone={overdue > 0 ? 'problem' : undefined} value={formatMoney(outstanding)} hint={overdue > 0 ? `${formatMoney(overdue)} over 60 days` : 'Nothing overdue'} loading={loading} />
-        <KpiCard label="Top client" value={top ? pct(top.share * 100) : '—'} hint={top ? `of revenue from ${top.buyer.name}` : undefined} loading={loading} />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {loading ? (
-          Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-24" />)
-        ) : (
-          <>
-            <Highlight icon={Crown} label="Biggest client" s={top} value={top && formatMoney(top.invoiced)} onOpen={(id) => navigate(`/clients/${id}`)} />
-            <Highlight icon={Clock} label="Fastest payer" s={fastest} value={fastest && `${fastest.daysToPay} days to pay`} onOpen={(id) => navigate(`/clients/${id}`)} />
-            <Highlight icon={Percent} label="Best margin" s={margin} value={margin && pct(margin.marginPct, 1)} onOpen={(id) => navigate(`/clients/${id}`)} />
-            {owing ? (
-              <Highlight icon={TriangleAlert} tone="problem" label="Most overdue" s={owing} value={formatMoney(owing.overdue)} onOpen={(id) => navigate(`/clients/${id}`)} />
-            ) : (
-              <Highlight icon={TriangleAlert} tone="problem" label="Slowest payer" s={slowest} value={slowest && `${slowest.daysToPay} days to pay`} onOpen={(id) => navigate(`/clients/${id}`)} />
-            )}
-          </>
-        )}
-      </div>
+      {/* Six figures: three about the book as a whole, three naming the client behind a number. */}
+      <section className="figures-panel">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Figure label="Active clients" value={String(active.length)} note={stats ? `of ${stats.length} on the books` : undefined} loading={loading} />
+          <Figure label="Revenue" value={formatMoney(invoiced)} note={`Invoiced, ${p.label.toLowerCase()}`} loading={loading} />
+          <Figure label="Outstanding today" tone={overdue > 0 ? 'problem' : undefined} value={formatMoney(outstanding)} note={overdue > 0 ? `${formatMoney(overdue)} over 60 days` : 'Nothing overdue'} loading={loading} />
+          <Figure label="Biggest client" onClick={top ? () => navigate(`/clients/${top.buyer.id}`) : undefined} value={top?.buyer.name ?? '—'} note={top ? `${formatMoney(top.invoiced)} · ${pct(top.share * 100)} of revenue` : undefined} loading={loading} />
+          <Figure label="Best margin" onClick={margin ? () => navigate(`/clients/${margin.buyer.id}`) : undefined} tone={margin ? 'good' : undefined} value={margin?.buyer.name ?? '—'} note={margin ? `${pct(margin.marginPct, 1)} margin` : undefined} loading={loading} />
+          {owing ? (
+            <Figure label="Most overdue" onClick={() => navigate(`/clients/${owing.buyer.id}`)} tone="problem" value={owing.buyer.name} note={`${formatMoney(owing.overdue)} overdue`} loading={loading} />
+          ) : (
+            <Figure label="Slowest payer" onClick={slowest ? () => navigate(`/clients/${slowest.buyer.id}`) : undefined} tone={slowest ? 'watch' : undefined} value={slowest?.buyer.name ?? '—'} note={slowest ? `${slowest.daysToPay} days to pay` : undefined} loading={loading} />
+          )}
+        </div>
+      </section>
 
       <section className="space-y-3">
-        <h2 className="section-head">Ranking</h2>
-        <DataTable key={rankBy} columns={columns} data={ranked} loading={loading} onRowClick={(s) => navigate(`/clients/${s.buyer.id}`)} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="section-head">All clients</h2>
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input type="search" aria-label="Search clients" placeholder="Search client" className="bg-white pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+        </div>
+        <DataTable
+          key={rankBy}
+          columns={columns}
+          data={shown}
+          loading={loading}
+          onRowClick={(s) => navigate(`/clients/${s.buyer.id}`)}
+          empty={<EmptyState icon={Search} line={`No client matches "${search.trim()}".`} actionLabel="Clear search" onAction={() => setSearch('')} />}
+        />
       </section>
+      {collecting && <CollectDialog client={collecting} onClose={() => setCollecting(null)} />}
     </div>
   )
 }
@@ -140,17 +181,100 @@ export function ScoreBar({ score }: { score: number }) {
   )
 }
 
-function Highlight({ icon: Icon, label, s, value, tone, onOpen }: { icon: typeof Crown; label: string; s?: CustomerStats; value?: string | null; tone?: 'problem'; onOpen: (id: string) => void }) {
+// An invoice still owed, as GET /invoices?open=true returns it.
+interface OpenInvoice {
+  id: string
+  invoiceNo: string
+  issuedAt: string
+  balance: number
+  dispatch: { order: { id: string; orderNo: string } }
+}
+const METHODS = ['NEFT', 'RTGS', 'UPI', 'Cheque', 'Cash']
+
+// Take what a client owes: every pending order in one go, or one order at a time.
+export function CollectDialog({ client, onClose }: { client: CustomerStats; onClose: () => void }) {
+  const open = useApi<OpenInvoice[]>(`/invoices?open=true&buyerId=${client.buyer.id}&limit=200`)
+  const [method, setMethod] = useState('NEFT')
+  const [busy, setBusy] = useState<string | null>(null)
+  const rows = open.data ?? []
+  const total = rows.reduce((t, r) => t + Number(r.balance), 0)
+
+  // Each invoice is settled in full, one after another; whatever is done stays done if one fails.
+  async function receive(list: OpenInvoice[], key: string) {
+    setBusy(key)
+    let done = 0
+    try {
+      for (const inv of list) {
+        await api(`/invoices/${inv.id}/payments`, { method: 'POST', body: { amount: Number(inv.balance), method } })
+        done += 1
+      }
+      toast.success(list.length === 1 ? `${formatINR(Number(list[0].balance))} received for ${list[0].dispatch.order.orderNo}` : `${formatINR(list.reduce((t, r) => t + Number(r.balance), 0))} received for ${list.length} orders`)
+      if (list.length === rows.length) onClose()
+      else open.reload()
+    } catch (err) {
+      toast.error(`${err instanceof ApiError ? err.message : 'Something went wrong.'}${done ? ` ${done} of ${list.length} were saved.` : ''}`)
+      open.reload()
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
-    <button type="button" disabled={!s} onClick={() => s && onOpen(s.buyer.id)} className="card flex items-start gap-3 text-left transition hover:border-brand/40 disabled:opacity-60">
-      <span className={`rounded-lg p-2 ${tone === 'problem' ? 'bg-problem-bg text-problem' : 'bg-brand-tint text-brand'}`}>
-        <Icon className="size-4" />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-xs text-ink-2">{label}</span>
-        <span className="block truncate font-semibold">{s?.buyer.name ?? '—'}</span>
-        <span className={`block text-sm tabular-nums ${tone === 'problem' ? 'text-problem' : 'text-ink-2'}`}>{value ?? ''}</span>
-      </span>
-    </button>
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Receive payment</DialogTitle>
+          <DialogDescription>{client.buyer.name}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <Field label="Paid by" htmlFor="pay-method">
+            <select id="pay-method" className={selectClass} value={method} onChange={(e) => setMethod(e.target.value)}>
+              {METHODS.map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
+          </Field>
+          {open.loading && !open.data ? (
+            <Skeleton className="h-32 w-full" />
+          ) : open.error ? (
+            <p className="text-sm text-problem">{open.error}</p>
+          ) : rows.length === 0 ? (
+            <p className="rounded-lg bg-good-bg px-3 py-2 text-sm text-good">Nothing is pending. Every invoice is paid.</p>
+          ) : (
+            <div>
+              <p className="mb-1.5 text-sm font-medium">Pending, order by order</p>
+              <ul className="divide-y divide-border rounded-lg bg-zinc-50 px-3 text-sm">
+                {rows.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-3 py-2">
+                    <span className="min-w-0 leading-tight">
+                      <span className="font-medium">{r.dispatch.order.orderNo}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {r.invoiceNo} · {formatDate(r.issuedAt)}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 tabular-nums">
+                      {formatINR(Number(r.balance))}
+                      <Button size="xs" variant="outline" disabled={busy !== null} onClick={() => receive([r], r.id)}>
+                        Receive
+                      </Button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+          {rows.length > 0 && (
+            <Button disabled={busy !== null} onClick={() => receive(rows, 'all')}>
+              Receive all · {formatINR(total)}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

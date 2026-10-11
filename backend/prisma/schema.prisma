@@ -151,6 +151,8 @@ model Buyer {
   email      String?
   state      String   @default("Gujarat")
   creditDays Int      @default(30)
+  // Where their fabric is delivered: one line, as written on the truck's papers.
+  address    String?
   createdAt  DateTime @default(now())
 
   orders     Order[]

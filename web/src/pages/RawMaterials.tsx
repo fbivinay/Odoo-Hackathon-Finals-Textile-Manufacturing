@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { PackagePlus, Search, ShoppingCart, X } from 'lucide-react'
+import { PackagePlus, Search, ShoppingCart } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useSession } from '@/auth/session'
@@ -17,7 +17,6 @@ import { Pill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, ApiError } from '@/lib/api'
 import { formatDateTime, formatINR, formatQty } from '@/lib/format'
@@ -101,7 +100,6 @@ export function RawMaterials() {
     history.reload()
   }
   const shortOf = (id: string) => short.find((s) => s.m.id === id)?.qty ?? 0
-  const low = short.length
   const reload = () => {
     stock.reload()
     received.reload()
@@ -110,13 +108,10 @@ export function RawMaterials() {
   // The list: every material, searchable and filterable. A box above sets the section filter.
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<'' | 'short' | 'onorder' | 'ok'>('')
-  const listRef = useRef<HTMLElement>(null)
+  // Which of the three lists is open.
+  const [tab, setTab] = useState<'stock' | 'orders' | 'received'>('stock')
   const isLow = (m: RawMaterial) => m.lowStock || shortOf(m.id) > 0
   const valueOf = (m: RawMaterial) => Number(m.qtyInStock) * Number(m.avgCost)
-  const pick = (c: Category) => {
-    setCategory(category === c ? 'ALL' : c)
-    if (category !== c) listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
   const needle = q.trim().toLowerCase()
   const rows = all
     .filter(
@@ -126,36 +121,46 @@ export function RawMaterials() {
         (!status || (status === 'short' ? isLow(m) : status === 'onorder' ? onOrderOf(m.id) > 0 : !isLow(m))),
     )
     .sort((a, b) => Number(isLow(b)) - Number(isLow(a)) || a.yarnType.localeCompare(b.yarnType))
-  const chips = [
-    needle && { key: 'q', text: `"${q}"`, clear: () => setQ('') },
-    category !== 'ALL' && { key: 'category', text: CATEGORY[category], clear: () => setCategory('ALL') },
-    status && { key: 'status', text: STATUS[status], clear: () => setStatus('') },
-  ].filter((c): c is { key: string; text: string; clear: () => void } => !!c)
-  const filtersOn = chips.length > 0
+  const lowCount = all.filter(isLow).length
+  const filtersOn = !!needle || category !== 'ALL' || !!status
 
+
+  // No column sorting: what is running low comes first.
   const columns: ColumnDef<RawMaterial>[] = [
     {
       id: 'material',
       header: 'Material',
-      accessorFn: (m) => m.yarnType,
+      meta: { width: '34%' },
+      enableSorting: false,
       cell: ({ row: { original: m } }) => (
         <div className="leading-tight">
-          <p className="font-medium">{m.yarnType}</p>
-          <p className="text-xs text-muted-foreground">{[m.colour, m.sku].filter(Boolean).join(' · ')}</p>
+          <p className="truncate font-medium">{m.yarnType}</p>
+          <p className="truncate text-xs text-muted-foreground">{[m.colour, m.sku].filter(Boolean).join(' · ')}</p>
         </div>
       ),
     },
-    { id: 'section', header: 'Section', accessorFn: (m) => CATEGORY[m.category as Category] ?? m.category },
-    { id: 'stock', header: 'In stock', accessorFn: (m) => Number(m.qtyInStock), cell: ({ row: { original: m } }) => <span className="tabular-nums">{formatQty(m.qtyInStock, m.unit)}</span> },
-    { id: 'value', header: 'Stock value', accessorFn: valueOf, cell: ({ row: { original: m } }) => <span className="tabular-nums">{formatINR(valueOf(m))}</span> },
+    { id: 'section', header: 'Section', meta: { width: '22%' }, enableSorting: false, accessorFn: (m) => CATEGORY[m.category as Category] ?? m.category },
+    {
+      id: 'stock',
+      header: 'In stock',
+      meta: { width: '18%' },
+      enableSorting: false,
+      cell: ({ row: { original: m } }) => (
+        <div className="leading-tight tabular-nums">
+          <p>{formatQty(m.qtyInStock, m.unit)}</p>
+          <p className="text-xs text-muted-foreground">worth {formatINR(valueOf(m))}</p>
+        </div>
+      ),
+    },
     {
       id: 'status',
       header: 'Status',
-      accessorFn: (m) => (isLow(m) ? 0 : 1),
+      meta: { width: '26%' },
+      enableSorting: false,
       cell: ({ row: { original: m } }) => (
-        <div className="flex flex-wrap gap-1">
+        <div className="leading-tight">
           {isLow(m) ? <Pill tone="problem">{shortOf(m.id) > 0 ? `Short ${formatQty(shortOf(m.id), m.unit)}` : 'Low'}</Pill> : <Pill tone="good">OK</Pill>}
-          {onOrderOf(m.id) > 0 && <Pill tone="watch">On order {formatQty(onOrderOf(m.id), m.unit)}</Pill>}
+          {onOrderOf(m.id) > 0 && <p className="mt-0.5 text-xs font-medium whitespace-nowrap text-watch">{formatQty(onOrderOf(m.id), m.unit)} on order</p>}
         </div>
       ),
     },
@@ -164,7 +169,7 @@ export function RawMaterials() {
   return (
     <div className="space-y-5">
       <PageHead
-        eyebrow="Weaving, dyeing, finishing, QC, packaging, spares"
+        eyebrow="Dyes, chemicals, packaging and spares"
         title="Raw Materials"
         actions={
           canEdit && (
@@ -184,57 +189,35 @@ export function RawMaterials() {
         }
       />
 
-      <Tabs defaultValue="stock">
-        <TabsList>
-          <TabsTrigger value="stock">Current Stock{low > 0 && ` · ${low} short`}</TabsTrigger>
-          <TabsTrigger value="orders">Order History{(pending.data?.length ?? 0) > 0 && ` · ${pending.data!.length} pending`}</TabsTrigger>
-          <TabsTrigger value="received">Received History</TabsTrigger>
-        </TabsList>
-        <TabsContent value="stock" className="space-y-5">
-          {stock.error && <p className="text-sm text-problem">{stock.error}</p>}
-          <section className="figures-panel">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {CATEGORIES.map((c) => {
-                const items = all.filter((m) => m.category === c)
-                const lowCount = items.filter(isLow).length
-                return (
-                  // The type's name is the headline; below it, how many are low.
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => pick(c)}
-                    aria-pressed={category === c}
-                    className={cn(
-                      'figure w-full cursor-pointer rounded-xl transition hover:ring-2 hover:ring-brand/30 focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none',
-                      category === c && 'ring-2 ring-brand',
-                    )}
-                  >
-                    {stock.loading && !stock.data ? (
-                      <Skeleton className="mx-auto h-7 w-40" />
-                    ) : (
-                      <>
-                        <p className="text-xl font-bold text-brand">
-                          {CATEGORY[c]} <span className="font-semibold whitespace-nowrap">({items.length} items)</span>
-                        </p>
-                        <p className={cn('mt-1 text-xs', lowCount ? 'font-medium text-problem' : 'text-muted-foreground')}>
-                          {lowCount ? `${lowCount} low` : 'None low'}
-                        </p>
-                      </>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </section>
+      {stock.error && <p className="text-sm text-problem">{stock.error}</p>}
 
-          <section ref={listRef} className="scroll-mt-4 space-y-3">
-            <h2 className="section-head">All raw materials</h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-52 flex-1">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <TabsList>
+            <TabsTrigger value="stock">Current stock{lowCount > 0 && ` · ${lowCount} low`}</TabsTrigger>
+            <TabsTrigger value="orders">Order history{(pending.data?.length ?? 0) > 0 && ` · ${pending.data!.length} pending`}</TabsTrigger>
+            <TabsTrigger value="received">Received history</TabsTrigger>
+          </TabsList>
+          {tab === 'stock' && (
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              {filtersOn && (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => {
+                    setQ('')
+                    setStatus('')
+                    setCategory('ALL')
+                  }}
+                >
+                  Remove filter
+                </Button>
+              )}
+              <div className="relative w-full sm:w-64">
                 <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input aria-label="Search materials" placeholder="Search name, shade, SKU or type" className="pl-8" value={q} onChange={(e) => setQ(e.target.value)} />
+                <Input type="search" aria-label="Search materials" placeholder="Search name, shade or SKU" className="bg-white pl-8" value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
-              <select aria-label="Section" className={cn(selectClass, 'w-52 bg-surface')} value={category} onChange={(e) => setCategory(e.target.value as Category | 'ALL')}>
+              <select aria-label="Section" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-40')} value={category} onChange={(e) => setCategory(e.target.value as Category | 'ALL')}>
                 <option value="ALL">All sections</option>
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -242,57 +225,40 @@ export function RawMaterials() {
                   </option>
                 ))}
               </select>
-              <select aria-label="Stock status" className={cn(selectClass, 'w-44 bg-surface')} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
-                <option value="">Any stock level</option>
+              <select aria-label="Stock status" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
+                <option value="">All status</option>
                 <option value="short">{STATUS.short}</option>
                 <option value="onorder">{STATUS.onorder}</option>
                 <option value="ok">{STATUS.ok}</option>
               </select>
             </div>
-            {filtersOn && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {chips.map((c) => (
-                  <span key={c.key} className="inline-flex items-center gap-1 rounded-full border border-border bg-surface py-0.5 pr-1 pl-2.5 text-xs">
-                    {c.text}
-                    <button type="button" aria-label={`Remove filter ${c.text}`} className="rounded-full p-0.5 hover:bg-zinc-100" onClick={c.clear}>
-                      <X className="size-3" />
-                    </button>
-                  </span>
-                ))}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7"
-                  onClick={() => {
+          )}
+        </div>
+        <TabsContent value="stock" className="mt-4">
+          <DataTable
+            columns={columns}
+            data={rows}
+            loading={stock.loading}
+            onRowClick={(m) => navigate(`/raw-materials/${m.id}`)}
+            empty={
+              filtersOn ? (
+                <EmptyState
+                  icon={Search}
+                  line="No material matches these filters."
+                  actionLabel="Clear filters"
+                  onAction={() => {
                     setQ('')
                     setStatus('')
                     setCategory('ALL')
                   }}
-                >
-                  Reset all filters
-                </Button>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {rows.length} items{filtersOn && ` of ${all.length}`} · click a material for its full details
-            </p>
-            <DataTable
-              columns={columns}
-              data={rows}
-              loading={stock.loading}
-              onRowClick={(m) => navigate(`/raw-materials/${m.id}`)}
-              empty={
-                <EmptyState
-                  icon={PackagePlus}
-                  line={filtersOn ? 'No materials match these filters.' : 'No raw materials yet.'}
-                  actionLabel={canEdit && !filtersOn ? 'Receive material' : undefined}
-                  onAction={canEdit && !filtersOn ? () => setReceiving(true) : undefined}
                 />
-              }
-            />
-          </section>
+              ) : (
+                <EmptyState icon={PackagePlus} line="No raw materials yet." actionLabel={canEdit ? 'Receive material' : undefined} onAction={canEdit ? () => setReceiving(true) : undefined} />
+              )
+            }
+          />
         </TabsContent>
-        <TabsContent value="orders" className="space-y-3">
+        <TabsContent value="orders" className="mt-4 space-y-3">
           <PurchaseOrders
             {...history}
             canEdit={canEdit}
@@ -302,7 +268,7 @@ export function RawMaterials() {
             }}
           />
         </TabsContent>
-        <TabsContent value="received" className="space-y-3">
+        <TabsContent value="received" className="mt-4 space-y-3">
           <DataTable columns={receivedCols} data={received.rows} loading={received.loading} empty={<EmptyState icon={PackagePlus} line="Nothing received yet." />} />
           <LoadMore hasMore={received.hasMore} more={received.more} />
         </TabsContent>

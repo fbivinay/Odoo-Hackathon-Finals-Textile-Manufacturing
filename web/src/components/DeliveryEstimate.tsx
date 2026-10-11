@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { Field } from '@/components/Field'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
@@ -76,19 +75,11 @@ export function DeliveryEstimate({ qty, yarnKg, materialId, onChange }: { qty: n
   const today = new Date().toISOString().slice(0, 10)
 
   return (
-    <div className="space-y-3 rounded-xl border bg-ground/60 p-4" aria-live="polite">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">Delivery date</p>
-        <Button type="button" variant="ghost" size="xs" className="gap-1" onClick={planning.reload} disabled={planning.loading}>
-          <RefreshCw className="size-3" />
-          Refresh workload
-        </Button>
-      </div>
-
+    <div className="space-y-3 rounded-xl bg-zinc-50 p-3" aria-live="polite">
       {planning.error && <p className="text-sm text-problem">Could not load the production plan: {planning.error}</p>}
-      {!planning.error && !estimate && <Skeleton className="h-24" />}
+      {!planning.error && !estimate && <Skeleton className="h-12" />}
       {estimate && !estimate.ok && (
-        <div className="flex gap-2 rounded-lg bg-watch-bg p-3 text-sm text-watch">
+        <div className="flex gap-2 text-sm text-watch">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <p>{estimate.limitation}</p>
         </div>
@@ -96,68 +87,64 @@ export function DeliveryEstimate({ qty, yarnKg, materialId, onChange }: { qty: n
 
       {estimate?.ok && estDate && (
         <>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg bg-brand-tint p-3">
-              <p className="text-xs text-ink-2">System estimate</p>
-              <p className="mt-0.5 text-xl font-semibold tracking-tight text-brand">{formatDate(estDate)}</p>
-              <p className="text-xs text-ink-3">{plural(daysBetween(today, estDate), 'day')} from today</p>
+          {/* One line: the date the plan gives, and the date promised (the same unless changed). */}
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="leading-tight">
+              <p className="text-xs text-muted-foreground">Delivery by</p>
+              <p className="text-lg font-semibold tracking-tight text-brand">{formatDate(committed)}</p>
+              <p className="text-xs text-muted-foreground">
+                {overridden ? `Plan says ${formatDate(estDate)}` : `${plural(daysBetween(today, estDate), 'day')} from today`}
+                <button type="button" className="ml-2 inline-flex items-center gap-1 underline-offset-2 hover:underline disabled:opacity-50" onClick={planning.reload} disabled={planning.loading}>
+                  <RefreshCw className="size-3" />
+                  Refresh
+                </button>
+              </p>
             </div>
-            <div className="rounded-lg border bg-surface p-3">
-              <p className="text-xs text-ink-2">Promised to buyer</p>
-              <p className="mt-0.5 text-xl font-semibold tracking-tight">{formatDate(committed)}</p>
-              <p className="text-xs text-ink-3">{overridden ? `${plural(daysBetween(estDate, committed), 'day')} after the estimate` : 'Same as the estimate'}</p>
+            <div className="w-full sm:w-44">
+              <label htmlFor="commit" className="text-xs text-muted-foreground">
+                Promise a later date
+              </label>
+              <Input id="commit" type="date" className="mt-1 bg-white" min={estDate} max={addDays(estDate, MAX_OVERRIDE_DAYS)} value={commit || estDate} aria-invalid={!!commitError} onChange={(e) => setCommit(e.target.value)} />
             </div>
           </div>
+          {commitError && <p className="text-xs text-problem">{commitError}</p>}
 
-          <ol className="space-y-1 text-xs">
-            {estimate.stages.map((s) => (
-              <li key={s.stage} className="flex justify-between gap-3">
-                <span className="text-ink-2">
-                  {s.stage.charAt(0) + s.stage.slice(1).toLowerCase()} · {formatQty(s.qty, s.unit)}
-                </span>
-                <span className="tabular-nums">
-                  {formatDate(s.start)}
-                  {s.end !== s.start && ` → ${formatDate(s.end)}`}
-                </span>
-              </li>
-            ))}
-            <li className="flex justify-between gap-3">
-              <span className="text-ink-2">Quality check, then dispatch preparation</span>
-              <span className="tabular-nums">
-                {formatDate(estimate.qcDay!)} → {formatDate(estDate)}
-              </span>
-            </li>
-          </ol>
+          {overridden && (
+            <Field label="Reason for the later date" htmlFor="reason" hint={reason.trim() ? undefined : <span className="text-problem">Required for a later date.</span>}>
+              <Textarea id="reason" rows={2} className="bg-white" placeholder="Client asked for a buffer" value={reason} onChange={(e) => setReason(e.target.value)} />
+            </Field>
+          )}
 
           {yarnShort > 0 && (
-            <p role="alert" className="flex items-center gap-2 rounded-lg bg-problem-bg px-3 py-2 text-sm font-medium text-problem">
-              <AlertTriangle className="size-4 shrink-0" />
+            <p role="alert" className="flex items-center gap-2 rounded-lg bg-problem-bg px-3 py-2 text-xs font-medium text-problem">
+              <AlertTriangle className="size-3.5 shrink-0" />
               Yarn short by {formatQty(yarnShort, 'kg')} after stock kept for open orders: order it now.
             </p>
           )}
 
-          <div className="grid gap-3 border-t pt-3 sm:grid-cols-2">
-            <Field
-              label="Promise to buyer"
-              htmlFor="commit"
-              hint={commitError ? <span className="text-problem">{commitError}</span> : `${formatDate(estDate)} to ${formatDate(addDays(estDate, MAX_OVERRIDE_DAYS))}`}
-            >
-              <Input
-                id="commit"
-                type="date"
-                min={estDate}
-                max={addDays(estDate, MAX_OVERRIDE_DAYS)}
-                value={commit || estDate}
-                aria-invalid={!!commitError}
-                onChange={(e) => setCommit(e.target.value)}
-              />
-            </Field>
-            {overridden && (
-              <Field label="Reason for the later date" htmlFor="reason" hint={reason.trim() ? 'Not stored yet: the API has no field for it.' : <span className="text-problem">Required for a later date.</span>}>
-                <Textarea id="reason" rows={2} placeholder="Buyer asked for a buffer" value={reason} onChange={(e) => setReason(e.target.value)} />
-              </Field>
-            )}
-          </div>
+          {/* The stage-by-stage dates, for anyone who wants to see how the date was reached. */}
+          <details className="text-xs">
+            <summary className="cursor-pointer text-muted-foreground select-none hover:text-foreground">How this date is worked out</summary>
+            <ol className="mt-2 space-y-1">
+              {estimate.stages.map((s) => (
+                <li key={s.stage} className="flex justify-between gap-3">
+                  <span className="text-ink-2">
+                    {s.stage.charAt(0) + s.stage.slice(1).toLowerCase()} · {formatQty(s.qty, s.unit)}
+                  </span>
+                  <span className="tabular-nums">
+                    {formatDate(s.start)}
+                    {s.end !== s.start && ` → ${formatDate(s.end)}`}
+                  </span>
+                </li>
+              ))}
+              <li className="flex justify-between gap-3">
+                <span className="text-ink-2">Quality check and dispatch</span>
+                <span className="tabular-nums">
+                  {formatDate(estimate.qcDay!)} → {formatDate(estDate)}
+                </span>
+              </li>
+            </ol>
+          </details>
         </>
       )}
     </div>

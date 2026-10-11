@@ -6,6 +6,7 @@ export interface CBuyer {
   name: string
   phone: string | null
   email: string | null
+  address?: string | null // delivery address, one line
   createdAt: string
 }
 export interface COrder {

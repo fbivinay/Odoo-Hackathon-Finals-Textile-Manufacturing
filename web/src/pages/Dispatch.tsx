@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { AlertTriangle, PackageOpen, Printer, Search, Truck } from 'lucide-react'
+import { AlertTriangle, MapPin, PackageOpen, Printer, Search, Truck } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHead } from '@/components/PageHead'
 import { DataTable } from '@/components/DataTable'
@@ -38,9 +38,19 @@ const FLAG: Record<Exclude<ShelfFlag, null>, { tone: 'problem' | 'watch'; text: 
 
 // What the order has to deliver in all: its quantity less fabric rejected at quality check.
 const owed = (g: ShelfGroup) => (g.order as { toShip?: number }).toShip ?? g.order.qty
+// A client's one-line delivery address, when one is saved.
+const addressOf = (b: unknown) => (b as { address?: string | null }).address || ''
 const rollsOf = (n: number) => `${n.toLocaleString('en-IN')} ${n === 1 ? 'roll' : 'rolls'}`
 const ordersOf = (n: number) => `${n.toLocaleString('en-IN')} ${n === 1 ? 'order' : 'orders'}`
 const fabricOf = (o: { fabricType: string; colour?: string | null }) => [o.fabricType, o.colour].filter(Boolean).join(' · ')
+
+// The shelf is always "right now"; what has gone out is counted over a period you pick.
+const PERIODS = [
+  { key: 'today', label: 'Today', days: 0, words: 'today' },
+  { key: '7', label: 'Last 7 days', days: 7, words: 'in the last 7 days' },
+  { key: '30', label: 'Last 30 days', days: 30, words: 'in the last 30 days' },
+  { key: '90', label: 'Last 90 days', days: 90, words: 'in the last 90 days' },
+] as const
 
 // Three lists, opened from the boxes at the top.
 const VIEWS = {
@@ -55,7 +65,16 @@ export function Dispatch() {
   const shelf = useApi<ShelfStock>('/dispatch/stock', { refreshMs: 30000 })
   // Recent trucks: what each order on the shelf has already received, and this month's totals.
   const recent = useApi<DispatchRow[]>(`/dispatch?from=${dayFromToday(-180)}&limit=500`)
-  const dispatches = usePaged<DispatchRow>('/dispatch')
+  const [period, setPeriod] = useState<(typeof PERIODS)[number]['key']>('today')
+  const span = PERIODS.find((p) => p.key === period)!
+  // From the mill's own midnight, not UTC's: a truck that left at 3 am today counts as today.
+  const since = useMemo(() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() - span.days)
+    return d.toISOString()
+  }, [span.days])
+  const dispatches = usePaged<DispatchRow>(`/dispatch?from=${encodeURIComponent(since)}`)
   const [view, setView] = useState<View>('shelf')
   const [loading, setLoading] = useState<ShelfRow | null>(null)
   const [invoiceOf, setInvoiceOf] = useState<DispatchRow | null>(null)
@@ -83,14 +102,14 @@ export function Dispatch() {
 
   const ready = rows.filter((r) => r.complete)
   const count = (list: ShelfRow[]) => list.reduce((n, r) => n + r.rolls.length, 0)
-  const month = today.slice(0, 7)
-  const thisMonth = (recent.data ?? []).filter((d) => d.dispatchedAt.slice(0, 7) === month)
-  const sentRolls = thisMonth.reduce((n, d) => n + d.rolls.length, 0)
+  // The same period drives the Dispatched box and its list.
+  const sent = (recent.data ?? []).filter((d) => d.dispatchedAt >= since)
+  const sentRolls = sent.reduce((n, d) => n + d.rolls.length, 0)
 
   const needle = q.trim().toLowerCase()
   const has = (...v: (string | null | undefined)[]) => !needle || v.some((x) => x?.toLowerCase().includes(needle))
   const shelfRows = (view === 'ready' ? ready : rows).filter((r) => has(r.order.orderNo, r.order.buyer.name, r.order.fabricType, r.order.colour, ...r.rolls.map((x) => x.rollNo)))
-  const sentRows = dispatches.rows.filter((d) => has(d.dispatchNo, d.order.orderNo, d.buyer.name, d.invoice?.invoiceNo, d.vehicleNo))
+  const sentRows = dispatches.rows.filter((d) => has(d.dispatchNo, d.order.orderNo, d.buyer.name, addressOf(d.buyer), d.invoice?.invoiceNo, d.vehicleNo))
   const unsold = shelf.data?.unsold.rolls ?? []
 
   // What is on the shelf, one order per row. No column sorting: the most urgent is on top.
@@ -98,7 +117,7 @@ export function Dispatch() {
     {
       id: 'order',
       header: 'Order',
-      meta: { width: '24%' },
+      meta: { width: '22%' },
       enableSorting: false,
       cell: ({ row: { original: r } }) => (
         <div className="leading-tight">
@@ -107,7 +126,18 @@ export function Dispatch() {
         </div>
       ),
     },
-    { id: 'buyer', header: 'Buyer', meta: { width: '20%' }, enableSorting: false, accessorFn: (r) => r.order.buyer.name },
+    {
+      id: 'buyer',
+      header: 'Client',
+      meta: { width: '24%' },
+      enableSorting: false,
+      cell: ({ row: { original: r } }) => (
+        <div className="leading-tight">
+          <p>{r.order.buyer.name}</p>
+          <p className="truncate text-xs text-muted-foreground">{addressOf(r.order.buyer) || 'No address'}</p>
+        </div>
+      ),
+    },
     {
       id: 'shelf',
       header: 'On the shelf',
@@ -125,7 +155,7 @@ export function Dispatch() {
     {
       id: 'status',
       header: 'Status',
-      meta: { width: '22%' },
+      meta: { width: '20%' },
       enableSorting: false,
       cell: ({ row: { original: r } }) => (
         <div className="leading-tight">
@@ -159,7 +189,7 @@ export function Dispatch() {
     {
       accessorKey: 'dispatchNo',
       header: 'Dispatch',
-      meta: { width: '17%' },
+      meta: { width: '14%' },
       enableSorting: false,
       cell: ({ row: { original: d } }) => (
         <div className="leading-tight">
@@ -169,26 +199,28 @@ export function Dispatch() {
       ),
     },
     {
-      id: 'order',
-      header: 'Order',
-      meta: { width: '21%' },
+      id: 'client',
+      header: 'Client',
+      meta: { width: '24%' },
       enableSorting: false,
       cell: ({ row: { original: d } }) => (
         <div className="leading-tight">
-          <p className="font-medium">{d.order.orderNo}</p>
-          <p className="truncate text-xs text-muted-foreground">{d.buyer.name}</p>
+          <p>{d.buyer.name}</p>
+          <p className="truncate text-xs text-muted-foreground">{addressOf(d.buyer) || 'No address'}</p>
         </div>
       ),
     },
     {
       id: 'rolls',
       header: 'Sent',
-      meta: { width: '15%' },
+      meta: { width: '20%' },
       enableSorting: false,
       cell: ({ row: { original: d } }) => (
         <div className="leading-tight tabular-nums">
-          <p>{rollsOf(d.rolls.length)}</p>
-          <p className="text-xs text-muted-foreground">
+          <p>
+            {d.order.orderNo} · {rollsOf(d.rolls.length)}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
             {formatQty(d.totalQty)}
             {d.vehicleNo ? ` · ${d.vehicleNo}` : ''}
           </p>
@@ -198,7 +230,7 @@ export function Dispatch() {
     {
       id: 'invoice',
       header: 'Invoice',
-      meta: { width: '23%' },
+      meta: { width: '20%' },
       enableSorting: false,
       cell: ({ row: { original: d } }) =>
         d.invoice ? (
@@ -215,7 +247,7 @@ export function Dispatch() {
     {
       id: 'act',
       header: '',
-      meta: { width: '24%' },
+      meta: { width: '22%' },
       enableSorting: false,
       cell: ({ row: { original: d } }) => (
         <div className="flex justify-end gap-2">
@@ -244,7 +276,7 @@ export function Dispatch() {
             onClick={() => setView('shelf')}
             active={view === 'shelf'}
             value={ordersOf(rows.length)}
-            note={`${rollsOf(shelf.data?.totalRolls ?? 0)} in store`}
+            note={`${rollsOf(shelf.data?.totalRolls ?? 0)} in store right now`}
             loading={shelf.loading}
           />
           <Figure
@@ -253,15 +285,15 @@ export function Dispatch() {
             active={view === 'ready'}
             tone={ready.length ? 'good' : undefined}
             value={ordersOf(ready.length)}
-            note={ready.length ? `${rollsOf(count(ready))} to dispatch` : 'No full order on the shelf yet'}
+            note={ready.length ? `${rollsOf(count(ready))} to dispatch right now` : 'No full order on the shelf yet'}
             loading={shelf.loading || recent.loading}
           />
           <Figure
             label="Dispatched"
             onClick={() => setView('sent')}
             active={view === 'sent'}
-            value={ordersOf(new Set(thisMonth.map((d) => d.order.id)).size)}
-            note={`${rollsOf(sentRolls)} sent this month`}
+            value={ordersOf(new Set(sent.map((d) => d.order.id)).size)}
+            note={`${rollsOf(sentRolls)} sent ${span.words}`}
             loading={recent.loading}
           />
         </div>
@@ -269,9 +301,20 @@ export function Dispatch() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="section-head">{VIEWS[view]}</h2>
-        <div className="relative w-full sm:w-72">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input type="search" aria-label="Search" placeholder={view === 'sent' ? 'Search order, buyer, invoice or vehicle' : 'Search order, buyer or roll'} className="bg-white pl-8" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input type="search" aria-label="Search" placeholder={view === 'sent' ? 'Search order, buyer, invoice or vehicle' : 'Search order, buyer or roll'} className="bg-white pl-8" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          {view === 'sent' && (
+            <select aria-label="Period" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={period} onChange={(e) => setPeriod(e.target.value as typeof period)}>
+              {PERIODS.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -282,7 +325,7 @@ export function Dispatch() {
             columns={sentCols}
             data={sentRows}
             loading={dispatches.loading}
-            empty={needle ? <EmptyState icon={Search} line={`Nothing matches "${q.trim()}".`} actionLabel="Clear search" onAction={() => setQ('')} /> : <EmptyState icon={Truck} line="Nothing dispatched yet." />}
+            empty={needle ? <EmptyState icon={Search} line={`Nothing matches "${q.trim()}".`} actionLabel="Clear search" onAction={() => setQ('')} /> : <EmptyState icon={Truck} line={`Nothing was dispatched ${span.words}.`} actionLabel={period === '90' ? undefined : 'Show a longer period'} onAction={period === '90' ? undefined : () => setPeriod(period === 'today' ? '7' : period === '7' ? '30' : '90')} />}
           />
           <LoadMore hasMore={dispatches.hasMore} more={dispatches.more} />
         </>
@@ -402,6 +445,12 @@ function ConfirmDispatch({ group, onClose, onDone, onStale }: { group: ShelfGrou
           </DialogDescription>
         </DialogHeader>
 
+        {/* Where the truck goes: the client's delivery address. */}
+        <p className="-mt-1 flex items-start gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-sm">
+          <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          {addressOf(o.buyer) ? <span>Deliver to {addressOf(o.buyer)}</span> : <span className="text-muted-foreground">No delivery address saved for this client. Add one on the Clients page.</span>}
+        </p>
+
         <form id="confirm-dispatch" onSubmit={submit} className="grid gap-4">
           {/* Only said when something is wrong: more fabric than the buyer accepts. */}
           {load.kind === 'over' && (
@@ -428,67 +477,108 @@ function ConfirmDispatch({ group, onClose, onDone, onStale }: { group: ShelfGrou
   )
 }
 
+// The invoice for one truck: on screen in a popup, and on paper as a clean A4 page (lib/print.ts).
 function InvoiceDialog({ d, onClose }: { d: DispatchRow; onClose: () => void }) {
   const inv = d.invoice
   // The dispatch carries no price; the invoice amount over the shipped length gives the rate.
   const rate = inv && d.totalQty ? inv.amount / d.totalQty : 0
+  // What the buyer owes in all: the fabric plus GST. Paid and balance are kept against this figure.
+  const payable = inv ? inv.paid + inv.balance : 0
+  const gst = inv ? Math.round((payable - inv.amount) * 100) / 100 : 0
+  const paise = (v: number) => `₹${v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const fact = (label: string, value: string) => (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="font-medium">{value}</p>
+    </div>
+  )
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="print-area sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="print-area max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        {/* On paper the letterhead below takes the popup title's place. */}
+        <DialogHeader className="print:hidden">
           <DialogTitle>Invoice {inv?.invoiceNo}</DialogTitle>
           <DialogDescription>{[d.order.orderNo, d.buyer.name].join(' · ')}</DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <p className="text-xs text-muted-foreground">From</p>
-            <p className="font-medium">Everest Textile Mills</p>
+
+        <div className="grid gap-5 text-sm">
+          {/* The letterhead only matters on paper; the popup already has a title. */}
+          <div className="hidden items-start justify-between border-b-2 border-zinc-900 pb-3 print:flex">
+            <div>
+              <p className="text-lg font-semibold">Everest Textile Mills</p>
+              <p className="text-xs text-zinc-600">Gujarat, India</p>
+            </div>
+            <div className="text-right">
+              <p className="text-base font-semibold tracking-wide uppercase">Invoice</p>
+              <p className="font-mono text-sm">{inv?.invoiceNo}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Bill to</p>
-            <p className="font-medium">{d.buyer.name}</p>
+
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            {fact('Bill to', d.buyer.name)}
+            {addressOf(d.buyer) && <div className="col-span-2 -mt-2">{fact('Deliver to', addressOf(d.buyer))}</div>}
+            {fact('Invoice date', inv ? formatDate(inv.issuedAt) : '—')}
+            {fact('Order', d.order.orderNo)}
+            {fact('Dispatch', `${d.dispatchNo} · ${formatDate(d.dispatchedAt)}`)}
+            {fact('Fabric', fabricOf(d.order))}
+            {fact('Vehicle', d.vehicleNo ?? '—')}
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Dispatch</p>
-            <p>
-              {d.dispatchNo} · {formatDate(d.dispatchedAt)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Vehicle</p>
-            <p>{d.vehicleNo ?? '—'}</p>
-          </div>
-        </div>
-        <table className="w-full text-sm">
-          <thead className="border-b text-xs text-muted-foreground">
-            <tr>
-              <th className="py-1 text-left font-medium">Roll</th>
-              <th className="py-1 text-left font-medium">Item</th>
-              <th className="py-1 text-right font-medium">Qty</th>
-              <th className="py-1 text-right font-medium">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {d.rolls.map((r) => (
-              <tr key={r.id} className="border-b last:border-0">
-                <td className="py-1">{r.rollNo}</td>
-                <td className="py-1">
-                  {d.order.fabricType} {d.order.colour} @ {formatINR(rate)}/m
-                </td>
-                <td className="py-1 text-right tabular-nums">{formatQty(r.qty)}</td>
-                <td className="py-1 text-right tabular-nums">{formatINR(r.qty * rate)}</td>
+
+          <table className="w-full text-sm">
+            <thead className="border-y border-zinc-300 text-xs text-muted-foreground">
+              <tr>
+                <th className="py-1.5 text-left font-medium">Roll</th>
+                <th className="py-1.5 text-right font-medium">Length</th>
+                <th className="py-1.5 text-right font-medium">Rate</th>
+                <th className="py-1.5 text-right font-medium">Amount</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {inv && (
-          <div className="space-y-1 text-right text-sm">
-            <p className="font-medium">Total {formatINR(inv.amount)}</p>
-            <p className="text-muted-foreground">
-              Paid {formatINR(inv.paid)} · <StatusPill status={inv.status} />
-            </p>
-          </div>
-        )}
+            </thead>
+            <tbody>
+              {d.rolls.map((r) => (
+                <tr key={r.id} className="border-b border-zinc-200">
+                  <td className="py-1.5">{r.rollNo}</td>
+                  <td className="py-1.5 text-right tabular-nums">{formatQty(r.qty)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{paise(rate)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{formatINR(r.qty * rate)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {inv && (
+            <div className="ml-auto w-64 space-y-1">
+              <div className="flex justify-between text-ink-2">
+                <span>{d.rolls.length === 1 ? '1 roll' : `${d.rolls.length} rolls`}</span>
+                <span className="tabular-nums">{formatQty(d.totalQty)}</span>
+              </div>
+              <div className="flex justify-between text-ink-2">
+                <span>Fabric</span>
+                <span className="tabular-nums">{formatINR(inv.amount)}</span>
+              </div>
+              {gst > 0 && (
+                <div className="flex justify-between text-ink-2">
+                  <span>GST</span>
+                  <span className="tabular-nums">{formatINR(gst)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t-2 border-zinc-900 pt-1 text-base font-semibold">
+                <span>Total</span>
+                <span className="tabular-nums">{formatINR(payable)}</span>
+              </div>
+              <div className="flex justify-between text-ink-2">
+                <span>Paid</span>
+                <span className="tabular-nums">{formatINR(inv.paid)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-ink-2">Balance due</span>
+                <span className="flex items-center gap-2 font-medium tabular-nums">
+                  {formatINR(inv.balance)} <StatusPill status={inv.status} />
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
         <DialogFooter className="print:hidden">
           <Button variant="outline" onClick={onClose}>
             Close
