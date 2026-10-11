@@ -70,6 +70,7 @@ export interface Money {
 // One side of the comparison: where the work sits over the next 4 weeks.
 export interface Side {
   busiest?: Stage // missing on results saved before it existed
+  pastDeadline?: number
   stages: Record<Stage, { load: number; capacity: number; utilisation: number | null }>
 }
 export interface Chain {

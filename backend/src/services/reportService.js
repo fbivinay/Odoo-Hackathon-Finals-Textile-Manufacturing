@@ -134,11 +134,15 @@ async function orderCosts(query = {}) {
   return page;
 }
 
-// How much every machine produced in the month, with a per-day series for charts.
+// How much every machine on the floor produced in the month against the most it could have made
+// (its daily capacity × working days so far; Sundays closed), with a per-day series for charts.
 async function machineOutput({ month } = {}) {
   const range = monthRange(month);
+  const until = Math.min(range.end.getTime(), Date.now());
+  let workDays = 0;
+  for (let t = range.start.getTime(); t < until; t += 86400000) if (new Date(t).getUTCDay() !== 0) workDays += 1;
   const [machines, logs] = await Promise.all([
-    prisma.machine.findMany({ orderBy: { code: 'asc' } }),
+    prisma.machine.findMany({ where: { removedAt: null }, orderBy: { code: 'asc' } }),
     prisma.productionLog.findMany({ where: { loggedAt: { gte: range.start, lt: range.end } } }),
   ]);
 
@@ -149,14 +153,14 @@ async function machineOutput({ month } = {}) {
       const day = log.loggedAt.toISOString().slice(0, 10);
       daily.set(day, (daily.get(day) || 0) + Number(log.qty));
     }
-    return { id: machine.id, code: machine.code, name: machine.name, type: machine.type, status: machine.status, produced: round(sum(mine, 'qty')), removed: Boolean(machine.removedAt) };
+    const capacity = machine.dailyCapacity === null ? null : round(Number(machine.dailyCapacity) * workDays);
+    return { id: machine.id, code: machine.code, name: machine.name, type: machine.type, status: machine.status, produced: round(sum(mine, 'qty')), capacity };
   });
-  // A machine taken off the floor still shows for the months it produced in.
-  const shown = rows.filter((row) => !row.removed || row.produced > 0);
 
   return {
     month: range.month,
-    machines: shown,
+    workDays,
+    machines: rows,
     daily: [...daily].sort().map(([date, qty]) => ({ date, qty: round(qty) })),
     total: round(sum(rows, 'produced')),
   };

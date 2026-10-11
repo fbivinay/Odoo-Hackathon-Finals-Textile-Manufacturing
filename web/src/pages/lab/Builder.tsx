@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Play, Plus, Trash2 } from 'lucide-react'
 import { Field, selectClass } from '@/components/Field'
 import { Button } from '@/components/ui/button'
@@ -6,19 +6,17 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, ApiError } from '@/lib/api'
 import { formatINR, formatQty } from '@/lib/format'
-import { describe, emptyDraft, HORIZONS, STAGE_NAME, STAGES, type Changes, type Costs, type LabResult, type Stage } from '@/lib/lab'
+import { describe, emptyDraft, HORIZONS, STAGE_NAME, STAGES, type Changes, type LabResult, type Stage } from '@/lib/lab'
 import { cn } from '@/lib/utils'
 import type { Run, Shared } from '@/pages/Lab'
 import { Section } from './parts'
 
+// Four questions the owner actually asks; each answer is a delivery date.
 const KINDS = [
-  ['addMachines', 'A. Add machines', 'More capacity at a stage'],
-  ['breakdowns', 'B. Machine breakdown', 'A machine out for some days'],
-  ['sundays', 'C. Extra shift', 'Work Sundays (the mill already runs 3 shifts)'],
-  ['materials', 'D. Yarn shortage or delay', 'Less stock or a late supplier'],
-  ['rushOrder', 'E. Rush order', 'A new order with a tight deadline'],
-  ['qc', 'F. Quality and waste', 'A different reject rate'],
-  ['logistics', 'G. Logistics', 'Freight cost per metre up or down'],
+  ['addMachines', 'Buy a new machine', 'Will orders get out faster?'],
+  ['breakdowns', 'A machine breaks down', 'How late will orders be?'],
+  ['materials', 'Yarn arrives late', 'Which orders get held up?'],
+  ['rushOrder', 'Take a rush order', 'Can we deliver it on time?'],
 ] as const
 type Kind = (typeof KINDS)[number][0]
 
@@ -32,8 +30,7 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
   const [error, setError] = useState<string | null>(null)
   const c = draft.changes
   const setChanges = (next: Changes) => setDraft({ ...draft, changes: next })
-  const setCosts = (next: Costs) => setDraft({ ...draft, costs: next })
-  const on = (k: Kind) => (k === 'sundays' ? Boolean(c.sundays) : c[k] !== undefined)
+  const on = (k: Kind) => c[k] !== undefined
 
   function toggle(k: Kind) {
     if (on(k)) {
@@ -45,11 +42,8 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
     const defaults: Changes = {
       addMachines: [{ stage: 'WEAVING', count: 1, fromDay: 0, rampDays: 0 }],
       breakdowns: [{ machineId: options?.machines[0]?.id ?? '', days: 7 }],
-      sundays: true,
       materials: [{ materialId: options?.yarns[0]?.id ?? '', stockChange: 0, extraLeadDays: 7 }],
       rushOrder: { fabricType: options?.fabrics[0]?.fabricType ?? '', qty: 10000, deadline: new Date(Date.parse(today) + 30 * 86400000).toISOString().slice(0, 10) },
-      qc: { rejectPct: options?.rejectRatePct ?? 5 },
-      logistics: { costPerMetreChangePct: -10 },
     }
     setChanges({ ...c, [k]: defaults[k] })
   }
@@ -75,8 +69,8 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
     yarn: (id: string) => options.yarns.find((y) => y.id === id)?.name ?? 'Yarn',
   }
   const stageOf = (s: Stage) => options.stages.find((x) => x.stage === s)!
-  const anything = KINDS.some(([k]) => on(k))
-  const needsCosts = Boolean(c.addMachines?.length)
+  // Saved or recommended scenarios may still carry the old options; they still run.
+  const anything = KINDS.some(([k]) => on(k)) || Boolean(c.sundays || c.qc || c.logistics)
 
   return (
     <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_20rem]">
@@ -93,11 +87,11 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
               </label>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">Tick more than one to test them together (H. custom scenario).</p>
+          <p className="text-xs text-muted-foreground">Tick more than one to test them together.</p>
         </Section>
 
         {c.addMachines && (
-          <Section title="A. Add machines" tag="assumption">
+          <Section title="Buy a new machine">
             {c.addMachines.map((a, i) => {
               const s = stageOf(a.stage)
               const set = (patch: Partial<typeof a>) => setChanges({ ...c, addMachines: c.addMachines!.map((x, j) => (j === i ? { ...x, ...patch } : x)) })
@@ -124,11 +118,15 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
                   <Field label={`Output per shift (${s.unit})`} htmlFor={`am-rate-${i}`} hint={`Blank = stage average ${formatQty(s.avgPerDay / 3, s.unit)}`}>
                     <Input id={`am-rate-${i}`} type="number" min={1} value={val(a.perShift)} onChange={(e) => set({ perShift: n(e.target.value) })} />
                   </Field>
-                  <Field label="Starts on day" htmlFor={`am-from-${i}`} hint="0 = today (installation time)">
-                    <Input id={`am-from-${i}`} type="number" min={0} max={180} value={val(a.fromDay)} onChange={(e) => set({ fromDay: n(e.target.value) })} />
-                  </Field>
-                  <Field label="Ramp-up days" htmlFor={`am-ramp-${i}`} hint="Days to reach full output">
-                    <Input id={`am-ramp-${i}`} type="number" min={0} max={60} value={val(a.rampDays)} onChange={(e) => set({ rampDays: n(e.target.value) })} />
+                  {/* The plan counts days from today; the owner picks a date. */}
+                  <Field label="Installation date" htmlFor={`am-from-${i}`} hint="The machine starts work this day">
+                    <Input
+                      id={`am-from-${i}`}
+                      type="date"
+                      min={options.today}
+                      value={new Date(Date.parse(options.today) + (a.fromDay ?? 0) * 86400000).toISOString().slice(0, 10)}
+                      onChange={(e) => e.target.value && set({ fromDay: Math.max(0, Math.round((Date.parse(e.target.value) - Date.parse(options.today)) / 86400000)), rampDays: 0 })}
+                    />
                   </Field>
                   <div className="flex items-end justify-end">
                     {c.addMachines!.length > 1 && (
@@ -149,7 +147,7 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
         )}
 
         {c.breakdowns && (
-          <Section title="B. Machine breakdown" tag="assumption">
+          <Section title="A machine breaks down">
             {c.breakdowns.map((b, i) => {
               const m = options.machines.find((x) => x.id === b.machineId)
               const set = (patch: Partial<typeof b>) => setChanges({ ...c, breakdowns: c.breakdowns!.map((x, j) => (j === i ? { ...x, ...patch } : x)) })
@@ -183,22 +181,13 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
           </Section>
         )}
 
-        {c.sundays && (
-          <Section title="C. Work Sundays" tag="assumption">
-            <p className="text-sm text-muted-foreground">
-              The mill already runs three 8-hour shifts, six days a week, so Sundays are the only extra time. Every stage works them; all {options.economics.workers} floor workers come in.
-            </p>
-          </Section>
-        )}
-
         {c.materials && (
-          <Section title="D. Yarn shortage or supplier delay" tag="assumption">
-            <p className="text-xs text-muted-foreground">Only yarn is tied to each order’s schedule; chemicals and packaging don’t move dates in the plan.</p>
+          <Section title="Yarn arrives late">
             {c.materials.map((m, i) => {
               const y = options.yarns.find((x) => x.id === m.materialId)
               const set = (patch: Partial<typeof m>) => setChanges({ ...c, materials: c.materials!.map((x, j) => (j === i ? { ...x, ...patch } : x)) })
               return (
-                <div key={i} className="grid gap-3 sm:grid-cols-3">
+                <div key={i} className="grid gap-3 sm:grid-cols-2">
                   <Field label="Yarn" htmlFor={`ym-${i}`} hint={y ? `Today: ${formatQty(y.inStock, y.unit)} in stock, delivery ${y.leadDays} days` : undefined}>
                     <select id={`ym-${i}`} className={selectClass} value={m.materialId} onChange={(e) => set({ materialId: e.target.value })}>
                       {options.yarns.map((x) => (
@@ -208,10 +197,7 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
                       ))}
                     </select>
                   </Field>
-                  <Field label={`Stock change (${y?.unit ?? 'kg'})`} htmlFor={`ys-${i}`} hint={y ? `Minus = lost or short; lowest −${y.inStock}` : undefined}>
-                    <Input id={`ys-${i}`} type="number" min={y ? -y.inStock : undefined} value={val(m.stockChange)} onChange={(e) => set({ stockChange: n(e.target.value) })} />
-                  </Field>
-                  <Field label="Delivery late by (days)" htmlFor={`yd-${i}`} hint="0 to 90">
+                  <Field label="Late by (days)" htmlFor={`yd-${i}`} hint="1 to 90">
                     <Input id={`yd-${i}`} type="number" min={0} max={90} value={val(m.extraLeadDays)} onChange={(e) => set({ extraLeadDays: n(e.target.value) })} />
                   </Field>
                 </div>
@@ -221,7 +207,7 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
         )}
 
         {c.rushOrder && (
-          <Section title="E. Rush order" tag="assumption">
+          <Section title="Take a rush order">
             {(() => {
               const r = c.rushOrder!
               const f = options.fabrics.find((x) => x.fabricType === r.fabricType)
@@ -252,46 +238,6 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
           </Section>
         )}
 
-        {c.qc && (
-          <Section title="F. Quality and waste" tag="assumption">
-            <Field label="Reject rate (%)" htmlFor="qc-r" hint={`Today: ${options.rejectRatePct}% of checked rolls rejected (last 90 days). Higher means every stage makes more to deliver the same good fabric.`}>
-              <Input id="qc-r" type="number" min={0} max={50} step={0.1} className="w-40" value={val(c.qc.rejectPct)} onChange={(e) => setChanges({ ...c, qc: { rejectPct: n(e.target.value) ?? 0 } })} />
-            </Field>
-          </Section>
-        )}
-
-        {c.logistics && (
-          <Section title="G. Logistics" tag="assumption">
-            <Field
-              label="Change in freight cost per metre (%)"
-              htmlFor="lg"
-              hint={`Today: ${options.economics.logisticsPerMetre !== null ? `${formatINR(options.economics.logisticsPerMetre)} per metre shipped (last 12 months)` : 'not enough shipments to work it out'}. Truck capacity is not modelled, so only cost changes.`}
-            >
-              <Input id="lg" type="number" min={-50} max={200} className="w-40" value={val(c.logistics.costPerMetreChangePct)} onChange={(e) => setChanges({ ...c, logistics: { costPerMetreChangePct: n(e.target.value) ?? 0 } })} />
-            </Field>
-          </Section>
-        )}
-
-        {anything && (
-          <Section title="Costs" tag="assumption">
-            <p className="text-xs text-muted-foreground">
-              The records hold no machine prices, power ratings or staffing per machine. Enter your own figures; anything left blank is shown as missing, never guessed.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {needsCosts && (
-                <>
-                  <CostInput label="Machine price, installed (₹ each)" k="machineCost" costs={draft.costs} set={setCosts} required />
-                  <CostInput label="Power per machine (kW)" k="powerKw" costs={draft.costs} set={setCosts} required />
-                  <CostInput label="Electricity rate (₹/kWh)" k="tariff" costs={draft.costs} set={setCosts} required />
-                  <CostInput label="Staff per machine per shift" k="staffPerShift" costs={draft.costs} set={setCosts} required hint={`Paid the floor average ${formatINR(options.economics.avgDailyWage)}/day`} />
-                  <CostInput label="Maintenance per year (% of price)" k="maintenancePctYear" costs={draft.costs} set={setCosts} hint="Rule of thumb: 5%" />
-                </>
-              )}
-              {c.breakdowns && <CostInput label="Repair cost (₹, one-time)" k="repairCost" costs={draft.costs} set={setCosts} />}
-              {c.sundays && <CostInput label="Sunday pay (× day wage)" k="sundayPayMultiplier" costs={draft.costs} set={setCosts} hint="1 = normal wage; 2 = double" />}
-            </div>
-          </Section>
-        )}
       </div>
 
       <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
@@ -299,7 +245,7 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
           <Field label="Name" htmlFor="lab-name">
             <Input id="lab-name" placeholder="e.g. Two more looms" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
           </Field>
-          <Field label="Period to evaluate" htmlFor="lab-days" hint="Money and output are worked out over this period">
+          <Field label="Look ahead" htmlFor="lab-days">
             <select id="lab-days" className={selectClass} value={draft.days} onChange={(e) => setDraft({ ...draft, days: +e.target.value })}>
               {HORIZONS.map((d) => (
                 <option key={d} value={d}>
@@ -332,14 +278,5 @@ export function Builder({ options, optionsError, draft, setDraft, onResult }: Sh
         </Section>
       </aside>
     </div>
-  )
-}
-
-function CostInput({ label, k, costs, set, required, hint }: { label: string; k: keyof Costs; costs: Costs; set: (c: Costs) => void; required?: boolean; hint?: ReactNode }) {
-  const missing = required && costs[k] === undefined
-  return (
-    <Field label={label} htmlFor={`cost-${k}`} hint={missing ? <span className="text-watch">Needed for payback and ROI</span> : hint}>
-      <Input id={`cost-${k}`} type="number" min={0} value={val(costs[k])} onChange={(e) => set({ ...costs, [k]: n(e.target.value) })} />
-    </Field>
   )
 }

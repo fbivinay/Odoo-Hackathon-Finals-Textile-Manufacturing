@@ -146,6 +146,8 @@ function measure(result, snap, yarnPerMetre) {
     openOrders: real.length,
     onTime: real.filter((o) => o.onTime).length,
     late: late.length,
+    // Already past the deadline today: late whatever the scenario does.
+    pastDeadline: real.filter((o) => isoDay(o.deadline) < snap.today && o.status !== 'READY').length,
     unscheduled: real.filter((o) => o.expectedReady === null).length,
     avgDaysLate: late.length ? r2(late.reduce((t, o) => t + o.lateByDays, 0) / late.length) : 0,
     readyInHorizon: ready.length,
@@ -517,6 +519,9 @@ function gain(m, sooner) {
   return parts.length ? `${parts.join('; ')}.` : 'no order date changes.';
 }
 const upper = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+const shortGain = (pv) => (pv.book[0] !== null && pv.book[1] !== null && pv.book[0] !== pv.book[1]
+  ? `All orders done ${plural(Math.abs(pv.book[0] - pv.book[1]), 'day')} ${pv.book[1] < pv.book[0] ? 'sooner' : 'later'}.`
+  : `${plural(pv.ordersChanged, 'order')} get a new date.`);
 const dayMonth = (d) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 
 async function preview(changes, prepared) {
@@ -532,6 +537,7 @@ async function preview(changes, prepared) {
     valueReady: [m.valueReady.base, m.valueReady.alt],
     ordersChanged: r.orders.length,
     text: gain(m, sooner),
+    book: [m.clearBookDays.base, m.clearBookDays.alt],
   };
 }
 
@@ -555,16 +561,16 @@ async function recommend(ctx) {
       id: `capacity-${s}`,
       kind: 'capacity',
       title: `Evaluate adding one ${STAGE_NAME[s].toLowerCase()} machine`,
-      problem: `${STAGE_NAME[s]} machines are ${util[s]}% busy over the next 4 weeks and at 90% or more in ${busy} of the next ${weeks.length} weeks, so this is the stage every open order waits for.`,
+      problem: `${STAGE_NAME[s]} is ${util[s]}% busy for the next 4 weeks; orders wait here.`,
       evidence: [
         { label: `${STAGE_NAME[s]} machines busy, next 4 weeks`, value: `${util[s]}%`, link: '/production' },
         { label: `${STAGE_NAME[s]} machines`, value: `${snap.machines.filter((m) => m.type === s).length} (avg ${fmt(snap.stageAverage[s], UNIT[s])}/day each)`, link: '/production' },
         { label: 'Open orders planned late or unplannable', value: `${lateOrders.length}`, link: '/orders' },
         { label: 'Simulated with one more machine', value: `${pv.ordersChanged} orders get an earlier date`, link: null },
       ],
-      action: `Get a quote for one more ${STAGE_NAME[s].toLowerCase()} machine, then test it here in the scenario with its real price, power use and staff before buying.`,
-      benefit: `${upper(pv.text)} ${plural(pv.ordersChanged, 'order')} would get an earlier date.`,
-      costAndRisk: 'Machine price, power and staff are not in the records; enter them in the scenario to see the payback. The next stage may then become the slowest.',
+      action: `Price one more ${STAGE_NAME[s].toLowerCase()} machine and test it in the scenario.`,
+      benefit: shortGain(pv),
+      costAndRisk: 'Machine price and staff not known yet; the next stage may slow down.',
       confidencePct: clampPct(55 + busy * 3 + Math.min(20, pv.sooner * 4) + (pv.late[1] < pv.late[0] ? 10 : 0)),
       assumptions: ['New machine copies the stage average output.', 'Demand stays as the current open orders.'],
       limitations: ['Machine price, power and staffing are not in the records.'],
@@ -582,14 +588,14 @@ async function recommend(ctx) {
       id: `down-${m.code}`,
       kind: 'machine',
       title: `Get ${m.code} back running`,
-      problem: `${m.code} is in ${m.status === 'BREAKDOWN' ? 'breakdown' : 'maintenance'} and the plan expects it back in ${plural(m.status === 'BREAKDOWN' ? 2 : 1, 'day')}. It makes about ${fmt(Math.round(m.perDay), UNIT[m.type])} a day, ${Math.round((m.perDay / (stageTotal || 1)) * 100)}% of all ${STAGE_NAME[m.type].toLowerCase()} output.`,
+      problem: `${m.code} is in ${m.status === 'BREAKDOWN' ? 'breakdown' : 'maintenance'}; it makes ${Math.round((m.perDay / (stageTotal || 1)) * 100)}% of ${STAGE_NAME[m.type].toLowerCase()} output.`,
       evidence: [
         { label: 'Status', value: m.status === 'BREAKDOWN' ? 'Breakdown' : 'Maintenance', link: '/production' },
         { label: 'Its usual output', value: `${fmt(m.perDay, UNIT[m.type])}/day`, link: '/production' },
       ],
-      action: `Confirm the repair date with maintenance today, and move its waiting jobs to the other ${STAGE_NAME[m.type].toLowerCase()} machines until it is back.`,
-      benefit: `Keeps the plan on track: two weeks down would mean ${pv.text}`,
-      costAndRisk: 'The repair cost is not in the records; enter it in the scenario. No breakdown history is kept, so a repeat failure cannot be predicted.',
+      action: 'Confirm the repair date; move its jobs to the other machines.',
+      benefit: `If it stays down two weeks: ${shortGain(pv).toLowerCase()}`,
+      costAndRisk: 'Repair cost not known; no breakdown history to predict repeats.',
       confidencePct: pv.sooner < 0 || pv.late[1] > pv.late[0] ? clampPct(65 + Math.min(20, -pv.sooner * 5)) : 35, // only worth chasing if its absence would hurt
       assumptions: ['Other machines keep their recent output.'],
       limitations: ['No breakdown history.'],
@@ -606,11 +612,11 @@ async function recommend(ctx) {
       id: 'slow-machines',
       kind: 'machine',
       title: `Check ${slow.length} slow machine${slow.length > 1 ? 's' : ''}`,
-      problem: `${slow.slice(0, 3).map((m) => m.code).join(', ')}${slow.length > 3 ? ` and ${slow.length - 3} more` : ''} made at least 30% less per shift than similar machines over the last 60 days; ${worst.code} makes ${fmt(Math.round(worst.perDay), UNIT[worst.type])} a day against ${fmt(Math.round(snap.stageAverage[worst.type]), UNIT[worst.type])}.`,
+      problem: `${slow.slice(0, 3).map((m) => m.code).join(', ')}${slow.length > 3 ? ` +${slow.length - 3}` : ''} make 30% less than similar machines.`,
       evidence: slow.map((m) => ({ label: m.code, value: `${fmt(m.perDay, UNIT[m.type])}/day vs stage ${fmt(snap.stageAverage[m.type], UNIT[m.type])}`, link: '/production' })),
-      action: `Check their settings, upkeep and who runs them, starting with ${worst.code}, the furthest behind the machines it works beside.`,
-      benefit: `Up to ${STAGES.filter((st) => slow.some((m) => m.type === st)).map((st) => fmt(slow.filter((m) => m.type === st).reduce((t, m) => t + snap.stageAverage[st] - m.perDay, 0), UNIT[st])).join(' and ')} more a day if they match the others, which adds output without buying anything.`,
-      costAndRisk: 'Only maintenance time. They may be slow because of the fabrics they ran rather than the machine itself, so compare like with like.',
+      action: `Check settings and upkeep, starting with ${worst.code}.`,
+      benefit: 'More output without buying anything.',
+      costAndRisk: 'Only maintenance time; the fabric they ran may be the cause.',
       confidencePct: 45,
       assumptions: ['Average output per completed job reflects machine speed.'],
       limitations: ['Job mix differs between machines.'],
@@ -624,22 +630,20 @@ async function recommend(ctx) {
   if (lateOrders.length) {
     const changes = { sundays: true };
     const pv = await preview(changes, prepared);
-    // Orders that cannot be planned at all count as the worst.
-    const worst = [...lateOrders].sort((a, b) => (b.lateByDays ?? 1e9) - (a.lateByDays ?? 1e9))[0];
     out.push({
       id: 'late-orders',
       kind: 'delivery',
       title: `Protect ${plural(lateOrders.length, 'order')} at risk`,
-      problem: `${plural(lateOrders.length, 'order')} will miss the deadline${overdue.length ? ` (${overdue.length} already past it)` : ''}; ${worst.lateByDays === null ? `${worst.orderNo} cannot be planned yet` : `the worst, ${worst.orderNo} for ${worst.buyer.name}, is planned ${plural(worst.lateByDays, 'day')} late`}.`,
+      problem: `${plural(lateOrders.length, 'order')} will miss the deadline${overdue.length ? ` (${overdue.length} already overdue)` : ''}.`,
       evidence: lateOrders.slice(0, 6).map((o) => ({ label: o.orderNo, value: o.lateByDays ? `planned ${o.lateByDays} days late` : 'cannot be planned yet', link: `/orders/${o.id}` })),
-      action: 'Run them first on the floor, tell the buyers the new dates today, and test Sunday working in the scenario.',
-      benefit: pv.late[1] < pv.late[0] ? `Working Sundays: ${pv.text}` : `Early news keeps the buyers' trust; Sunday working alone would not save ${lateOrders.length > 1 ? 'them' : 'it'}, as the mill already runs three 8-hour shifts.`,
-      costAndRisk: `About ${rupees(econ.workers * econ.avgDailyWage + econ.utilitiesPerDay)} per Sunday in floor wages and a day of utilities. Tired workers and overtime rules limit how often it can be done.`,
+      action: `Run ${lateOrders.length > 1 ? 'them' : 'it'} first and tell the ${lateOrders.length > 1 ? 'buyers' : 'buyer'} the new date today.`,
+      benefit: pv.late[1] < pv.late[0] ? `Sunday working cuts late orders to ${pv.late[1]}.` : 'Buyers hear early and keep trusting the mill.',
+      costAndRisk: `About ${rupees(econ.workers * econ.avgDailyWage + econ.utilitiesPerDay)} per Sunday if the floor works it.`,
       confidencePct: pv.improves ? clampPct(55 + Math.min(20, pv.sooner * 4) + (pv.late[1] < pv.late[0] ? 15 : 0)) : 40,
       assumptions: ['All floor workers work Sundays at their day wage.'],
       limitations: ['Overtime premiums are not in the records; set the multiplier in the scenario.'],
       preview: pv,
-      scenario: { name: 'Work Sundays', changes },
+      scenario: null,
     });
   }
 
@@ -655,15 +659,15 @@ async function recommend(ctx) {
       id: `yarn-${y.id}`,
       kind: 'material',
       title: `Order ${fmt(qty, y.unit)} of ${y.yarnType} now`,
-      problem: `${plural(y.orders, 'open order')} need ${fmt(Math.ceil(y.needed), y.unit)} of ${y.yarnType} and ${y.inStock > 0 ? `only ${fmt(y.inStock, y.unit)} is` : 'none is'} in stock${y.neededBy ? `; the first of them is due on ${dayMonth(y.neededBy)}` : ''}.`,
+      problem: `${plural(y.orders, 'order')} need ${fmt(Math.ceil(y.needed), y.unit)} of ${y.yarnType}; ${y.inStock > 0 ? `only ${fmt(y.inStock, y.unit)}` : 'none'} in stock.`,
       evidence: [
         { label: 'Short by', value: fmt(y.shortBy, y.unit), link: '/materials' },
         { label: 'First needed by', value: y.neededBy ? isoDay(y.neededBy) : '—', link: '/materials' },
         { label: 'Supplier delivery time', value: `${lead} days`, link: '/materials' },
       ],
-      action: `Order ${fmt(qty, y.unit)} today${reserve ? `: what the orders need plus ${fmt(reserve, y.unit)} kept in reserve` : ''}. The supplier takes ${plural(lead, 'day')} to deliver.`,
-      benefit: pv.improves ? `With the yarn in, ${pv.text}` : 'These orders can start spinning on time; no date moves yet, but a purchase made later would push them back.',
-      costAndRisk: `About ${rupees(qty * (snap.materials.find((m) => m.id === y.id)?.avgCost || 0))} of stock, which is cash, not cost, until it is used. A late or short delivery would still hold the orders up.`,
+      action: `Order ${fmt(qty, y.unit)} today; delivery takes ${plural(lead, 'day')}.`,
+      benefit: pv.improves ? shortGain(pv) : 'These orders start on time.',
+      costAndRisk: `About ${rupees(qty * (snap.materials.find((m) => m.id === y.id)?.avgCost || 0))} of stock; a late delivery still holds them up.`,
       // Short but not yet holding anything up: still worth ordering, less urgent.
       confidencePct: pv.improves ? 90 : 70,
       assumptions: ['Stock is handed to orders earliest deadline first.'],
@@ -679,24 +683,23 @@ async function recommend(ctx) {
   if (rejNow !== null && rejPrev !== null && rejNow > rejPrev + 1) {
     const top = [...qc.defectsByType].sort((a, b) => b.count - a.count)[0];
     const topMachine = [...qc.defectsByMachine].sort((a, b) => b.count - a.count)[0];
-    const target = Math.max(0, Math.round((baseReject * 100 - (rejNow - rejPrev)) * 10) / 10);
     out.push({
       id: 'qc-rejects',
       kind: 'quality',
       title: `Tackle ${top?.defectType?.toLowerCase() || 'rising defects'}`,
-      problem: `${rejNow}% of checked rolls needed rework or were rejected, up from ${rejPrev}% the period before${top ? `; the most common fault is ${top.defectType.toLowerCase()} (${plural(top.count, 'roll')})` : ''}.`,
+      problem: `${rejNow}% of rolls failed QC, up from ${rejPrev}%${top ? `; mostly ${top.defectType.toLowerCase()}` : ''}.`,
       evidence: [
         top && { label: 'Most common defect', value: `${top.defectType} (${top.count})`, link: '/waste' },
         topMachine && { label: 'Machine with most defects', value: `${topMachine.code} (${topMachine.count})`, link: '/waste' },
       ].filter(Boolean),
-      action: `Find the cause${topMachine ? ` on ${topMachine.code}, the machine with the most defects (${topMachine.count})` : ''}${top ? `, starting with ${top.defectType.toLowerCase()}` : ''}.`,
-      benefit: 'Every rejected metre is made twice (yarn, machine time and dye), so fewer rejects free capacity. Simulate a lower reject rate to see how much.',
-      costAndRisk: 'Only inspection and maintenance time. The defects may come from the yarn rather than the machine, so check the yarn lots too.',
+      action: `Find the cause${topMachine ? ` on ${topMachine.code}` : ''}${top ? `, starting with ${top.defectType.toLowerCase()}` : ''}.`,
+      benefit: 'Fewer rejects means less fabric made twice.',
+      costAndRisk: 'Only inspection time; the yarn may be the cause.',
       confidencePct: clampPct(60 + (rejNow - rejPrev) * 5),
       assumptions: [],
       limitations: ['Defects are counted per roll, not per metre.'],
       preview: null,
-      scenario: { name: `Reject rate down to ${target}%`, changes: { qc: { rejectPct: target } } },
+      scenario: null,
     });
   }
 
@@ -709,11 +712,11 @@ async function recommend(ctx) {
       id: 'margins',
       kind: 'money',
       title: `Review ${plural(losing.length, 'loss-making order')}`,
-      problem: `${plural(losing.length, 'order')} cost ${rupees(lost)} more to make than ${losing.length > 1 ? 'they sell' : 'it sells'} for; the worst is ${worst.orderNo} (${worst.fabricType}) at ${rupees(-worst.margin)} lost.`,
+      problem: `${plural(losing.length, 'order')} lost ${rupees(lost)}; worst is ${worst.orderNo} (${worst.fabricType}).`,
       evidence: losing.sort((a, b) => a.margin - b.margin).slice(0, 6).map((o) => ({ label: o.orderNo, value: `margin ${rupees(o.margin)}`, link: `/orders/${o.id}` })),
-      action: `Check their price in Mill Setup and their material issues for mistakes or waste, starting with ${worst.orderNo}.`,
-      benefit: `Stops a ${rupees(lost)} loss repeating; a fabric that keeps losing money has the wrong price or yarn per metre in Mill Setup.`,
-      costAndRisk: 'Nothing to spend; a review only. Orders still in production may look worse than they will end, so check the finished ones first.',
+      action: `Check the price and material use, starting with ${worst.orderNo}.`,
+      benefit: `Stops a ${rupees(lost)} loss repeating on the next orders.`,
+      costAndRisk: 'Nothing to spend; open orders may still look worse than they end.',
       confidencePct: 75,
       assumptions: ['Labour = worker day wage × job hours.'],
       limitations: ['Utilities and logistics are not split per order.'],
@@ -728,11 +731,11 @@ async function recommend(ctx) {
       id: 'chemicals',
       kind: 'material',
       title: 'Dye and chemical cost per metre is rising',
-      problem: `Dyes and chemicals cost ₹${r2(chemNow)} per metre dyed, up ${Math.round((chemNow / chemPrev - 1) * 100)}% from ₹${r2(chemPrev)} the period before, across ${fmt(ctx.dyed, 'm')} dyed.`,
+      problem: `Dyes cost ₹${r2(chemNow)} per metre, up ${Math.round((chemNow / chemPrev - 1) * 100)}% from ₹${r2(chemPrev)}.`,
       evidence: [{ label: 'Dyeing + finishing issues per metre dyed', value: `${r2(chemNow)} vs ${r2(chemPrev)}`, link: '/raw-materials' }],
-      action: 'Compare recipes and issue slips with the period before, and look for over-issue on each batch.',
-      benefit: `Back at the old rate, about ${rupees((chemNow - chemPrev) * ctx.dyed)} saved on this period's dyeing; chemicals are paid per kg, so small extras add up.`,
-      costAndRisk: 'Nothing to spend; a review only. Darker shades really do need more dye, so compare similar colours.',
+      action: 'Compare recipes and issue slips with last period.',
+      benefit: `About ${rupees((chemNow - chemPrev) * ctx.dyed)} saved at the old rate.`,
+      costAndRisk: 'Nothing to spend; darker shades need more dye.',
       confidencePct: clampPct(50 + ((chemNow / chemPrev - 1) * 100) / 2),
       assumptions: [],
       limitations: ['Shade mix is not accounted for.'],
@@ -747,34 +750,33 @@ async function recommend(ctx) {
       id: 'logistics',
       kind: 'money',
       title: 'Logistics cost per metre is rising',
-      problem: `Freight costs ₹${r2(logisticsNow)} per metre shipped, up from ₹${r2(logisticsPrev)} the period before.`,
+      problem: `Freight is ₹${r2(logisticsNow)} per metre, up from ₹${r2(logisticsPrev)}.`,
       evidence: [{ label: 'Logistics per metre', value: `${r2(logisticsNow)} vs ${r2(logisticsPrev)}`, link: '/accounts' }],
-      action: 'Combine part loads into full trucks where the deadlines allow, and compare transporter rates.',
-      benefit: 'Part loads cost more per metre than full trucks. Simulate a 10% cheaper rate to see the saving over a period.',
-      costAndRisk: 'Nothing to spend; a review only. Waiting for a full truck can delay deliveries.',
+      action: 'Combine part loads and compare transporters.',
+      benefit: 'Full trucks cost less per metre.',
+      costAndRisk: 'Nothing to spend; waiting for a full truck can delay deliveries.',
       confidencePct: clampPct(50 + ((logisticsNow / logisticsPrev - 1) * 100) / 2),
       assumptions: [],
       limitations: ['Truck capacity is not modelled.'],
       preview: null,
-      scenario: { name: 'Logistics 10% cheaper', changes: { logistics: { costPerMetreChangePct: -10 } } },
+      scenario: null,
     });
   }
 
   // 10. Overdue receivables.
   if (overview.receivable.overdue > 0) {
-    // Most overdue first (the list is sorted that way), and the biggest balance.
+    // Most overdue first (the list is sorted that way).
     const late = overview.topReceivables.filter((x) => x.daysOverdue > 0);
     const [oldest] = late;
-    const biggest = late.reduce((a, b) => (b.balance > a.balance ? b : a));
     out.push({
       id: 'receivables',
       kind: 'money',
       title: `Collect ${short(overview.receivable.overdue)} overdue`,
-      problem: `${short(overview.receivable.overdue)} is overdue on ${plural(overview.receivable.overdueCount, 'invoice')}; the oldest is ${plural(oldest.daysOverdue, 'day')} late and the biggest is ${biggest.invoiceNo} at ${short(biggest.balance)}.`,
+      problem: `${short(overview.receivable.overdue)} overdue on ${plural(overview.receivable.overdueCount, 'invoice')}; oldest ${plural(oldest.daysOverdue, 'day')} late.`,
       evidence: overview.topReceivables.filter((x) => x.daysOverdue > 0).slice(0, 5).map((x) => ({ label: x.invoiceNo, value: `${rupees(x.balance)} · ${x.daysOverdue} days overdue`, link: `/accounts/invoices/${x.id}` })),
-      action: `Call the buyers with the oldest balances first, starting with ${oldest.buyer} about ${oldest.invoiceNo}, then work down by age.`,
-      benefit: `${short(overview.receivable.overdue)} back in the bank${wagesPerMonth > 0 ? `, about ${Math.round((overview.receivable.overdue / wagesPerMonth) * 10) / 10} months of the wage bill` : ''}, so yarn and wages are paid without borrowing.`,
-      costAndRisk: 'Nothing to spend. Pushing a big buyer too hard may cost future orders, so start with a friendly reminder call.',
+      action: `Call ${oldest.buyer} first about ${oldest.invoiceNo}.`,
+      benefit: `${short(overview.receivable.overdue)} back in the bank for yarn and wages.`,
+      costAndRisk: 'Nothing to spend; push big buyers gently.',
       confidencePct: 92, // straight from the books
       assumptions: [],
       limitations: [],

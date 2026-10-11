@@ -291,7 +291,8 @@ export interface Pnl {
 // GET /reports/machine-output?month=
 export interface MachineOutput {
   month: string
-  machines: (Machine & { produced: number })[]
+  // Machines on the floor; capacity = daily capacity × working days so far (null if not set).
+  machines: (Machine & { produced: number; capacity?: number | null })[]
   daily: { date: string; qty: number }[]
   total: number
 }

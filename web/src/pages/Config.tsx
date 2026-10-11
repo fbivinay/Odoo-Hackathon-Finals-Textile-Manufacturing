@@ -54,7 +54,6 @@ export function Config() {
           <TabsList>
             <TabsTrigger value="fabrics">Fabrics</TabsTrigger>
             <TabsTrigger value="machines">Machines</TabsTrigger>
-            <TabsTrigger value="workers">Workers</TabsTrigger>
             <TabsTrigger value="rules">Order rules</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
@@ -63,9 +62,6 @@ export function Config() {
           </TabsContent>
           <TabsContent value="machines">
             <Machines />
-          </TabsContent>
-          <TabsContent value="workers">
-            <Workers />
           </TabsContent>
           <TabsContent value="rules">
             <Rules rules={c.rules} />
@@ -414,6 +410,7 @@ function MachineDialog({ machine, all, onClose }: { machine: Machine | null; all
 // ---------------------------------------------------------------- workers --
 
 // The floor workers picked as operators on the Machines screen, and paid from attendance.
+// Shown on the Employees page; kept here beside the Popup and Num helpers it shares.
 interface Worker {
   id: string
   code: string
@@ -431,7 +428,7 @@ const PAGE = 20
 const WORK_DAYS = 26
 const monthlyOf = (w: { dailyWage: number | string }) => Math.round(Number(w.dailyWage) * WORK_DAYS)
 
-function Workers() {
+export function Workers() {
   const workers = useApi<Worker[]>('/workers')
   const [editing, setEditing] = useState<Worker | 'new' | null>(null)
   const [search, setSearch] = useState('')

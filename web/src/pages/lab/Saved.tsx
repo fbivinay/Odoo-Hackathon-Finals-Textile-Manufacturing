@@ -2,13 +2,12 @@ import { useState } from 'react'
 import { FlaskConical, History, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { selectClass } from '@/components/Field'
-import { Pill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { api, ApiError } from '@/lib/api'
-import { formatDateTime, formatMoney } from '@/lib/format'
+import { formatDateTime } from '@/lib/format'
 import { DECISION, describe, show, type Decision, type LabResult, type Metric, type SavedScenario } from '@/lib/lab'
 import { useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
@@ -49,29 +48,41 @@ export function Saved({ options, setDraft, go, onOpen }: Shared & { onOpen: (r: 
 
   return (
     <div className="mt-4 space-y-4">
-      <p className="text-xs text-muted-foreground">Stored separately from orders, stock and accounts. Each run records the time of the data it used. Approving one is a note only; nothing is applied to the mill.</p>
       {list.data.map((s) => {
-        const late = s.headline ? s.headline.metrics.find((m) => m.key === 'late') : null
-        const sooner = s.headline ? s.headline.metrics.find((m) => m.key === 'avgDaysToReady') : null
+        // The same two answers as on Results: orders on time, and when the last open order is ready.
+        const metric = (k: string) => s.headline?.metrics.find((m) => m.key === k)
+        const onTime = metric('onTime')
+        const total = (onTime?.base ?? 0) + (metric('late')?.base ?? 0) + (metric('unscheduled')?.base ?? 0)
+        const book = metric('clearBookDays')
+        const bookDiff = book?.base != null && book.alt != null ? book.alt - book.base : 0
+        // The changes, minus any already spelled out in the name.
+        const summary = describe(s.changes, names).filter((d) => !s.name.includes(d)).join(' · ')
         return (
           <article key={s.id} className="data-table-wrap space-y-3 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold">{s.name}</h3>
-                <p className="text-sm text-muted-foreground">{describe(s.changes, names).join(' · ')}</p>
+                {summary && <p className="text-sm text-muted-foreground">{summary}</p>}
                 <p className="text-xs text-muted-foreground">
-                  Next {s.days} days · created {formatDateTime(s.createdAt)} by {s.createdBy} · last run {s.evaluatedAt ? formatDateTime(s.evaluatedAt) : 'never'} on data read {s.snapshotAt ? formatDateTime(s.snapshotAt) : '—'}
+                  Saved {formatDateTime(s.createdAt)} by {s.createdBy}
                 </p>
               </div>
               <DecisionBox s={s} onSaved={list.reload} />
             </div>
             {s.headline && (
               <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                {late && <span>Late orders {late.base} → {late.alt}</span>}
-                {sooner && <span>Avg days to ready {show(sooner.base, 'days')} → {show(sooner.alt, 'days')}</span>}
-                <span>One-time {formatMoney(s.headline.money.oneTimeTotal)}</span>
-                <span className={cn(s.headline.money.profit.confirmed < 0 ? 'text-problem' : 'text-good')}>Profit change {formatMoney(s.headline.money.profit.confirmed)}</span>
-                {!s.headline.money.complete && <Pill tone="watch">costs missing</Pill>}
+                {onTime && (
+                  <span>
+                    Orders on time <b>{onTime.alt} of {total}</b>
+                    {onTime.alt !== onTime.base && <span className="text-muted-foreground"> (today {onTime.base})</span>}
+                  </span>
+                )}
+                {book?.alt != null && (
+                  <span className={cn(bookDiff < 0 && 'text-good', bookDiff > 0 && 'text-problem')}>
+                    All open orders done in <b>{book.alt} days</b>
+                    {bookDiff !== 0 && ` (${Math.abs(bookDiff)} days ${bookDiff < 0 ? 'sooner' : 'later'})`}
+                  </span>
+                )}
               </div>
             )}
             <div className="flex flex-wrap gap-2">

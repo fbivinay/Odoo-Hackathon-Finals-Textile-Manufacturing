@@ -142,7 +142,7 @@ Order status moves by itself: `PENDING → SPINNING/WEAVING/DYEING` (running job
 | GET | `/dashboard/summary` | | orders, low stock, machines, QC, finished stock, receivables |
 | GET | `/reports/order-costs` | OWNER or Clients access | `?id=&status=&buyerId=` + paging; per order: material, labour, total, cost per unit and per roll, margin |
 | GET | `/planning/schedule` | | `?days=90` (1–365) forward plan, see below |
-| GET | `/reports/machine-output` | OWNER | `?month=` → per machine total + `daily[]` series |
+| GET | `/reports/machine-output` | OWNER | `?month=` → machines on the floor only: `produced` and `capacity` (daily capacity × working days so far, Sundays closed), `workDays`, plus `daily[]` series |
 | GET | `/reports/pnl` | OWNER | `?month=` → the month's Accounts line: `invoiced, materialsUsed, wagesEarned, logistics, utilities, maintenance, expenses, profit` (= Accounts net profit), plus `materialBills` (bought, not a cost), `paymentsReceived, supplierPayments, wagesPaid, cashFlow` |
 
 ## Planning schedule

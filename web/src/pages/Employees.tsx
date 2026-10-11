@@ -12,6 +12,8 @@ import { Pill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Workers } from '@/pages/Config'
 import { PasswordInput } from '@/components/ui/password-input'
 import { api, ApiError } from '@/lib/api'
 import { PASSWORD_HINT, PASSWORD_PATTERN } from '@/lib/password'
@@ -181,52 +183,65 @@ export function Employees() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input id="employee-search" type="search" aria-label="Search employees" placeholder="Search name, email or role" className="bg-white pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        <select id="role-filter" aria-label="Filter by role" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-44')} value={role} onChange={(e) => setRole(e.target.value as Role | 'ALL')}>
-          <option value="ALL">All roles</option>
-          {ROLES.map((r) => (
-            <option key={r} value={r}>
-              {ROLE_LABEL[r]}
-            </option>
-          ))}
-        </select>
-        <select id="shift-filter" aria-label="Filter by shift" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={shift} onChange={(e) => setShift(e.target.value as Shift | 'ALL' | 'NONE')}>
-          <option value="ALL">All shifts</option>
-          {(Object.keys(SHIFTS) as Shift[]).map((s) => (
-            <option key={s} value={s}>
-              {SHIFTS[s].name}
-            </option>
-          ))}
-          <option value="NONE">No shift</option>
-        </select>
-      </div>
+      {/* Logins are the people who use this app; floor workers run the machines and are paid from attendance. */}
+      <Tabs defaultValue="logins">
+        <TabsList>
+          <TabsTrigger value="logins">Staff logins</TabsTrigger>
+          <TabsTrigger value="workers">Floor workers</TabsTrigger>
+        </TabsList>
+        <TabsContent value="workers">
+          <Workers />
+        </TabsContent>
+        <TabsContent value="logins" className="space-y-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input id="employee-search" type="search" aria-label="Search employees" placeholder="Search name, email or role" className="bg-white pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <select id="role-filter" aria-label="Filter by role" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-44')} value={role} onChange={(e) => setRole(e.target.value as Role | 'ALL')}>
+              <option value="ALL">All roles</option>
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABEL[r]}
+                </option>
+              ))}
+            </select>
+            <select id="shift-filter" aria-label="Filter by shift" className={cn(selectClass, 'bg-white sm:w-auto sm:min-w-36')} value={shift} onChange={(e) => setShift(e.target.value as Shift | 'ALL' | 'NONE')}>
+              <option value="ALL">All shifts</option>
+              {(Object.keys(SHIFTS) as Shift[]).map((s) => (
+                <option key={s} value={s}>
+                  {SHIFTS[s].name}
+                </option>
+              ))}
+              <option value="NONE">No shift</option>
+            </select>
+          </div>
 
-      {employees.error && <p className="text-sm text-problem">{employees.error}</p>}
-      <DataTable
-        columns={cols}
-        data={rows}
-        loading={employees.loading}
-        empty={
-          filtered ? (
-            <EmptyState
-              icon={Search}
-              line={q ? `No employee matches "${search.trim()}".` : 'No employee matches these filters.'}
-              actionLabel="Clear filters"
-              onAction={() => {
-                setSearch('')
-                setRole('ALL')
-                setShift('ALL')
-              }}
-            />
-          ) : (
-            <EmptyState icon={UserPlus} line="No employees yet." actionLabel="New employee" onAction={() => setAdding(true)} />
-          )
-        }
-      />
+          {employees.error && <p className="text-sm text-problem">{employees.error}</p>}
+          <DataTable
+            columns={cols}
+            data={rows}
+            loading={employees.loading}
+            empty={
+              filtered ? (
+                <EmptyState
+                  icon={Search}
+                  line={q ? `No employee matches "${search.trim()}".` : 'No employee matches these filters.'}
+                  actionLabel="Clear filters"
+                  onAction={() => {
+                    setSearch('')
+                    setRole('ALL')
+                    setShift('ALL')
+                  }}
+                />
+              ) : (
+                <EmptyState icon={UserPlus} line="No employees yet." actionLabel="New employee" onAction={() => setAdding(true)} />
+              )
+            }
+          />
+
+        </TabsContent>
+      </Tabs>
 
       {adding && <NewEmployeeDialog onClose={() => setAdding(false)} onSaved={employees.reload} />}
       {editing && <EditEmployeeDialog e={editing} self={editing.id === user?.id} onClose={() => setEditing(null)} onSaved={employees.reload} />}
