@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { Field } from '@/components/Field'
-import { LoadMore } from '@/components/LoadMore'
+import { Pagination } from '@/components/Pagination'
 import { Pill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -28,15 +28,13 @@ const STATUS = { PENDING: ['watch', 'Pending'], RECEIVED: ['good', 'Received'], 
 export function PurchaseOrders({
   rows,
   loading,
-  hasMore,
-  more,
+  pager,
   canEdit,
   onChanged,
 }: {
   rows: PurchaseOrder[]
   loading: boolean
-  hasMore: boolean
-  more: () => Promise<void>
+  pager: { page: number; pages: number; total: number; size: number; onPage: (n: number) => void }
   canEdit: boolean
   onChanged: () => void
 }) {
@@ -101,7 +99,7 @@ export function PurchaseOrders({
   return (
     <>
       <DataTable columns={cols} data={sorted} loading={loading} empty={<EmptyState icon={PackageCheck} line="No orders placed yet. Use Order all short to place one." />} />
-      <LoadMore hasMore={hasMore} more={more} />
+      <Pagination {...pager} />
       {receiving && <ReceiveDialog po={receiving} onClose={() => setReceiving(null)} onSaved={onChanged} />}
     </>
   )

@@ -2,7 +2,7 @@ const prisma = require('../lib/prisma');
 const { notFound, badRequest } = require('../lib/errors');
 const orderService = require('./orderService');
 const { syncStatus } = orderService;
-const { pageArgs, toPage, dateRange } = require('../lib/paging');
+const { pageArgs, toPage, countFor, dateRange } = require('../lib/paging');
 
 const ROLL_STATUS = { PASS: 'PASSED', REWORK: 'REWORK', REJECT: 'REJECTED' };
 
@@ -25,13 +25,15 @@ async function listRolls(query = {}) {
   const search = q ? { OR: [{ rollNo: has }, { machine: { code: has } }, { order: { OR: [{ orderNo: has }, { fabricType: has }, { colour: has }, { buyer: { name: has } }] } }] } : {};
   // ?defect= keeps rolls that failed a check for that reason.
   const defect = query.defect ? { qcRecords: { some: { defectType: String(query.defect) } } } : {};
+  const where = { AND: [{ status, orderId, machineId, createdAt: dateRange(from, to), ...queue }, search, defect] };
   const rolls = await prisma.roll.findMany({
-    where: { AND: [{ status, orderId, machineId, createdAt: dateRange(from, to), ...queue }, search, defect] },
+    where,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     include: rollInclude,
     ...pageArgs(query),
   });
-  return toPage(rolls, query);
+  const total = await countFor(prisma.roll, where, query);
+  return toPage(rolls, query, total);
 }
 
 // Full trace: roll → order, machine, job (shift, worker) and every inspection.

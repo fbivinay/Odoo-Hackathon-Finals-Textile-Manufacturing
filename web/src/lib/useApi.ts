@@ -89,6 +89,62 @@ export async function mutate(path: string, method: string, body: unknown, succes
   }
 }
 
+// The rows per page of every numbered list.
+export const PAGE_SIZE = 20
+
+// A numbered list read from the server one page at a time (?page=&limit=). `path` carries the
+// search and filters; changing it starts again at page 1. The rows on screen stay put while the
+// next page loads, so the table never flashes empty.
+export function usePages<T>(path: string | null, size = PAGE_SIZE) {
+  const [rows, setRows] = useState<T[]>([])
+  const [total, setTotal] = useState(0)
+  const [state, setState] = useState({ path, page: 1 })
+  // The list whose rows are on screen. Until it matches `path`, a different list is still loading.
+  const [loaded, setLoaded] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [nonce, setNonce] = useState(0)
+  // A new search or filter is a new list: back to the first page, in the same render.
+  const page = state.path === path ? state.page : 1
+  const setPage = useCallback((n: number) => setState({ path, page: n }), [path])
+  const version = useDataVersion()
+
+  useEffect(() => {
+    if (path === null) return
+    let live = true
+    apiPage<T[]>(`${path}${path.includes('?') ? '&' : '?'}limit=${size}&page=${page}`)
+      .then(({ data, meta }) => {
+        if (!live) return
+        setRows(data)
+        setTotal(meta?.total ?? data.length)
+        setError(null)
+      })
+      .catch((e) => live && setError(e instanceof ApiError ? e.message : 'Something went wrong.'))
+      .finally(() => live && setLoaded(path))
+    return () => {
+      live = false
+    }
+    // `version`: something was saved elsewhere, so read this page again, quietly.
+  }, [path, page, size, nonce, version])
+
+  // Only a different list shows the skeleton; moving between pages keeps the rows in place.
+  const loading = path !== null && loaded !== path
+
+  const pages = Math.max(1, Math.ceil(total / size))
+  return { rows, loading, error, page: Math.min(page, pages), setPage, total, pages, size, reload: useCallback(() => setNonce((n) => n + 1), []) }
+}
+
+// What <Pagination> needs from either hook.
+export const pagerOf = (p: { page: number; pages: number; total: number; size: number; setPage: (n: number) => void }) => ({ page: p.page, pages: p.pages, total: p.total, size: p.size, onPage: p.setPage })
+
+// The same pager for a list already in memory: slices it, and returns to page 1 when the list
+// itself changes (a search or a filter).
+export function useClientPages<T>(all: T[], size = PAGE_SIZE) {
+  const [state, setState] = useState({ key: all.length, page: 1 })
+  const pages = Math.max(1, Math.ceil(all.length / size))
+  const page = Math.min(state.key === all.length ? state.page : 1, pages)
+  return { rows: all.slice((page - 1) * size, page * size), page, setPage: (n: number) => setState({ key: all.length, page: n }), total: all.length, pages, size }
+}
+
 // A paged list: first page on load, `more()` appends the next one via meta.nextCursor.
 export function usePaged<T>(path: string | null, limit = 50) {
   const [rows, setRows] = useState<T[]>([])

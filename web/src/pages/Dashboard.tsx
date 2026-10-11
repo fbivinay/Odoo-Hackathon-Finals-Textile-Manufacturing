@@ -41,6 +41,8 @@ export function Dashboard() {
     }
   }, [year, version])
 
+  const monthName = MONTHS[+month.slice(5, 7) - 1]
+
   return (
     <div className="space-y-6">
 
@@ -88,13 +90,13 @@ export function Dashboard() {
       {/* The figures panel: money in, money out and what is left, for the chosen month. */}
       <section className="figures-panel">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Figure label="Invoiced" value={formatMoney(p?.invoiced ?? 0)} note="Bills raised to buyers this month" loading={loading} />
-          <Figure label="Collected" tone="good" value={formatMoney(p?.paymentsReceived ?? 0)} note="Payments received from buyers this month" loading={loading} />
+          <Figure label="Invoiced" value={formatMoney(p?.invoiced ?? 0)} note={`Fabric billed to clients in ${monthName}, before GST`} loading={loading} />
+          <Figure label="Collected" tone={p?.paymentsReceived ? 'good' : undefined} value={formatMoney(p?.paymentsReceived ?? 0)} note={`Payments received from clients in ${monthName}`} loading={loading} />
           <Figure
             label="Outstanding"
-            tone="watch"
+            tone={(summary.data?.receivables ?? 0) > 0.5 ? 'watch' : 'good'}
             value={formatMoney(summary.data?.receivables ?? 0)}
-            note="Still owed by buyers today"
+            note="Still owed by clients today, whatever the month"
             loading={summary.loading}
           />
           <Figure
@@ -105,16 +107,16 @@ export function Dashboard() {
           />
           <Figure
             label="Profit"
-            tone={(p?.profit ?? 0) < 0 ? 'problem' : 'good'}
+            tone={(p?.profit ?? 0) < 0 ? 'problem' : (p?.profit ?? 0) > 0 ? 'good' : undefined}
             value={formatMoney(p?.profit ?? 0)}
-            note={p?.invoiced ? `${Math.round((p.profit / p.invoiced) * 100)}% of invoiced, after expenses` : 'Invoiced − total expenses'}
+            note={p?.invoiced ? `${Math.round((p.profit / p.invoiced) * 100)}% of invoiced, after total expenses` : 'Invoiced − total expenses'}
             loading={loading}
           />
           <Figure
             label="Cash flow"
             tone={(p?.cashFlow ?? 0) < 0 ? 'problem' : undefined}
             value={formatMoney(p?.cashFlow ?? 0)}
-            note="Collected − supplier bills and expenses paid − wages paid"
+            note="Collected − supplier bills, expenses and wages paid"
             loading={loading}
           />
         </div>

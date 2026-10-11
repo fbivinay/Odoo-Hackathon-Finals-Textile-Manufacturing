@@ -1,6 +1,6 @@
 const prisma = require('../lib/prisma');
 const { notFound, conflict, badRequest } = require('../lib/errors');
-const { pageArgs, toPage, dateRange } = require('../lib/paging');
+const { pageArgs, toPage, countFor, dateRange } = require('../lib/paging');
 const { taxFor } = require('../lib/tax');
 
 const withLowStock = (m) => ({ ...m, lowStock: Number(m.qtyInStock) <= Number(m.reorderLevel) });
@@ -128,13 +128,15 @@ const poInclude = {
 
 // ?status=PENDING|RECEIVED|CANCELLED, plus ?category= / ?kind=other like the stock list.
 async function listPurchaseOrders(query = {}) {
+  const where = { status: query.status, material: ofKind(query) };
   const rows = await prisma.purchaseOrder.findMany({
-    where: { status: query.status, material: ofKind(query) },
+    where,
     orderBy: [{ orderedAt: 'desc' }, { poNo: 'desc' }],
     ...pageArgs(query),
     include: poInclude,
   });
-  return toPage(rows, query);
+  const total = await countFor(prisma.purchaseOrder, where, query);
+  return toPage(rows, query, total);
 }
 
 // One PO number per line, numbered on from the last one.
@@ -182,8 +184,9 @@ async function cancelOrder(id) {
 // from/to filter on receivedAt.
 async function listInwards(query = {}) {
   const { materialId, orderId, supplierId, from, to } = query;
+  const where = { materialId, orderId, supplierId, receivedAt: dateRange(from, to), material: ofKind(query) };
   const rows = await prisma.materialInward.findMany({
-    where: { materialId, orderId, supplierId, receivedAt: dateRange(from, to), material: ofKind(query) },
+    where,
     orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
     ...pageArgs(query),
     include: {
@@ -193,7 +196,8 @@ async function listInwards(query = {}) {
       receivedBy: { select: { id: true, name: true } },
     },
   });
-  return toPage(rows, query);
+  const total = await countFor(prisma.materialInward, where, query);
+  return toPage(rows, query, total);
 }
 
 // Yarn leaving the store for an order. The guarded decrement stops stock going negative.
@@ -226,8 +230,9 @@ async function issue({ materialId, orderId, jobId, department, qty }) {
 // from/to filter on issuedAt.
 async function listIssues(query = {}) {
   const { materialId, orderId, from, to } = query;
+  const where = { materialId, orderId, issuedAt: dateRange(from, to), material: ofKind(query) };
   const rows = await prisma.materialIssue.findMany({
-    where: { materialId, orderId, issuedAt: dateRange(from, to), material: ofKind(query) },
+    where,
     orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
     ...pageArgs(query),
     include: {
@@ -235,7 +240,8 @@ async function listIssues(query = {}) {
       order: { select: { id: true, orderNo: true } },
     },
   });
-  return toPage(rows, query);
+  const total = await countFor(prisma.materialIssue, where, query);
+  return toPage(rows, query, total);
 }
 
 module.exports = { allocateYarn, allocateAllYarn, list, create, update, inward, listInwards, issue, listIssues, listPurchaseOrders, placeOrders, receiveOrder, cancelOrder };

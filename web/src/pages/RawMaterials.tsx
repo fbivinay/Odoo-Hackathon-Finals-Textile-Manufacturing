@@ -8,7 +8,7 @@ import { actsAs } from '@/components/AppShell'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
-import { LoadMore } from '@/components/LoadMore'
+import { Pagination } from '@/components/Pagination'
 import { PageHead } from '@/components/PageHead'
 import { PurchaseOrders } from '@/components/PurchaseOrders'
 import { ReorderDialog } from '@/components/ReorderDialog'
@@ -21,7 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, ApiError } from '@/lib/api'
 import { formatDateTime, formatINR, formatQty } from '@/lib/format'
 import { toOrder } from '@/lib/reorder'
-import { useApi, usePaged } from '@/lib/useApi'
+import { pagerOf, useApi, usePages } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
 import type { MaterialCategory, MaterialInward, PurchaseOrder, RawMaterial, Ref } from '@/types'
 
@@ -75,7 +75,7 @@ export function RawMaterials() {
   const { user } = useSession()
   const navigate = useNavigate()
   const stock = useApi<RawMaterial[]>('/materials?kind=other')
-  const received = usePaged<MaterialInward>('/materials/inwards?kind=other')
+  const received = usePages<MaterialInward>('/materials/inwards?kind=other')
   const [category, setCategory] = useState<Category | 'ALL'>('ALL')
   const [receiving, setReceiving] = useState(false)
   const [using, setUsing] = useState<RawMaterial | null>(null)
@@ -87,7 +87,7 @@ export function RawMaterials() {
   const all = stock.data ?? []
   // Material already ordered and on its way is not short again.
   const pending = useApi<PurchaseOrder[]>('/materials/purchase-orders?status=PENDING&kind=other')
-  const history = usePaged<PurchaseOrder>('/materials/purchase-orders?kind=other')
+  const history = usePages<PurchaseOrder>('/materials/purchase-orders?kind=other')
   const onOrder = useMemo(() => {
     const map = new Map<string, number>()
     for (const p of pending.data ?? []) map.set(p.material.id, (map.get(p.material.id) ?? 0) + Number(p.qty))
@@ -260,7 +260,9 @@ export function RawMaterials() {
         </TabsContent>
         <TabsContent value="orders" className="mt-4 space-y-3">
           <PurchaseOrders
-            {...history}
+            rows={history.rows}
+            loading={history.loading}
+            pager={pagerOf(history)}
             canEdit={canEdit}
             onChanged={() => {
               reloadOrders()
@@ -270,7 +272,7 @@ export function RawMaterials() {
         </TabsContent>
         <TabsContent value="received" className="mt-4 space-y-3">
           <DataTable columns={receivedCols} data={received.rows} loading={received.loading} empty={<EmptyState icon={PackagePlus} line="Nothing received yet." />} />
-          <LoadMore hasMore={received.hasMore} more={received.more} />
+          <Pagination {...pagerOf(received)} />
         </TabsContent>
       </Tabs>
 

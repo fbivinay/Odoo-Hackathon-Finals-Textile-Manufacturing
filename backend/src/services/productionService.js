@@ -4,7 +4,7 @@ const { startOfToday } = require('../lib/dates');
 const { notFound, conflict, badRequest } = require('../lib/errors');
 const { syncStatus } = require('./orderService');
 const { setting } = require('./configService');
-const { pageArgs, toPage, dateRange } = require('../lib/paging');
+const { pageArgs, toPage, countFor, dateRange } = require('../lib/paging');
 
 const jobInclude = {
   order: { select: { id: true, orderNo: true, fabricType: true, colour: true, qty: true, deadline: true } },
@@ -315,13 +315,15 @@ async function finishJob(jobId, status) {
 // from/to filter on startedAt.
 async function listJobs(query = {}) {
   const { orderId, machineId, workerId, status, stage, from, to } = query;
+  const where = { orderId, machineId, workerId, status, stage, startedAt: dateRange(from, to) };
   const jobs = await prisma.productionJob.findMany({
-    where: { orderId, machineId, workerId, status, stage, startedAt: dateRange(from, to) },
+    where,
     orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
     include: jobInclude,
     ...pageArgs(query),
   });
-  return toPage(jobs.map(withPercent), query);
+  const total = await countFor(prisma.productionJob, where, query);
+  return toPage(jobs.map(withPercent), query, total);
 }
 
 // A finished roll comes off a job, so it always carries its order and machine.

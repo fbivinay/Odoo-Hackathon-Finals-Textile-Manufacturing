@@ -18,20 +18,37 @@ function parseLimit(limit) {
   return Math.min(value, MAX_LIMIT);
 }
 
-// ?limit=&cursor= → Prisma take/cursor. Without limit the whole list is returned.
-// One extra row is fetched to learn whether another page exists.
-function pageArgs({ limit, cursor } = {}) {
+// Two ways to page a list, both with ?limit=:
+//   ?cursor=  keyset paging for "load more" (one extra row is fetched to learn whether more exist)
+//   ?page=    numbered pages, 1-based; the answer then carries the total so a pager can be drawn
+// Without limit the whole list is returned.
+function parsePage(page) {
+  if (page === undefined || page === '') return null;
+  const value = Number(page);
+  if (!Number.isInteger(value) || value < 1) throw badRequest('page must be a positive whole number');
+  return value;
+}
+
+function pageArgs({ limit, cursor, page } = {}) {
   const take = parseLimit(limit);
   if (!take) return {};
+  const number = parsePage(page);
+  if (number) return { take, skip: (number - 1) * take };
   return { take: take + 1, ...(cursor && { cursor: { id: String(cursor) }, skip: 1 }) };
 }
 
-function toPage(rows, { limit } = {}) {
+// `total` is the size of the whole match; pass it when ?page= was asked for (see countFor).
+function toPage(rows, { limit, page } = {}, total) {
   const take = parseLimit(limit);
+  const number = take ? parsePage(page) : null;
+  if (number) return new Page(rows, { count: rows.length, total: total ?? rows.length, page: number, pages: Math.max(1, Math.ceil((total ?? rows.length) / take)), limit: take, nextCursor: null });
   const hasMore = Boolean(take) && rows.length > take;
   const data = hasMore ? rows.slice(0, take) : rows;
   return new Page(data, { count: data.length, nextCursor: hasMore ? data[data.length - 1].id : null });
 }
+
+// The size of the whole match, counted only when numbered pages were asked for.
+const countFor = (delegate, where, query = {}) => (query.page && query.limit ? delegate.count({ where }) : undefined);
 
 function parseDate(value, name) {
   const date = new Date(DATE_ONLY.test(value) ? `${value}T00:00:00.000Z` : value);
@@ -52,4 +69,4 @@ function dateRange(from, to, names = ['from', 'to']) {
   return range;
 }
 
-module.exports = { Page, pageArgs, toPage, dateRange };
+module.exports = { Page, pageArgs, toPage, countFor, dateRange };

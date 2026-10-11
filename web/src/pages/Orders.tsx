@@ -18,8 +18,8 @@ import { Input } from '@/components/ui/input'
 import { dayFromToday, formatDate, formatINR, formatQty, toISODate } from '@/lib/format'
 import { quote } from '@/lib/pricing'
 import { api, ApiError } from '@/lib/api'
-import { LoadMore } from '@/components/LoadMore'
-import { useApi, usePaged } from '@/lib/useApi'
+import { Pagination } from '@/components/Pagination'
+import { pagerOf, useApi, usePages } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
 import type { Config, Order, Planning, RawMaterial, Ref } from '@/types'
 
@@ -61,7 +61,7 @@ export function Orders() {
   const yarnOf = (id: string | null) => materials.data?.find((m) => m.id === id)
   const shortOf = useMemo(() => new Map(plan.data?.orders.filter((o) => o.yarnShortBy > 0).map((o) => [o.id, o.yarnShortBy])), [plan.data])
 
-  // The list is searched, filtered and paged on the server, 50 orders at a time.
+  // The list is searched, filtered and paged on the server, one page at a time.
   const [group, setGroup] = useState<Group>('')
   const [late, setLate] = useState(false)
   const [buyerId, setBuyerId] = useState('')
@@ -72,7 +72,7 @@ export function Orders() {
     return () => window.clearTimeout(t)
   }, [search])
   const query = [group && `group=${group}`, late && 'delayed=true', buyerId && `buyerId=${buyerId}`, q && `q=${encodeURIComponent(q)}`, 'sort=newest'].filter(Boolean).join('&')
-  const orders = usePaged<Order>(`/orders?${query}`, 50)
+  const orders = usePages<Order>(`/orders?${query}`)
   const filtered = !!group || late || !!buyerId || !!q
   const clear = () => {
     setGroup('')
@@ -254,7 +254,7 @@ export function Orders() {
           )
         }
       />
-      <LoadMore hasMore={orders.hasMore} more={orders.more} />
+      <Pagination {...pagerOf(orders)} />
 
       {canCreate && <OrderDialog open={open} onOpenChange={setOpen} onSaved={() => {}} />}
     </div>

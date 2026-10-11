@@ -1,3 +1,4 @@
+import { Pagination } from '@/components/Pagination'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -24,7 +25,9 @@ const money = (v: number) => <span className="tabular-nums">{formatINR(v)}</span
 // Filters and page number live in the URL with the period, so Back from a document keeps them.
 function useFilter(key: string) {
   const { params, set } = usePeriod()
-  return [params.get(key) ?? '', (v: string) => set({ [key]: v, page: '' })] as const
+  // Changing a filter goes back to page 1. Changing the page itself must not: resetting it here
+  // too meant Next never moved off the first page.
+  return [params.get(key) ?? '', (v: string) => set(key === 'page' ? { page: v } : { [key]: v, page: '' })] as const
 }
 
 function Toolbar({ children }: { children: ReactNode }) {
@@ -65,21 +68,8 @@ function Pager({ count }: { count: number }) {
   const [p, setP] = useFilter('page')
   const page = Math.max(1, Number(p) || 1)
   const last = Math.max(1, Math.ceil(count / PAGE_SIZE))
-  return (
-    <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
-      <span>
-        {count === 0 ? 'No entries' : `${((page - 1) * PAGE_SIZE + 1).toLocaleString('en-IN')}–${Math.min(page * PAGE_SIZE, count).toLocaleString('en-IN')} of ${count.toLocaleString('en-IN')}`}
-      </span>
-      <div className="flex gap-1">
-        <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setP(String(page - 1))}>
-          Previous
-        </Button>
-        <Button size="sm" variant="outline" disabled={page >= last} onClick={() => setP(String(page + 1))}>
-          Next
-        </Button>
-      </div>
-    </div>
-  )
+  // The same pager as every other list; the page number stays in the URL so Back keeps it.
+  return <Pagination page={Math.min(page, last)} pages={last} total={count} size={PAGE_SIZE} onPage={(n) => setP(n === 1 ? '' : String(n))} />
 }
 
 function Totals({ totals, count, noun }: { totals?: Paged<unknown>['totals']; count?: number; noun: string }) {

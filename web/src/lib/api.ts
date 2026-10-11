@@ -2,10 +2,15 @@ import { dataChanged } from './changes'
 import { mockRequest } from './mock'
 import { clearToken, getToken } from './token'
 
-// List endpoints add `meta` when paged: pass `nextCursor` back as `cursor`; null means the end.
+// List endpoints add `meta` when paged. Load-more lists pass `nextCursor` back as `cursor` (null
+// means the end); numbered lists ask for ?page= and read `total` and `pages`.
 export interface PageMeta {
   count: number
   nextCursor: string | null
+  // Present when ?page= was asked for: the size of the whole match and where this page sits in it.
+  total?: number
+  page?: number
+  pages?: number
 }
 
 export type Envelope<T> = { ok: true; data: T; meta?: PageMeta } | { ok: false; error: string; message: string }

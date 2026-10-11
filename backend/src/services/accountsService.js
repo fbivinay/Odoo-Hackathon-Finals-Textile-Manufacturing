@@ -29,6 +29,11 @@ const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
 const tz = Prisma.sql`'Asia/Kolkata'`;
 const taxOf = (row) => r2(Number(row.cgst || 0) + Number(row.sgst || 0) + Number(row.igst || 0));
 const todayIst = () => new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10);
+// The calendar day, in IST, that a moment falls on.
+const istDay = (d) => new Date(new Date(d).getTime() + 5.5 * 3600000).toISOString().slice(0, 10);
+// When a payment dated `day` (YYYY-MM-DD, IST) is recorded as made: now if it is today, otherwise
+// noon that day, so it sorts after anything that arrived that morning.
+const paymentMoment = (day) => (!day || day === todayIst() ? new Date() : new Date(`${day}T12:00:00+05:30`));
 
 // Business identity: only what is configured. No address, GSTIN or signature is invented.
 const COMPANY = { name: 'Everest Textile Mills', state: HOME_STATE, address: null, gstin: null, synthetic: true };
@@ -358,8 +363,10 @@ async function payBill(id, { amount, method, reference, paidAt }, user) {
     const value = Math.round(Number(amount) * 100);
     if (value <= 0) throw badRequest('Payment must be more than zero');
     if (value > balance) throw badRequest(`Payment exceeds the balance of ${(balance / 100).toFixed(2)}`);
-    const when = paidAt ? new Date(paidAt) : new Date();
-    if (when < w.receivedAt) throw badRequest('Payment date is before the goods were received');
+    // Dates are compared as days in the mill's time (IST). Comparing clock times wrongly refused a
+    // payment dated today for goods received earlier today: a bare date reads as midnight UTC.
+    const when = paymentMoment(paidAt);
+    if (istDay(when) < istDay(w.receivedAt)) throw badRequest('Payment date is before the goods were received');
     if (reference && (await tx.supplierPayment.findFirst({ where: { reference } }))) throw conflict(`Reference ${reference} is already recorded`, 'DUPLICATE');
     await tx.supplierPayment.create({ data: { inwardId: id, amount: value / 100, method, reference, paidAt: when } });
     await tx.auditLog.create({ data: { entity: 'SupplierBill', entityId: id, action: 'PAYMENT', detail: `${(value / 100).toFixed(2)} by ${method || 'unspecified'}${reference ? ` (${reference})` : ''}`, by: user.name } });
@@ -439,7 +446,7 @@ async function payExpense(id, { method, reference, paidAt }, user) {
   const e = await prisma.expense.findUnique({ where: { id } });
   if (!e) throw notFound('Expense not found');
   if (e.status === 'PAID') throw conflict(`${e.voucherNo} is already paid`, 'ALREADY_PAID');
-  const when = paidAt ? new Date(paidAt) : new Date();
+  const when = paymentMoment(paidAt);
   return prisma.$transaction(async (tx) => {
     const updated = await tx.expense.update({ where: { id }, data: { status: 'PAID', paidAt: when, method, reference } });
     await tx.auditLog.create({ data: { entity: 'Expense', entityId: id, action: 'PAID', detail: `${method || 'unspecified'}${reference ? ` (${reference})` : ''}`, by: user.name } });

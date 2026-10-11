@@ -233,7 +233,7 @@ export function InvoiceDoc() {
         <span>Paid {formatINR(i.paid)}</span>
         <span>Balance {formatINR(i.balance)}</span>
       </div>
-      {paying && <PaymentDialog title={`Payment for ${i.invoiceNo}`} balance={i.balance} url={`/accounts/invoices/${i.id}/payments`} withDate={false} onClose={() => setPaying(false)} onSaved={doc.reload} />}
+      {paying && <PaymentDialog title="Receive payment" about={`${i.invoiceNo} · ${i.dispatch.buyer.name}`} balance={i.balance} url={`/accounts/invoices/${i.id}/payments`} withDate={false} onClose={() => setPaying(false)} onSaved={doc.reload} />}
     </Doc>
   )
 }
@@ -279,7 +279,7 @@ export function BillDoc() {
         <span>Paid {formatINR(b.paid)}</span>
         <span>Balance {formatINR(b.balance)}</span>
       </div>
-      {paying && <PaymentDialog title={`Pay ${b.supplier.name} for ${b.billNo}`} balance={b.balance} url={`/accounts/bills/${b.id}/payments`} withDate onClose={() => setPaying(false)} onSaved={doc.reload} minDate={b.receivedAt.slice(0, 10)} />}
+      {paying && <PaymentDialog title="Pay supplier" about={`${b.billNo} · ${b.supplier.name}`} balance={b.balance} url={`/accounts/bills/${b.id}/payments`} withDate onClose={() => setPaying(false)} onSaved={doc.reload} minDate={istDay(b.receivedAt)} />}
     </Doc>
   )
 }
@@ -372,9 +372,12 @@ export function PayslipDoc() {
   )
 }
 
+// The calendar day, in IST, that a moment falls on (the server compares payment dates the same way).
+const istDay = (iso: string) => new Date(Date.parse(iso) + 5.5 * 3600000).toISOString().slice(0, 10)
+
 // --------------------------------------------------------------- dialogs --
 
-function PaymentDialog({ title, balance, url, withDate, minDate, onClose, onSaved }: { title: string; balance: number; url: string; withDate: boolean; minDate?: string; onClose: () => void; onSaved: () => void }) {
+function PaymentDialog({ title, about, balance, url, withDate, minDate, onClose, onSaved }: { title: string; about: string; balance: number; url: string; withDate: boolean; minDate?: string; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState({ amount: String(balance), method: 'NEFT', reference: '', paidAt: todayIst() })
   const [busy, setBusy] = useState(false)
   async function submit(e: FormEvent) {
@@ -396,31 +399,38 @@ function PaymentDialog({ title, balance, url, withDate, minDate, onClose, onSave
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>Balance {formatINR(balance)}. A part payment leaves the rest open.</DialogDescription>
+          <DialogDescription>{about}</DialogDescription>
         </DialogHeader>
-        <form id="pay" onSubmit={submit} className="grid gap-3">
-          <Field label="Amount (₹)" htmlFor="amount">
+        <form id="pay" onSubmit={submit} className="grid gap-4">
+          <Field label="Amount (₹)" htmlFor="amount" hint={`${formatINR(balance)} due. Enter less to pay part of it.`}>
             <Input id="amount" type="number" min="0.01" max={balance} step="0.01" required value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} />
           </Field>
-          <Field label="Method" htmlFor="method">
+          <Field label="Paid by" htmlFor="method">
             <select id="method" className={selectClass} value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}>
               {['NEFT', 'RTGS', 'UPI', 'Cheque', 'Cash'].map((m) => (
                 <option key={m}>{m}</option>
               ))}
             </select>
           </Field>
-          <Field label="Reference (UTR / cheque no.)" htmlFor="reference">
-            <Input id="reference" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />
+          <Field label="Reference (optional)" htmlFor="reference">
+            <Input id="reference" placeholder="UTR or cheque number" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />
           </Field>
           {withDate && (
-            <Field label="Paid on" htmlFor="paidAt">
+            <Field
+              label="Paid on"
+              htmlFor="paidAt"
+              hint={minDate && minDate >= todayIst() ? 'The goods came in today, so the payment is dated today.' : minDate ? `Any day from ${formatDate(minDate)} to today.` : undefined}
+            >
               <Input id="paidAt" type="date" min={minDate} max={todayIst()} value={f.paidAt} onChange={(e) => setF({ ...f, paidAt: e.target.value })} />
             </Field>
           )}
         </form>
         <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="submit" form="pay" disabled={busy}>
-            {busy ? 'Saving…' : 'Record payment'}
+            Record payment
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -449,26 +459,30 @@ function PayExpenseDialog({ id, voucher, onClose, onSaved }: { id: string; vouch
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Pay {voucher}</DialogTitle>
+          <DialogTitle>Pay expense</DialogTitle>
+          <DialogDescription>{voucher}</DialogDescription>
         </DialogHeader>
-        <form id="pay-expense" onSubmit={submit} className="grid gap-3">
-          <Field label="Method" htmlFor="method">
+        <form id="pay-expense" onSubmit={submit} className="grid gap-4">
+          <Field label="Paid by" htmlFor="method">
             <select id="method" className={selectClass} value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}>
               {['NEFT', 'RTGS', 'UPI', 'Cheque', 'Card', 'Cash'].map((m) => (
                 <option key={m}>{m}</option>
               ))}
             </select>
           </Field>
-          <Field label="Reference" htmlFor="reference">
-            <Input id="reference" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />
+          <Field label="Reference (optional)" htmlFor="reference">
+            <Input id="reference" placeholder="UTR or cheque number" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />
           </Field>
           <Field label="Paid on" htmlFor="paidAt">
             <Input id="paidAt" type="date" max={todayIst()} value={f.paidAt} onChange={(e) => setF({ ...f, paidAt: e.target.value })} />
           </Field>
         </form>
         <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="submit" form="pay-expense" disabled={busy}>
-            {busy ? 'Saving…' : 'Mark paid'}
+            Mark paid
           </Button>
         </DialogFooter>
       </DialogContent>

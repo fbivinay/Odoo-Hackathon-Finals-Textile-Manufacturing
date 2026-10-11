@@ -17,8 +17,8 @@ import { dayFromToday, formatDateTime, formatINR, formatQty } from '@/lib/format
 import { toOrder } from '@/lib/reorder'
 import { toast } from 'sonner'
 import { api, ApiError } from '@/lib/api'
-import { useApi, usePaged } from '@/lib/useApi'
-import { LoadMore } from '@/components/LoadMore'
+import { pagerOf, useApi, usePages } from '@/lib/useApi'
+import { Pagination } from '@/components/Pagination'
 import type { MaterialInward, Planning, PurchaseOrder, RawMaterial, Ref } from '@/types'
 
 const stockCols = (onWarning: (m: RawMaterial) => void, shortOf: (id: string) => number, onOrderOf: (id: string) => number): ColumnDef<RawMaterial>[] => [
@@ -69,7 +69,7 @@ const inwardCols: ColumnDef<MaterialInward>[] = [
 
 export function Materials() {
   const stock = useApi<RawMaterial[]>('/materials?category=YARN')
-  const inwards = usePaged<MaterialInward>('/materials/inwards?category=YARN')
+  const inwards = usePages<MaterialInward>('/materials/inwards?category=YARN')
   const [open, setOpen] = useState(false)
   const [warning, setWarning] = useState<RawMaterial | null>(null)
   const [ordering, setOrdering] = useState(false)
@@ -77,7 +77,7 @@ export function Materials() {
   const plan = useApi<Planning>('/planning/schedule')
   // Yarn already ordered and on its way is not short again.
   const pending = useApi<PurchaseOrder[]>('/materials/purchase-orders?status=PENDING&category=YARN')
-  const history = usePaged<PurchaseOrder>('/materials/purchase-orders?category=YARN')
+  const history = usePages<PurchaseOrder>('/materials/purchase-orders?category=YARN')
   const onOrder = useMemo(() => {
     const map = new Map<string, number>()
     for (const p of pending.data ?? []) map.set(p.material.id, (map.get(p.material.id) ?? 0) + Number(p.qty))
@@ -135,7 +135,9 @@ export function Materials() {
         </TabsContent>
         <TabsContent value="orders" className="space-y-3">
           <PurchaseOrders
-            {...history}
+            rows={history.rows}
+            loading={history.loading}
+            pager={pagerOf(history)}
             canEdit
             onChanged={() => {
               reloadOrders()
@@ -147,7 +149,7 @@ export function Materials() {
         </TabsContent>
         <TabsContent value="deliveries" className="space-y-3">
           <DataTable columns={inwardCols} data={inwards.rows} loading={inwards.loading} empty="No yarn received yet." />
-          <LoadMore hasMore={inwards.hasMore} more={inwards.more} />
+          <Pagination {...pagerOf(inwards)} />
         </TabsContent>
       </Tabs>
 

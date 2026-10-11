@@ -6,7 +6,7 @@ import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
 import { Figure } from '@/components/Figure'
-import { LoadMore } from '@/components/LoadMore'
+import { Pagination } from '@/components/Pagination'
 import { PageHead } from '@/components/PageHead'
 import { RollLink } from '@/components/RollTrace'
 import { Pill, label } from '@/components/StatusPill'
@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { dayFromToday, formatDateTime, formatQty } from '@/lib/format'
 import { api, ApiError } from '@/lib/api'
-import { useApi, usePaged } from '@/lib/useApi'
+import { pagerOf, useApi, usePages } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
 import type { Machine, QcSummary, Roll, Stage } from '@/types'
 
@@ -70,7 +70,7 @@ export function QC() {
     setDefect('')
     setWhere('')
   }
-  const list = usePaged<Roll>(`/qc/rolls?status=${view === 'passed' && where ? where : current.status}${filters}`, 50)
+  const list = usePages<Roll>(`/qc/rolls?status=${view === 'passed' && where ? where : current.status}${filters}`)
   const counts = summary.data?.counts
   const countOf: Record<View, number | undefined> = {
     waiting: counts?.PENDING_QC,
@@ -253,7 +253,7 @@ export function QC() {
         </div>
       </div>
       <DataTable key={view} columns={columns} data={list.rows} loading={list.loading} empty={filtered ? <EmptyState icon={Search} line="No roll matches these filters." actionLabel="Clear filters" onAction={clear} /> : <EmptyState icon={ClipboardCheck} line={current.empty} />} />
-      <LoadMore hasMore={list.hasMore} more={list.more} />
+      <Pagination {...pagerOf(list)} />
 
       {checking && <CheckDialog roll={checking.roll} result={checking.result} onClose={() => setChecking(null)} />}
     </div>

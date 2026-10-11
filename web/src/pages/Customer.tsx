@@ -10,6 +10,8 @@ import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
 import { Figure } from '@/components/Figure'
 import { PageHead } from '@/components/PageHead'
+import { Pagination } from '@/components/Pagination'
+import { pagerOf, useClientPages } from '@/lib/useApi'
 import { StatusPill } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -37,7 +39,6 @@ export function Customer() {
   const { data, error } = useCustomerData()
   const [period, setPeriod] = useState<string>('365')
   const [tab, setTab] = useState<'orders' | 'invoices'>('orders')
-  const [showAll, setShowAll] = useState(false)
   const [q, setQ] = useState('')
   const [collecting, setCollecting] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -61,6 +62,10 @@ export function Customer() {
   const found = (...nos: string[]) => !needle || nos.some((n) => n.toLowerCase().includes(needle))
   const shownInvoices = history.filter((i) => found(i.invoiceNo, i.dispatch.order.orderNo))
   const shownOrders = orders.filter((o) => found(o.orderNo, o.fabricType))
+
+  // Hooks go before the early returns below, so the same ones run on every render.
+  const orderPages = useClientPages(shownOrders, 10)
+  const invoicePages = useClientPages(shownInvoices, 10)
 
   if (error) return <p className="text-sm text-problem">{error}</p>
   if (!stats) return <PageSkeleton />
@@ -148,8 +153,6 @@ export function Customer() {
       },
     },
   ]
-  const rows = tab === 'orders' ? shownOrders : shownInvoices
-  const limit = 10
 
   return (
     <div className="space-y-5">
@@ -216,10 +219,7 @@ export function Customer() {
 
       <Tabs
         value={tab}
-        onValueChange={(v) => {
-          setTab(v as typeof tab)
-          setShowAll(false)
-        }}
+        onValueChange={(v) => setTab(v as typeof tab)}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <TabsList>
@@ -234,7 +234,7 @@ export function Customer() {
         <TabsContent value="orders" className="mt-4">
           <DataTable
             columns={orderCols}
-            data={showAll ? shownOrders : shownOrders.slice(0, limit)}
+            data={orderPages.rows}
             onRowClick={(o) => navigate(`/orders/${o.id}`)}
             empty={<EmptyState icon={Search} line={needle ? 'No order matches.' : 'No orders in this period.'} actionLabel={needle ? 'Clear search' : undefined} onAction={needle ? () => setQ('') : undefined} />}
           />
@@ -242,21 +242,12 @@ export function Customer() {
         <TabsContent value="invoices" className="mt-4">
           <DataTable
             columns={invoiceCols}
-            data={showAll ? shownInvoices : shownInvoices.slice(0, limit)}
+            data={invoicePages.rows}
             empty={<EmptyState icon={Search} line={needle ? 'No invoice matches.' : 'No invoices in this period.'} actionLabel={needle ? 'Clear search' : undefined} onAction={needle ? () => setQ('') : undefined} />}
           />
         </TabsContent>
       </Tabs>
-      {rows.length > limit && (
-        <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
-          <span>
-            Showing {showAll ? rows.length : limit} of {rows.length}
-          </span>
-          <Button size="xs" variant="outline" onClick={() => setShowAll(!showAll)}>
-            {showAll ? `Show first ${limit}` : 'Show all'}
-          </Button>
-        </div>
-      )}
+      <Pagination {...pagerOf(tab === 'orders' ? orderPages : invoicePages)} />
 
       {collecting && <CollectDialog client={s} onClose={() => setCollecting(false)} />}
       {editing && <AddressDialog id={s.buyer.id} name={s.buyer.name} address={address ?? ''} onClose={() => setEditing(false)} onSaved={setSavedAddress} />}

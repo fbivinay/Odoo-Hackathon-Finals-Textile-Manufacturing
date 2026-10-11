@@ -19,18 +19,20 @@ interface NavItem {
   roles: Role[] // OWNER sees everything
 }
 
+// In the order work moves through the mill: what is asked for, what comes in, making, checking
+// and sending it, then the money, planning, people and settings.
 export const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Overview', icon: LayoutDashboard, roles: [] },
   { to: '/orders', label: 'Orders', icon: ShoppingCart, roles: ['STORE', 'PRODUCTION', 'DISPATCH'] },
   { to: '/materials', label: 'Yarn Received', icon: Package, roles: ['STORE'] },
   { to: '/raw-materials', label: 'Raw Materials', icon: FlaskConical, roles: ['STORE', 'PRODUCTION'] },
-  { to: '/clients', label: 'Clients', icon: Users, roles: [] },
-  { to: '/accounts', label: 'Accounts', icon: Landmark, roles: [] },
-  { to: '/lab', label: 'Everest Lab', icon: Lightbulb, roles: [] },
   { to: '/production', label: 'Machines', icon: Factory, roles: ['PRODUCTION'] },
   { to: '/qc', label: 'Quality check', icon: ClipboardCheck, roles: ['QC'] },
   { to: '/waste', label: 'Waste', icon: Recycle, roles: ['PRODUCTION', 'QC'] },
   { to: '/dispatch', label: 'Dispatch', icon: Truck, roles: ['DISPATCH'] },
+  { to: '/clients', label: 'Clients', icon: Users, roles: [] },
+  { to: '/accounts', label: 'Accounts', icon: Landmark, roles: [] },
+  { to: '/lab', label: 'Everest Lab', icon: Lightbulb, roles: [] },
   { to: '/employees', label: 'Employees', icon: UserCog, roles: [] },
   { to: '/config', label: 'Mill Setup', icon: SlidersHorizontal, roles: [] },
 ]

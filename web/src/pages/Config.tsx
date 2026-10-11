@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { EmptyState } from '@/components/EmptyState'
 import { Field, selectClass } from '@/components/Field'
 import { PageHead } from '@/components/PageHead'
+import { Pagination } from '@/components/Pagination'
 import { Pill, label } from '@/components/StatusPill'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -12,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, ApiError } from '@/lib/api'
 import { formatDateTime, formatINR, formatQty, unitFor } from '@/lib/format'
-import { useApi } from '@/lib/useApi'
+import { pagerOf, useApi, useClientPages } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
 import type { Config as ConfigData, ConfigChange, Machine, Shift, Stage } from '@/types'
 
@@ -422,7 +423,6 @@ interface Worker {
 }
 const SHIFTS: Shift[] = ['MORNING', 'EVENING', 'NIGHT']
 const SHIFT_HOURS: Record<Shift, string> = { MORNING: '6 AM – 2 PM', EVENING: '2 PM – 10 PM', NIGHT: '10 PM – 6 AM' }
-const PAGE = 20
 // Wages are shown per month here; pay is still worked out per day attended, on 26 working days
 // a month (Sundays off), so the stored figure is the daily rate.
 const WORK_DAYS = 26
@@ -433,12 +433,12 @@ export function Workers() {
   const [editing, setEditing] = useState<Worker | 'new' | null>(null)
   const [search, setSearch] = useState('')
   const [shift, setShift] = useState<Shift | 'ALL'>('ALL')
-  const [showAll, setShowAll] = useState(false)
   const q = search.trim().toLowerCase()
   // Active first, newest on top.
   const all = [...(workers.data ?? [])].sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.createdAt.localeCompare(a.createdAt) || b.code.localeCompare(a.code))
   const matches = all.filter((w) => (shift === 'ALL' || w.shift === shift) && (!q || [w.name, w.code, label(w.shift)].some((v) => v.toLowerCase().includes(q))))
-  const rows = showAll ? matches : matches.slice(0, PAGE)
+  const paged = useClientPages(matches)
+  const rows = paged.rows
   const filtered = !!q || shift !== 'ALL'
 
   return (
@@ -521,18 +521,9 @@ export function Workers() {
               ))}
             </tbody>
           </table>
-          {matches.length > PAGE && (
-            <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
-              <span>
-                Showing {rows.length} of {matches.length}
-              </span>
-              <Button size="xs" variant="ghost" onClick={() => setShowAll(!showAll)}>
-                {showAll ? `Show first ${PAGE}` : 'Show all'}
-              </Button>
-            </div>
-          )}
         </div>
       )}
+      {!(workers.loading && !workers.data) && <Pagination {...pagerOf(paged)} />}
       {editing && <WorkerDialog worker={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
     </section>
   )
@@ -735,15 +726,18 @@ const FIELD: Record<string, string> = {
   shelfWaitDays: 'finished fabric wait limit',
 }
 
-function Log({ rows, loading }: { rows: ConfigChange[]; loading: boolean }) {
+function Log({ rows: all, loading }: { rows: ConfigChange[]; loading: boolean }) {
+  const paged = useClientPages(all)
+  const rows = paged.rows
   if (loading) return <Skeleton className="h-64 w-full" />
-  if (!rows.length)
+  if (!all.length)
     return (
       <div className="data-table-wrap">
         <EmptyState icon={History} line="No changes yet. Every edit on this page is recorded here." />
       </div>
     )
   return (
+    <div className="space-y-3">
     <div className="data-table-wrap overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
@@ -768,6 +762,8 @@ function Log({ rows, loading }: { rows: ConfigChange[]; loading: boolean }) {
           ))}
         </tbody>
       </table>
+    </div>
+    <Pagination {...pagerOf(paged)} />
     </div>
   )
 }

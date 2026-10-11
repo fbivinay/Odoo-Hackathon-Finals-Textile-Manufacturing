@@ -7,6 +7,7 @@ import { Figure } from '@/components/Figure'
 import { Pill } from '@/components/StatusPill'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { PageHead } from '@/components/PageHead'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { periodPresets, todayIst, type Overview as OverviewData } from '@/lib/accounts'
 import { formatDate, formatINR, formatMoney } from '@/lib/format'
@@ -85,17 +86,15 @@ export function Accounts() {
   return (
     <div>
       <Tabs value={tab} onValueChange={(v) => set({ tab: v === 'overview' ? '' : v, page: '' })} className="gap-3">
-        {/* Three columns on wide screens so the tabs sit in the middle of the page, not just right of the title. */}
-        <header className="flex flex-wrap items-center justify-between gap-4 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:gap-2">
-          <h1 className="display">Accounts</h1>
-          <TabsList className="flex-wrap lg:justify-self-center">
-            {TABS.map(([k, label]) => (
-              <TabsTrigger key={k} value={k}>
-                {label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </header>
+        {/* Same head as every other screen: small line, title, then the tabs on their own row. */}
+        <PageHead eyebrow="Books, GST and payroll" title="Accounts" />
+        <TabsList className="flex-wrap">
+          {TABS.map(([k, label]) => (
+            <TabsTrigger key={k} value={k}>
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
         {/* The period sits just above the first box: room under the tabs, the content's top margin pulled in. */}
         <div className="mt-4 -mb-5 flex justify-end">
           <PeriodBar />

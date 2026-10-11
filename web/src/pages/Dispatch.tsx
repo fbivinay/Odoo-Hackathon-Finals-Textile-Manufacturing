@@ -22,9 +22,9 @@ function useDispatchRules() {
   return { tolerance: (value('dispatchTolerancePct') ?? TOLERANCE * 100) / 100, waitLimit: value('shelfWaitDays') ?? WAIT_LIMIT_DAYS }
 }
 import { dayFromToday, formatDate, formatINR, formatQty } from '@/lib/format'
-import { mutate, useApi, usePaged } from '@/lib/useApi'
+import { mutate, pagerOf, useApi, usePages } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
-import { LoadMore } from '@/components/LoadMore'
+import { Pagination } from '@/components/Pagination'
 import type { Dispatch as DispatchRow, ShelfStock } from '@/types'
 
 type ShelfGroup = ShelfStock['orders'][number]
@@ -74,7 +74,7 @@ export function Dispatch() {
     d.setDate(d.getDate() - span.days)
     return d.toISOString()
   }, [span.days])
-  const dispatches = usePaged<DispatchRow>(`/dispatch?from=${encodeURIComponent(since)}`)
+  const dispatches = usePages<DispatchRow>(`/dispatch?from=${encodeURIComponent(since)}`)
   const [view, setView] = useState<View>('shelf')
   const [loading, setLoading] = useState<ShelfRow | null>(null)
   const [invoiceOf, setInvoiceOf] = useState<DispatchRow | null>(null)
@@ -159,7 +159,7 @@ export function Dispatch() {
       enableSorting: false,
       cell: ({ row: { original: r } }) => (
         <div className="leading-tight">
-          <Pill tone={r.complete ? 'good' : 'neutral'}>{r.complete ? 'Ready' : 'Part ready'}</Pill>
+          <Pill tone={r.complete ? 'good' : 'neutral'}>{r.complete ? 'Ready' : 'Partial ready'}</Pill>
           <p className={cn('mt-0.5 text-xs', r.flag === 'overdue' ? 'font-medium text-problem' : r.flag ? 'font-medium text-watch' : 'text-muted-foreground')}>{r.flag ? FLAG[r.flag].text(r) : `Due ${formatDate(r.order.deadline)}`}</p>
         </div>
       ),
@@ -177,7 +177,7 @@ export function Dispatch() {
               Dispatch
             </Button>
           ) : (
-            <span className="text-xs text-muted-foreground">Rest in production</span>
+            <span className="text-xs text-muted-foreground">Partial ready</span>
           )}
         </div>
       ),
@@ -327,7 +327,7 @@ export function Dispatch() {
             loading={dispatches.loading}
             empty={needle ? <EmptyState icon={Search} line={`Nothing matches "${q.trim()}".`} actionLabel="Clear search" onAction={() => setQ('')} /> : <EmptyState icon={Truck} line={`Nothing was dispatched ${span.words}.`} actionLabel={period === '90' ? undefined : 'Show a longer period'} onAction={period === '90' ? undefined : () => setPeriod(period === 'today' ? '7' : period === '7' ? '30' : '90')} />}
           />
-          <LoadMore hasMore={dispatches.hasMore} more={dispatches.more} />
+          <Pagination {...pagerOf(dispatches)} />
         </>
       ) : (
         <DataTable
@@ -441,15 +441,24 @@ function ConfirmDispatch({ group, onClose, onDone, onStale }: { group: ShelfGrou
         <DialogHeader>
           <DialogTitle>Dispatch {o.orderNo}</DialogTitle>
           <DialogDescription>
-            {o.buyer.name} · {count} · {formatQty(truck)}
+            {fabricOf(o)} · {count} · {formatQty(truck)}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Where the truck goes: the client's delivery address. */}
-        <p className="-mt-1 flex items-start gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-sm">
-          <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          {addressOf(o.buyer) ? <span>Deliver to {addressOf(o.buyer)}</span> : <span className="text-muted-foreground">No delivery address saved for this client. Add one on the Clients page.</span>}
-        </p>
+        {/* Who it is for and where the truck goes. */}
+        <dl className="-mt-1 grid gap-2 rounded-lg bg-zinc-50 px-3 py-2.5 text-sm">
+          <div>
+            <dt className="text-xs text-muted-foreground">Client</dt>
+            <dd className="font-medium">{o.buyer.name}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Deliver to</dt>
+            <dd className="flex items-start gap-1.5">
+              <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              {addressOf(o.buyer) || <span className="text-muted-foreground">No address saved. Add one on the Clients page.</span>}
+            </dd>
+          </div>
+        </dl>
 
         <form id="confirm-dispatch" onSubmit={submit} className="grid gap-4">
           {/* Only said when something is wrong: more fabric than the buyer accepts. */}

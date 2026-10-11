@@ -8,6 +8,7 @@ import { actsAs } from '@/components/AppShell'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { PageHead } from '@/components/PageHead'
+import { Pagination } from '@/components/Pagination'
 import { Pill } from '@/components/StatusPill'
 import { StockWarningDialog } from '@/components/StockWarningDialog'
 import { KpiCard } from '@/components/tremor/KpiCard'
@@ -15,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { dayFromToday, formatDate, formatDateTime, formatDayMonth, formatINR, formatMoney, formatQty } from '@/lib/format'
 import { toOrder } from '@/lib/reorder'
-import { useApi } from '@/lib/useApi'
+import { pagerOf, useApi, useClientPages } from '@/lib/useApi'
 import type { MaterialInward, PurchaseOrder, RawMaterial as Material, Ref } from '@/types'
 import { CATEGORY, UseDialog } from './RawMaterials'
 
@@ -47,7 +48,6 @@ export function RawMaterial() {
   const taxCodes = useApi<TaxCodeInfo[]>('/materials/tax-codes')
   const [using, setUsing] = useState(false)
   const [warning, setWarning] = useState(false)
-  const [shown, setShown] = useState(20)
   const refresh = () => {
     stock.reload()
     ins.reload()
@@ -85,6 +85,7 @@ export function RawMaterial() {
     }
     return out
   }, [ins.data, outs.data, m])
+  const movePages = useClientPages(moves)
 
   // Stock at the end of each of the last 90 days, for the chart.
   const curve = useMemo(() => {
@@ -298,14 +299,8 @@ export function RawMaterial() {
 
       <section className="space-y-3">
         <h2 className="section-head">Every delivery and use</h2>
-        <DataTable columns={moveCols} data={moves.slice(0, shown)} loading={ins.loading || outs.loading} empty={<EmptyState icon={PackageSearch} line="No deliveries or uses yet." />} />
-        {moves.length > shown && (
-          <div className="flex justify-center">
-            <Button variant="outline" size="sm" onClick={() => setShown((n) => n + 20)}>
-              Show more ({(moves.length - shown).toLocaleString('en-IN')} left)
-            </Button>
-          </div>
-        )}
+        <DataTable columns={moveCols} data={movePages.rows} loading={ins.loading || outs.loading} empty={<EmptyState icon={PackageSearch} line="No deliveries or uses yet." />} />
+        <Pagination {...pagerOf(movePages)} />
       </section>
 
       {using && <UseDialog m={m} onClose={() => setUsing(false)} onSaved={refresh} />}

@@ -2,7 +2,7 @@ const prisma = require('../lib/prisma');
 const { nextNumber } = require('../lib/numbering');
 const { notFound, conflict, badRequest } = require('../lib/errors');
 const { syncStatus, sumQty } = require('./orderService');
-const { pageArgs, toPage, dateRange } = require('../lib/paging');
+const { pageArgs, toPage, countFor, dateRange } = require('../lib/paging');
 const { taxFor } = require('../lib/tax');
 const { setting } = require('./configService');
 
@@ -124,13 +124,15 @@ const shape = (dispatch) => ({
 // from/to filter on dispatchedAt.
 async function list(query = {}) {
   const { orderId, buyerId, from, to } = query;
+  const where = { orderId, buyerId, dispatchedAt: dateRange(from, to) };
   const rows = await prisma.dispatch.findMany({
-    where: { orderId, buyerId, dispatchedAt: dateRange(from, to) },
+    where,
     orderBy: [{ dispatchedAt: 'desc' }, { id: 'desc' }],
     include: dispatchInclude,
     ...pageArgs(query),
   });
-  return toPage(rows.map(shape), query);
+  const total = await countFor(prisma.dispatch, where, query);
+  return toPage(rows.map(shape), query, total);
 }
 
 async function get(id) {
@@ -155,14 +157,16 @@ async function listInvoices(query = {}) {
   const { from, to, buyerId } = query;
   // ?open=true: everything still owed, whether untouched or part paid. ?buyerId= one client's invoices.
   const status = query.open === 'true' ? { in: ['UNPAID', 'PARTIAL'] } : query.status;
+  const where = { status, issuedAt: dateRange(from, to), ...(buyerId ? { dispatch: { buyerId } } : {}) };
   const rows = await prisma.invoice.findMany({
-    where: { status, issuedAt: dateRange(from, to), ...(buyerId ? { dispatch: { buyerId } } : {}) },
+    where,
     // Oldest first when collecting, so the longest-owed order is at the top.
     orderBy: query.open === 'true' ? [{ issuedAt: 'asc' }, { id: 'asc' }] : [{ issuedAt: 'desc' }, { id: 'desc' }],
     include: invoiceInclude,
     ...pageArgs(query),
   });
-  return toPage(rows.map(withBalance), query);
+  const total = await countFor(prisma.invoice, where, query);
+  return toPage(rows.map(withBalance), query, total);
 }
 
 async function addPayment(invoiceId, { amount, method, reference }, user) {

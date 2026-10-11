@@ -6,14 +6,14 @@ import { EmptyState } from '@/components/EmptyState'
 import { selectClass } from '@/components/Field'
 import { Figure } from '@/components/Figure'
 import { PageHead } from '@/components/PageHead'
+import { Pagination } from '@/components/Pagination'
 import { RollLink } from '@/components/RollTrace'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/auth/session'
 import { useDataVersion } from '@/lib/changes'
 import { ApiError } from '@/lib/api'
-import { fetchAll } from '@/lib/useApi'
+import { fetchAll, pagerOf, useClientPages } from '@/lib/useApi'
 import { dayFromToday, formatDateTime, formatINR, formatMoney, formatQty } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { costPerMetreOf, summariseWaste, type Bucket, type WasteRoll } from '@/lib/waste'
@@ -25,7 +25,6 @@ const PERIODS = [
   { key: '90', label: 'Last 90 days', days: 90 },
   { key: '365', label: 'Last 12 months', days: 365 },
 ]
-const PAGE = 20
 
 // A rejected roll as the list shows it.
 type Rejected = WasteRoll & { order: WasteRoll['order'] & { colour?: string | null } }
@@ -52,7 +51,6 @@ export function Waste() {
   const [byCost, setByCost] = useState(false)
   const listTop = useRef<HTMLDivElement>(null)
   const toList = () => listTop.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  const [showAll, setShowAll] = useState(false)
   const version = useDataVersion()
 
   useEffect(() => {
@@ -97,7 +95,8 @@ export function Waste() {
       (!q || [r.rollNo, r.order.orderNo, r.order.fabricType, r.order.buyer?.name, r.machine.code, defectOf(r)?.defectType].some((v) => v?.toLowerCase().includes(q))),
   )
   const ordered = byCost ? [...matches].sort((a, b) => costOf(b) - costOf(a)) : matches
-  const rows = showAll ? ordered : ordered.slice(0, PAGE)
+  const paged = useClientPages(ordered)
+  const rows = paged.rows
   const filtered = !!q || !!defect || !!machine
   const clear = () => {
     setSearch('')
@@ -267,16 +266,7 @@ export function Waste() {
           )
         }
       />
-      {matches.length > PAGE && (
-        <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
-          <span>
-            Showing {rows.length} of {matches.length}
-          </span>
-          <Button size="xs" variant="outline" onClick={() => setShowAll(!showAll)}>
-            {showAll ? `Show first ${PAGE}` : 'Show all'}
-          </Button>
-        </div>
-      )}
+      <Pagination {...pagerOf(paged)} />
 
       {/* Where the waste comes from. Picking a bar filters the list above and takes you back to it. */}
       <div className="grid gap-5 lg:grid-cols-2">

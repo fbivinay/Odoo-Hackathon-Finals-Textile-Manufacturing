@@ -1,7 +1,7 @@
 const { Prisma } = require('@prisma/client');
 const prisma = require('../lib/prisma');
 const { monthRange } = require('../lib/dates');
-const { pageArgs, toPage, dateRange } = require('../lib/paging');
+const { pageArgs, toPage, countFor, dateRange } = require('../lib/paging');
 const materialService = require('./materialService');
 const orderService = require('./orderService');
 const productionService = require('./productionService');
@@ -60,13 +60,15 @@ async function summary() {
 async function orderCosts(query = {}) {
   const { id, status, buyerId, from, to } = query;
   const filtered = Boolean(id || status || buyerId || from || to || query.limit);
+  const where = { id, status, buyerId, createdAt: dateRange(from, to) };
   const orders = await prisma.order.findMany({
-    where: { id, status, buyerId, createdAt: dateRange(from, to) },
+    where,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     include: { buyer: { select: { id: true, name: true } } },
     ...pageArgs(query),
   });
-  const page = toPage(orders, query);
+  const total = await countFor(prisma.order, where, query);
+  const page = toPage(orders, query, total);
   const ids = page.data.map((o) => o.id);
   if (ids.length === 0) return page;
 

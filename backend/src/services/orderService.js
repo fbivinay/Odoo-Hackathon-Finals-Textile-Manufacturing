@@ -3,7 +3,7 @@ const { nextNumber } = require('../lib/numbering');
 const { notFound, badRequest } = require('../lib/errors');
 const { allocateYarn } = require('./materialService');
 const { quoteFor } = require('./configService');
-const { pageArgs, toPage, dateRange } = require('../lib/paging');
+const { pageArgs, toPage, countFor, dateRange } = require('../lib/paging');
 
 const CLOSED = ['DISPATCHED', 'CANCELLED'];
 
@@ -149,8 +149,7 @@ async function summary() {
 async function list(query = {}) {
   const { buyerId, q, delayed, from, to, dueFrom, dueTo, group, sort } = query;
   const status = query.status || GROUPS[group];
-  const orders = await prisma.order.findMany({
-    where: {
+  const where = {
       AND: [
         { status, buyerId, createdAt: dateRange(from, to), deadline: dateRange(dueFrom, dueTo, ['dueFrom', 'dueTo']) },
         delayed === 'true' ? delayedWhere() : {},
@@ -164,12 +163,15 @@ async function list(query = {}) {
             }
           : {},
       ],
-    },
+    };
+  const orders = await prisma.order.findMany({
+    where,
     orderBy: sort === 'newest' ? [{ createdAt: 'desc' }, { id: 'desc' }] : [{ priority: 'desc' }, { deadline: 'asc' }, { id: 'asc' }],
     include: { buyer: { select: { id: true, name: true } } },
     ...pageArgs(query),
   });
-  return toPage(await withRework(await withReplaced(orders.map(decorate))), query);
+  const total = await countFor(prisma.order, where, query);
+  return toPage(await withRework(await withReplaced(orders.map(decorate))), query, total);
 }
 
 // An order with fabric back from quality check shows the stage it has returned to (`reworkStage`),
