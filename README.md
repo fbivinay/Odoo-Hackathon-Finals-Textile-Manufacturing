@@ -2,7 +2,9 @@
 
 Textile Manufacturing System — Odoo Hackathon Finals. One platform for raw material, production floor, quality checks, buyer order tracking, dispatch and month-end costing.
 
-**Live:** https://everest-manufacturing-dashboard.vercel.app (one-click demo logins on the sign-in page)
+**Live:** https://everest-manufacturing-dashboard.vercel.app (laptop or desktop only; one-click demo logins on the sign-in page)
+
+![The owner's month-at-a-glance dashboard](docs/screenshot.png)
 
 ## Features
 
