@@ -2,6 +2,20 @@
 
 Textile Manufacturing System — Odoo Hackathon Finals. One platform for raw material, production floor, quality checks, buyer order tracking, dispatch and month-end costing.
 
+**Live:** https://everest-manufacturing-dashboard.vercel.app (one-click demo logins on the sign-in page)
+
+## Features
+
+- **Orders** — every client order tracked from yarn to invoice, with a public tracking link for the buyer
+- **Yarn & raw materials** — stock received, issued and allocated to orders
+- **Production floor** — jobs per machine, stage and shift, with daily machine output against capacity
+- **Quality check** — pass, rework or reject for every roll
+- **Dispatch & accounts** — dispatches, invoices, payments, supplier bills, payroll and GST
+- **Owner dashboard** — monthly invoiced, collected, outstanding, expenses, profit and cash flow
+- **Everest Lab** — what-if scenarios (rush orders, yarn delays, extra machines) with plain-language recommendations
+- **AI assistant** — answers questions about the mill from live data (Google Gemini)
+- **Roles** — Owner, Store, Production, QC and Dispatch each see only their own work
+
 ## Stack
 
 | Layer | Tech |
@@ -9,7 +23,8 @@ Textile Manufacturing System — Odoo Hackathon Finals. One platform for raw mat
 | Frontend | React 19 + Vite + TypeScript + Tailwind CSS v4 + shadcn/ui |
 | Backend | Node.js + Express + Prisma ORM |
 | Database | PostgreSQL (local in dev, [Neon](https://neon.tech) when deployed) |
-| Hosting | Frontend → Vercel · Backend → Render |
+| AI | Google Gemini |
+| Hosting | Frontend and backend → Vercel (`/api` forwarded to the backend project) |
 
 ## Local Setup
 
@@ -48,6 +63,5 @@ Password for all: `Password123`
 ```
 ├── backend/   # Express API, Prisma schema, seed
 ├── web/       # React + Vite frontend
-├── docs/      # Problem statement, API reference (api.md)
-└── CLAUDE.md  # Shared Claude Code instructions and conventions
+└── docs/      # Problem statement, API reference (api.md)
 ```

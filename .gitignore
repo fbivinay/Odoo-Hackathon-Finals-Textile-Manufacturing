@@ -48,3 +48,8 @@ backend/.pgdata/
 
 # Vercel
 .vercel
+
+# Local AI assistant files
+.claude/
+CLAUDE.md
+skills-lock.json
