@@ -9,6 +9,7 @@
     "db": "node prisma/local-db.js",
     "setup": "prisma migrate deploy && node prisma/dataset.js import data/everest --reset && node prisma/allocate-yarn.js && node prisma/mill-defaults.js",
     "start": "node src/server.js",
+    "vercel-build": "prisma generate && export DATABASE_URL=${DATABASE_URL_UNPOOLED:-$DATABASE_URL} && prisma migrate deploy && if [ \"$SEED_ON_BUILD\" = 1 ]; then node prisma/dataset.js import data/everest --reset && node prisma/allocate-yarn.js && node prisma/mill-defaults.js; fi",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",

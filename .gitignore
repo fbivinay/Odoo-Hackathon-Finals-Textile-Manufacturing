@@ -45,3 +45,6 @@ backend/uploads/
 
 # Local dev database
 backend/.pgdata/
+
+# Vercel
+.vercel

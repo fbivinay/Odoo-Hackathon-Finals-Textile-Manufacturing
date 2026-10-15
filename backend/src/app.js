@@ -20,6 +20,8 @@ const assistantRouter = require('./routes/assistant');
 const { notFoundHandler, errorHandler } = require('./middleware/errors');
 
 const app = express();
+// Behind Vercel's proxy: rate limits must key on the real client IP, not the proxy's.
+app.set('trust proxy', 1);
 
 app.use(helmet());
 app.use(

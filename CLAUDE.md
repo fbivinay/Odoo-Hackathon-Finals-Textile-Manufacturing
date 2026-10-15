@@ -17,7 +17,7 @@ One platform replacing the mill's notebooks and phone calls. Problem statement: 
 | Backend (`backend/`) | Node + Express (CommonJS JS) + Prisma 5 + zod |
 | Database | Local Postgres in dev (`npm run db`); Neon only for the deployed app |
 | Auth | JWT + bcrypt, roles: `OWNER` `STORE` `PRODUCTION` `QC` `DISPATCH` |
-| Deploy | web → Vercel, backend → Render, DB → Neon |
+| Deploy | web → Vercel (`/api` rewritten to backend), backend → Vercel project `everest-textile-api`, DB → Neon (Vercel store) |
 
 ## Commands
 

@@ -1,0 +1,6 @@
+backend
+docs
+.claude
+.github
+**/node_modules
+web/dist
